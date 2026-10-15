@@ -1,5 +1,6 @@
 //! Application-owned ports. No SQL, HTTP or vendor error crosses them.
 pub mod analysis;
+pub mod assessment;
 pub mod citation;
 pub mod conversation;
 pub mod engagement_setup;

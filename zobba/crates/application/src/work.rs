@@ -764,7 +764,15 @@ pub fn cited_answer(invocation: &Invocation) -> Option<CitedAnswer> {
     })
 }
 
-pub struct WorkLoop<W, S, T, D, R = NoReading, I = NoInvestigation> {
+pub struct WorkLoop<
+    W,
+    S,
+    T,
+    D,
+    R = NoReading,
+    I = NoInvestigation,
+    A = crate::assessment::NoAssessment,
+> {
     pub steps: W,
     pub coordinator: ModelCoordinator<S, T>,
     pub dispatch: D,
@@ -772,6 +780,8 @@ pub struct WorkLoop<W, S, T, D, R = NoReading, I = NoInvestigation> {
     pub reading: R,
     /// Story 22.6 method and skill use; `NoInvestigation` names the binding only.
     pub investigation: I,
+    /// Story 24.1 assessment basis; `NoAssessment` offers no assessment fields.
+    pub assessment: A,
     pub settings: WorkSettings,
     /// Binds the complete portable input to the disclosure operation. It must
     /// run again after any change to messages or history.
@@ -877,7 +887,7 @@ fn tool_note(status: StepStatus, name: &str) -> Option<String> {
     }
 }
 
-impl<W, S, T, D, R, I> WorkLoop<W, S, T, D, R, I>
+impl<W, S, T, D, R, I, A> WorkLoop<W, S, T, D, R, I, A>
 where
     W: WorkSteps,
     S: ModelStore,
@@ -885,6 +895,7 @@ where
     D: ToolDispatch,
     R: WorkReading,
     I: WorkInvestigation,
+    A: crate::assessment::WorkAssessment,
 {
     fn step(
         boundary: &WorkBoundary,
@@ -923,6 +934,11 @@ where
     /// Method and skill use (Story 22.6) needs cited answers.
     fn investigating(&self) -> bool {
         self.cited() && self.investigation.enabled()
+    }
+    /// Assessment (Story 24.1) needs an investigation: criteria cite the
+    /// bound method, and its fields extend the investigation schema.
+    fn assessing(&self) -> bool {
+        self.investigating() && self.assessment.enabled()
     }
     /// Native page reading is offered only to a profile qualified for image
     /// input whose provider encoder supports it.
@@ -997,6 +1013,7 @@ where
         resolved: &BTreeMap<u32, SourceFact>,
         reading: &ReadingContext,
         investigation: &InvestigationContext,
+        assessment: &crate::assessment::AssessmentContext,
     ) -> Result<Planned, RequestEnd> {
         let basis = &boundary.basis;
         let class = self.settings.input_class.clone();
@@ -1075,7 +1092,7 @@ where
                     role: MessageRole::System,
                     text: if self.cited() {
                         format!(
-                            "{SYSTEM_CONSTRAINTS} {CITATION_CONSTRAINTS} {}{}",
+                            "{SYSTEM_CONSTRAINTS} {CITATION_CONSTRAINTS} {}{}{}",
                             if self.page_reading() {
                                 PAGE_READING_CONSTRAINT
                             } else {
@@ -1083,6 +1100,11 @@ where
                             },
                             if self.investigating() {
                                 format!(" {INVESTIGATION_CONSTRAINTS}")
+                            } else {
+                                String::new()
+                            },
+                            if self.assessing() {
+                                format!(" {}", crate::assessment::ASSESSMENT_CONSTRAINTS)
                             } else {
                                 String::new()
                             }
@@ -1156,6 +1178,22 @@ where
                 fixed.push((
                     Some(entry("investigation-feedback", None)),
                     user("investigation-feedback", feedback.clone()),
+                ));
+            }
+        }
+        // Story 24.1: the recorded assessment basis, criteria and evaluations
+        // (with their IDs) and what became of the last answer's proposals.
+        if self.assessing() {
+            if let Some(outline) = &assessment.outline {
+                fixed.push((
+                    Some(entry("assessment-outline", None)),
+                    user("assessment-outline", outline.clone()),
+                ));
+            }
+            if let Some(feedback) = &assessment.feedback {
+                fixed.push((
+                    Some(entry("assessment-feedback", None)),
+                    user("assessment-feedback", feedback.clone()),
                 ));
             }
         }
@@ -1703,7 +1741,9 @@ where
             max_output_tokens: self.settings.max_output_tokens,
             // The 22.6 fields are offered only when an investigation is composed.
             structured_output: self.cited().then(|| {
-                if self.investigating() {
+                if self.assessing() {
+                    CitedAnswer::assessment_schema()
+                } else if self.investigating() {
                     CitedAnswer::investigation_schema()
                 } else {
                     CitedAnswer::schema()
@@ -1996,6 +2036,22 @@ where
                 .map(|investigated| more || investigated),
             other => other,
         };
+        // Assessment proposals are checked and recorded last, once the
+        // reading and investigation facts of the same answer are recorded.
+        let read = match read {
+            Ok(more) if self.assessing() => self
+                .assessment
+                .after_answer(
+                    &boundary.basis,
+                    &boundary.methodology,
+                    invocation,
+                    &answer,
+                    cancellation,
+                )
+                .await
+                .map(|assessed| more || assessed),
+            other => other,
+        };
         match read {
             Ok(more) => Ok(more),
             Err(ModelError::Fenced | ModelError::Denied) => Err(CycleEnd::Fenced),
@@ -2133,8 +2189,20 @@ where
             } else {
                 InvestigationContext::default()
             };
+            let assessment = if self.assessing() {
+                match self.assessment.context(&basis).await {
+                    Ok(assessment) => assessment,
+                    Err(ModelError::Fenced | ModelError::Denied) => return CycleEnd::Fenced,
+                    Err(ModelError::Unavailable | ModelError::Capacity) => {
+                        return CycleEnd::Unavailable;
+                    }
+                    Err(_) => return CycleEnd::Failed,
+                }
+            } else {
+                crate::assessment::AssessmentContext::default()
+            };
             let planned = match self
-                .request(&boundary, &resolved, &reading, &investigation)
+                .request(&boundary, &resolved, &reading, &investigation, &assessment)
                 .await
             {
                 Ok(planned) => planned,
@@ -2221,7 +2289,9 @@ where
             } else if calls.is_empty()
                 && self.cited()
                 && cited_answer(&invocation).is_some_and(|a| {
-                    a.requests_reading() || (self.investigating() && a.requests_investigation())
+                    a.requests_reading()
+                        || (self.investigating() && a.requests_investigation())
+                        || (self.assessing() && a.requests_assessment())
                 })
             {
                 (

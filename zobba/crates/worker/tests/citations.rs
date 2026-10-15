@@ -696,6 +696,7 @@ async fn cited_answers_are_read_and_verified_against_exact_originals() {
         analysis: target(),
         classification: "audit".into(),
         investigation: false,
+        assessment: false,
     });
     let config = executor::Config::new(std::path::PathBuf::from("/bin/false"), 10).unwrap();
     let (stop, shutdown) = tokio::sync::watch::channel(false);

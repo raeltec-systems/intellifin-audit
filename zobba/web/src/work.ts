@@ -7,6 +7,7 @@ import type { Scope } from './engagements.ts';
 import { commandContent, cursor, identifier } from './conversation.ts';
 import type { Receipt } from './conversation.ts';
 import type { components } from './generated/api.ts';
+import { parseAssessment } from './assessment.ts';
 
 export type TaskWork = components['schemas']['TaskWorkResponse'];
 export type TaskStep = components['schemas']['TaskStepResponse'];
@@ -249,8 +250,11 @@ export function parseWork(value: unknown, taskId: string): TaskWork {
     total_compactions: count(v.total_compactions, 256),
     investigation: nullable(v.investigation, parseInvestigation),
     investigation_unavailable: v.investigation_unavailable === true ? true : v.investigation_unavailable === false ? false : invalid(),
+    assessment: nullable(v.assessment, parseAssessment),
+    assessment_unavailable: v.assessment_unavailable === true ? true : v.assessment_unavailable === false ? false : invalid(),
   };
   if (work.investigation_unavailable && work.investigation !== null) invalid();
+  if (work.assessment_unavailable && work.assessment !== null) invalid();
   if (work.task_id !== taskId || work.total_steps < work.steps.length || work.total_compactions < work.compactions.length) invalid();
   return work;
 }

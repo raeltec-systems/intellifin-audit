@@ -696,6 +696,20 @@ textarea:focus-visible, select:focus-visible, summary:focus-visible, [tabindex='
 .cited-location { font-weight: 600; }
 .cited-range { background: #f6e7a8; color: inherit; }
 
+/* Story 24.1 assessment basis. Applicability, execution, verdict and origin
+   are separate words; an exception is marked by text as well as weight. */
+.task-assessment { display: grid; gap: 8px; }
+.task-assessment h5 { margin: 4px 0 0; font-size: 0.95rem; }
+.task-assessment ul { margin: 0; padding-left: 20px; overflow-wrap: anywhere; }
+.task-assessment p { margin: 0; }
+.assessment-bases > li, .assessment-criteria > li, .assessment-evaluations > li { margin-bottom: 8px; }
+.authority-unverified, .fact-unsupported .fact-value { color: var(--tertiary); }
+.evaluation-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: 4px 12px; margin: 4px 0; font-size: 0.85rem; }
+.evaluation-fields dt { color: var(--secondary); }
+.evaluation-fields dd { margin: 0; }
+.verdict-exception { font-weight: 600; }
+.fact-subject { font-weight: 600; }
+
 .task-method { display: grid; gap: 8px; }
 .task-method h5 { margin: 4px 0 0; font-size: 0.95rem; }
 .task-method ul { margin: 0; padding-left: 20px; overflow-wrap: anywhere; }

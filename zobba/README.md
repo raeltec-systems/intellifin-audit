@@ -1913,6 +1913,67 @@ API refuses a proposal without a transport. Changing schema 17 requires regenera
 `crates/infrastructure/src/schema-v17.catalog` from a migrated disposable
 database.
 
+## Assessment basis: typed criteria, facts and evaluations (Story 24.1)
+
+Schema 18 is additive; published migrations and catalogues 1–17 are unchanged.
+The agent still reads and acts natively. When it is ready to assess, it uses
+five optional answer fields (`propose_criteria`, `propose_basis`,
+`record_facts`, `evaluate`, `judgments`). The schema adds them only when the
+worker composes assessment, so the investigation schema and every older stored
+answer keep their bytes. Trusted code records only what it can re-check:
+
+- **Criterion versions** (`assessment_criteria`): assertion, authority (the
+  bound method criterion, checked against the current binding, or a registered
+  original `{locator, quote}` checked by the 22.5 verifier), effective period,
+  applicability test, required facts with types and units or ISO 4217
+  currency, and either one closed rule predicate or a judgment rubric. An
+  unverified authority is recorded with its reason and can never yield
+  `met` or `not_met`. A change is a new version that supersedes the old one.
+- **Basis versions** (`assessment_bases`, `assessment_basis_criteria`):
+  objective, pinned criterion versions in order, business period and optional
+  as-of instant, binding ID and execution epoch, population references to
+  registered originals with their digests, and limitations.
+- **Facts** (`assessment_facts`, `assessment_fact_sources`): an exact subject
+  (leading zeros kept), a typed value (identifier, text, boolean, enum, exact
+  decimal as an `i128` mantissa and scale, civil date, or UTC instant with its
+  source offset) or `unavailable`/`ambiguous`, and its quoted sources. Each
+  quote is verified at its exact location and re-parsed under the declared
+  closed rule; a value the source does not show is `unsupported{type_mismatch}`.
+  A fact that names a 22.4 job that did not complete is
+  `unsupported{analysis_failed}`. No floats; no currency or time-zone
+  conversion.
+- **Evaluations** (`assessment_evaluations`): applicability, execution,
+  verdict and origin are separate fields, with a closed reason and the input
+  fact IDs and digests. Rule criteria are decided only by the pure
+  `domain::assessment::evaluate`; the same inputs give the same output digest.
+  Missing, unavailable, ambiguous or unsupported input is `undetermined`, a
+  failed analysis is `execution failed` with no verdict, and only an applicable
+  evaluation on supported facts can be `not_met`. A judgment criterion records
+  the model's verdict, supporting and contrary facts, rationale and uncertainty
+  as a `model_proposal`. There is no numeric confidence anywhere.
+
+All six tables refuse UPDATE, DELETE and TRUNCATE, including for the owner;
+only an explicit `zobba.disposable_fixture_reset=on` session in a `*_test`
+database may clear them. Row guards and deferred checks tie each record to its
+own answer invocation, binding and epoch, keep references inside one Task, and
+refuse a decided verdict on unsupported facts or an unverified authority. The
+Task work read adds an `assessment` section (or `assessment_unavailable`), and
+the work panel shows it read-only with the four evaluation words separate.
+
+What is proven offline: the worker suite drives the real coordinator with a
+loopback OpenAI-format model, real PostgreSQL custody, S3-protocol originals
+(`fixtures/documents/AP invoices.xlsx`, `AP policy.txt`) verified cell by cell
+in the test-only Docker sandbox, and a failing analysis job. No live provider is
+called.
+
+```sh
+cargo test -p zobba-domain assessment
+cargo test -p zobba-application assessment
+cargo test -p zobba-worker --test assessment --locked -- --test-threads=1   # guarded _test DB, OIDC fixture, Docker
+ZOBBA_UPDATE_ASSESSMENT_FIXTURE=1 cargo test -p zobba-worker --test assessment --locked -- --test-threads=1   # rewrites web/tests/fixtures/task-assessment.json
+pnpm --dir web exec playwright test tests/browser/assessment.spec.ts
+```
+
 ## Establishing an engagement conversationally (Story 22.2 AC4)
 
 Schema 13 is additive; published migrations and catalogues 1–12 are unchanged.

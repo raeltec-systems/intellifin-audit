@@ -1162,6 +1162,133 @@ export interface components {
             /** @description Exact segment text. Concatenating all segments gives the answer. */
             text: string;
         };
+        /** @description One immutable assessment basis version. */
+        AssessmentBasisResponse: {
+            as_of: string | null;
+            criteria: string[];
+            execution_epoch: string;
+            id: string;
+            invocation_id: string;
+            key: string;
+            limitations: string[];
+            methodology_binding_id: string;
+            objective: string;
+            /** @description Business period, civil dates (`YYYY-MM-DD`). */
+            period_from: string;
+            period_to: string;
+            population: components["schemas"]["PopulationReferenceResponse"][];
+            supersedes: string | null;
+        };
+        /**
+         * @description One immutable criterion version. Its assertion is attributed agent text;
+         *     its authority was checked by trusted code.
+         */
+        AssessmentCriterionResponse: {
+            /** @description The applicability test, in platform words. */
+            applicability: string | null;
+            assertion: string;
+            /** @description `method` or `original`. */
+            authority_kind: string;
+            /** @description Closed reason when the authority is unverified. */
+            authority_reason: string | null;
+            authority_source: null | components["schemas"]["CitationSourceResponse"];
+            authority_text_sha256: string | null;
+            authority_verified: boolean;
+            /** Format: int32 */
+            criterion_ordinal: number | null;
+            effective_from: string | null;
+            effective_to: string | null;
+            execution_epoch: string;
+            id: string;
+            invocation_id: string;
+            /** @description The agent's local name for it in its answer. */
+            key: string;
+            /** @description `rule` (decided by trusted code) or `judgment` (proposed by the model). */
+            kind: string;
+            methodology_binding_id: string;
+            required_facts: components["schemas"]["RequiredFactResponse"][];
+            /** @description Method authority: requirement and 0-based criterion ordinal. */
+            requirement_id: string | null;
+            rubric: string | null;
+            /** @description The rule predicate, in platform words. */
+            rule: string | null;
+            supersedes: string | null;
+        };
+        /**
+         * @description One immutable evaluation. Applicability, execution, verdict and origin
+         *     are separate fields; only an applicable, completed evaluation on
+         *     supported facts can be met or not_met.
+         */
+        AssessmentEvaluationResponse: {
+            /** @description `applicable`, `not_applicable` or `unknown`. */
+            applicability: string;
+            basis_id: string;
+            criterion_id: string;
+            /** @description `completed` or `failed`. */
+            execution: string;
+            execution_epoch: string;
+            id: string;
+            inputs: components["schemas"]["EvaluationInputResponse"][];
+            invocation_id: string;
+            judgment: null | components["schemas"]["JudgmentResponse"];
+            methodology_binding_id: string;
+            /** @description `deterministic` or `model_proposal`. */
+            origin: string;
+            output_digest: string;
+            reason: string | null;
+            subject: string;
+            /** @description `met`, `not_met`, `undetermined`, or null (no verdict). */
+            verdict: string | null;
+        };
+        /** @description One immutable typed fact observation and its verified sources. */
+        AssessmentFactResponse: {
+            basis_id: string;
+            /** Format: int32 */
+            candidates: number | null;
+            execution_epoch: string;
+            id: string;
+            invocation_id: string;
+            job_id: string | null;
+            /** @description Exact decimal: digit-string mantissa and scale (no float). */
+            mantissa: string | null;
+            measure: string | null;
+            methodology_binding_id: string;
+            name: string;
+            /** Format: int32 */
+            offset_minutes: number | null;
+            rule: string | null;
+            /** Format: int32 */
+            scale: number | null;
+            sources: components["schemas"]["CitationSourceResponse"][];
+            /** @description Exactly as stated (leading zeros kept). */
+            subject: string;
+            subject_unit: string;
+            /** @description `supported`, `unsupported` or `no_value`. */
+            support: string;
+            support_reason: string | null;
+            /** @description Unavailable reason or ambiguous candidate count. */
+            unavailable_reason: string | null;
+            /** @description An instant in UTC; `value` keeps the source offset. */
+            utc: string | null;
+            /** @description Canonical value text (decimal `1250.00`, date, RFC 3339 instant). */
+            value: string | null;
+            /** @description A fact type, `unavailable` or `ambiguous`. */
+            value_kind: string;
+        };
+        AssessmentResponse: {
+            /**
+             * @description The Task's newest records of each kind, oldest first; earlier ones
+             *     may be omitted (see the totals).
+             */
+            bases: components["schemas"]["AssessmentBasisResponse"][];
+            criteria: components["schemas"]["AssessmentCriterionResponse"][];
+            evaluations: components["schemas"]["AssessmentEvaluationResponse"][];
+            facts: components["schemas"]["AssessmentFactResponse"][];
+            total_bases: string;
+            total_criteria: string;
+            total_evaluations: string;
+            total_facts: string;
+        };
         AttachmentRequest: {
             classification: string;
             digest: string;
@@ -1433,6 +1560,10 @@ export interface components {
         ErrorResponse: {
             error: string;
         };
+        EvaluationInputResponse: {
+            digest: string;
+            fact_id: string;
+        };
         /**
          * Format: binary
          * @description Raw original bytes, not a JSON array or a base64-encoded string.
@@ -1614,6 +1745,16 @@ export interface components {
             roles: components["schemas"]["MembershipRole"][];
             /** @description Private random 32-byte base64url invitation value. POST bodies only; never a query, log or projection. */
             secret: components["schemas"]["MembershipInvitationSecret"];
+        };
+        /**
+         * @description A model's judgment of a judgment criterion, in words. Pending human
+         *     disposition; there is no confidence score.
+         */
+        JudgmentResponse: {
+            contrary: string[];
+            rationale: string;
+            supporting: string[];
+            uncertainty: string;
         };
         KnowledgeAction: {
             assertion: components["schemas"]["KnowledgeAssertion"];
@@ -2322,6 +2463,19 @@ export interface components {
         };
         /** @enum {string} */
         PolicyKindRequest: "organisation" | "engagement" | "member" | "account" | "task" | "delegation";
+        /** @description A population or sample reference to a registered original. */
+        PopulationReferenceResponse: {
+            /** @description The filename, only when the viewer may read that exact original now. */
+            filename: string | null;
+            original_id: string;
+            selection: string;
+            /**
+             * @description The registered digest pinned when the basis was recorded; null when it
+             *     was not a registered original.
+             */
+            sha256: string | null;
+            unit: string;
+        };
         PreviewInvitationRequest: {
             secret: components["schemas"]["MembershipInvitationSecret"];
         };
@@ -2375,6 +2529,14 @@ export interface components {
         };
         /** @enum {string} */
         ReceiptStatusResponse: "received";
+        /** @description A fact the criterion needs, with its type and (for a decimal) measure. */
+        RequiredFactResponse: {
+            /** @description `identifier`, `text`, `boolean`, `enum`, `decimal`, `date` or `instant`. */
+            fact_type: string;
+            /** @description ISO 4217 currency code or unit name, for a decimal. */
+            measure: string | null;
+            name: string;
+        };
         RevokeInvitationRequest: {
             expected_version: components["schemas"]["MembershipVersion"];
             invitation_id: components["schemas"]["MembershipIdentifier"];
@@ -2890,6 +3052,8 @@ export interface components {
             status: components["schemas"]["StepStatusResponse"];
         };
         TaskWorkResponse: {
+            assessment: null | components["schemas"]["AssessmentResponse"];
+            assessment_unavailable: boolean;
             attention: null | components["schemas"]["AttentionResponse"];
             briefs: components["schemas"]["BriefRevisionResponse"][];
             /** @description The most recent context compaction records of the current cycle, oldest first. */

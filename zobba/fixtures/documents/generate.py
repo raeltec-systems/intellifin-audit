@@ -64,6 +64,32 @@ def workbook():
     return normalized_zip(buffer.getvalue())
 
 
+def ap_invoices():
+    """Story 24.1 AP invoices: amounts with a display format, a subject with
+    leading zeros, a day-first date and an instant with its source offset."""
+    import openpyxl
+
+    book = openpyxl.Workbook()
+    sheet = book.active
+    sheet.title = "Sheet1"
+    rows = [
+        ("Invoice", "Amount", "Currency", "Approver", "Invoice date", "Approved at", "In approval history"),
+        ("INV-0042", 1250, "USD", "J. Smith", "05/03/2026", "2026-03-05T23:30:00-05:00", "Yes"),
+        ("000123", 980, "USD", "J. Smith", "06/03/2026", "2026-03-06T09:00:00+00:00", "Yes"),
+        ("INV-0054", 1250, "USD", "", "07/03/2026", "", "No"),
+        ("INV-0055", 4200, "EUR", "A. Jones", "08/03/2026", "2026-03-08T10:00:00+01:00", "Yes"),
+    ]
+    for row in rows:
+        sheet.append(row)
+    for row in range(2, 6):
+        sheet.cell(row=row, column=2).number_format = "#,##0.00"
+    book.properties.created = FIXED
+    book.properties.modified = FIXED
+    buffer = io.BytesIO()
+    book.save(buffer)
+    return normalized_zip(buffer.getvalue())
+
+
 def contract_docx():
     import docx
 
@@ -237,3 +263,8 @@ save("Zip bomb.xlsx", zip_bomb())
 save("Encrypted.xlsx", b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\0" * 504)
 save("Macro workbook.xlsm", macro_workbook())
 save("Notes.txt", "Opening balance 1,250.00 agreed to the ledger.\n".encode("utf-8"))
+save("AP invoices.xlsx", ap_invoices())
+save(
+    "AP policy.txt",
+    "Invoices above 1,000.00 USD require an approver. No invoice may exceed 5,000.00 USD.\n".encode("utf-8"),
+)

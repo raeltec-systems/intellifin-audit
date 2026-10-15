@@ -10,8 +10,10 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
-use zobba_application::task::TaskError;
+use zobba_application::{assessment::AssessmentSnapshot, task::TaskError};
 use zobba_domain::{
+    assessment::{Authority, AuthorityReason, CriterionMethod, FactState, FactValue, Measure},
+    citation::{UnverifiedReason, Verification},
     context::{CompactionSummary, OmissionCategory, SourceStatus},
     identity::valid_scope_id,
     work::{
@@ -214,6 +216,232 @@ pub struct TaskWorkResponse {
     /// True when investigation is composed but its facts could not be read
     /// for this response. The rest of the work view is unaffected.
     pub investigation_unavailable: bool,
+    /// Story 24.1: the Task's assessment basis versions, criterion versions,
+    /// typed facts and evaluations. Null when not composed or not readable;
+    /// `assessment_unavailable` says which.
+    #[schema(required = true)]
+    pub assessment: Option<AssessmentResponse>,
+    pub assessment_unavailable: bool,
+}
+
+/// A fact the criterion needs, with its type and (for a decimal) measure.
+#[derive(Serialize, ToSchema)]
+pub struct RequiredFactResponse {
+    pub name: String,
+    /// `identifier`, `text`, `boolean`, `enum`, `decimal`, `date` or `instant`.
+    pub fact_type: String,
+    /// ISO 4217 currency code or unit name, for a decimal.
+    #[schema(required = true)]
+    pub measure: Option<String>,
+}
+
+/// One immutable criterion version. Its assertion is attributed agent text;
+/// its authority was checked by trusted code.
+#[derive(Serialize, ToSchema)]
+pub struct AssessmentCriterionResponse {
+    pub id: String,
+    pub invocation_id: String,
+    /// The agent's local name for it in its answer.
+    pub key: String,
+    #[schema(required = true)]
+    pub supersedes: Option<String>,
+    #[schema(max_length = 1000)]
+    pub assertion: String,
+    /// `rule` (decided by trusted code) or `judgment` (proposed by the model).
+    pub kind: String,
+    /// `method` or `original`.
+    pub authority_kind: String,
+    pub authority_verified: bool,
+    /// Closed reason when the authority is unverified.
+    #[schema(required = true)]
+    pub authority_reason: Option<String>,
+    /// Method authority: requirement and 0-based criterion ordinal.
+    #[schema(required = true)]
+    pub requirement_id: Option<String>,
+    #[schema(required = true)]
+    pub criterion_ordinal: Option<u32>,
+    #[schema(required = true, pattern = "^[0-9a-f]{64}$")]
+    pub authority_text_sha256: Option<String>,
+    /// Original authority: the cited quote and its verification.
+    #[schema(required = true)]
+    pub authority_source: Option<crate::answers::CitationSourceResponse>,
+    #[schema(required = true)]
+    pub effective_from: Option<String>,
+    #[schema(required = true)]
+    pub effective_to: Option<String>,
+    /// The applicability test, in platform words.
+    #[schema(required = true)]
+    pub applicability: Option<String>,
+    /// The rule predicate, in platform words.
+    #[schema(required = true)]
+    pub rule: Option<String>,
+    #[schema(required = true, max_length = 2000)]
+    pub rubric: Option<String>,
+    #[schema(max_items = 8)]
+    pub required_facts: Vec<RequiredFactResponse>,
+    pub methodology_binding_id: String,
+    #[schema(pattern = "^[0-9]+$")]
+    pub execution_epoch: String,
+}
+
+/// A population or sample reference to a registered original.
+#[derive(Serialize, ToSchema)]
+pub struct PopulationReferenceResponse {
+    pub original_id: String,
+    pub unit: String,
+    pub selection: String,
+    /// The registered digest pinned when the basis was recorded; null when it
+    /// was not a registered original.
+    #[schema(required = true, pattern = "^[0-9a-f]{64}$")]
+    pub sha256: Option<String>,
+    /// The filename, only when the viewer may read that exact original now.
+    #[schema(required = true)]
+    pub filename: Option<String>,
+}
+
+/// One immutable assessment basis version.
+#[derive(Serialize, ToSchema)]
+pub struct AssessmentBasisResponse {
+    pub id: String,
+    pub invocation_id: String,
+    pub key: String,
+    #[schema(required = true)]
+    pub supersedes: Option<String>,
+    pub objective: String,
+    #[schema(max_items = 16)]
+    pub criteria: Vec<String>,
+    /// Business period, civil dates (`YYYY-MM-DD`).
+    pub period_from: String,
+    pub period_to: String,
+    #[schema(required = true)]
+    pub as_of: Option<String>,
+    #[schema(max_items = 8)]
+    pub population: Vec<PopulationReferenceResponse>,
+    #[schema(max_items = 8)]
+    pub limitations: Vec<String>,
+    pub methodology_binding_id: String,
+    #[schema(pattern = "^[0-9]+$")]
+    pub execution_epoch: String,
+}
+
+/// One immutable typed fact observation and its verified sources.
+#[derive(Serialize, ToSchema)]
+pub struct AssessmentFactResponse {
+    pub id: String,
+    pub invocation_id: String,
+    pub basis_id: String,
+    /// Exactly as stated (leading zeros kept).
+    pub subject: String,
+    pub subject_unit: String,
+    pub name: String,
+    /// A fact type, `unavailable` or `ambiguous`.
+    pub value_kind: String,
+    /// Canonical value text (decimal `1250.00`, date, RFC 3339 instant).
+    #[schema(required = true)]
+    pub value: Option<String>,
+    #[schema(required = true)]
+    pub measure: Option<String>,
+    /// Exact decimal: digit-string mantissa and scale (no float).
+    #[schema(required = true, pattern = "^-?[0-9]+$")]
+    pub mantissa: Option<String>,
+    #[schema(required = true)]
+    pub scale: Option<u32>,
+    /// An instant in UTC; `value` keeps the source offset.
+    #[schema(required = true)]
+    pub utc: Option<String>,
+    #[schema(required = true)]
+    pub offset_minutes: Option<i32>,
+    /// Unavailable reason or ambiguous candidate count.
+    #[schema(required = true)]
+    pub unavailable_reason: Option<String>,
+    #[schema(required = true)]
+    pub candidates: Option<u32>,
+    #[schema(required = true)]
+    pub rule: Option<String>,
+    /// `supported`, `unsupported` or `no_value`.
+    pub support: String,
+    #[schema(required = true)]
+    pub support_reason: Option<String>,
+    #[schema(required = true)]
+    pub job_id: Option<String>,
+    #[schema(max_items = 4)]
+    pub sources: Vec<crate::answers::CitationSourceResponse>,
+    pub methodology_binding_id: String,
+    #[schema(pattern = "^[0-9]+$")]
+    pub execution_epoch: String,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct EvaluationInputResponse {
+    pub fact_id: String,
+    #[schema(pattern = "^[0-9a-f]{64}$")]
+    pub digest: String,
+}
+
+/// A model's judgment of a judgment criterion, in words. Pending human
+/// disposition; there is no confidence score.
+#[derive(Serialize, ToSchema)]
+pub struct JudgmentResponse {
+    pub supporting: Vec<String>,
+    pub contrary: Vec<String>,
+    #[schema(max_length = 2000)]
+    pub rationale: String,
+    #[schema(max_length = 2000)]
+    pub uncertainty: String,
+}
+
+/// One immutable evaluation. Applicability, execution, verdict and origin
+/// are separate fields; only an applicable, completed evaluation on
+/// supported facts can be met or not_met.
+#[derive(Serialize, ToSchema)]
+pub struct AssessmentEvaluationResponse {
+    pub id: String,
+    pub invocation_id: String,
+    pub basis_id: String,
+    pub criterion_id: String,
+    pub subject: String,
+    /// `applicable`, `not_applicable` or `unknown`.
+    pub applicability: String,
+    /// `completed` or `failed`.
+    pub execution: String,
+    /// `met`, `not_met`, `undetermined`, or null (no verdict).
+    #[schema(required = true)]
+    pub verdict: Option<String>,
+    #[schema(required = true)]
+    pub reason: Option<String>,
+    /// `deterministic` or `model_proposal`.
+    pub origin: String,
+    #[schema(max_items = 32)]
+    pub inputs: Vec<EvaluationInputResponse>,
+    #[schema(pattern = "^[0-9a-f]{64}$")]
+    pub output_digest: String,
+    #[schema(required = true)]
+    pub judgment: Option<JudgmentResponse>,
+    pub methodology_binding_id: String,
+    #[schema(pattern = "^[0-9]+$")]
+    pub execution_epoch: String,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct AssessmentResponse {
+    /// The Task's newest records of each kind, oldest first; earlier ones
+    /// may be omitted (see the totals).
+    #[schema(max_items = 64)]
+    pub bases: Vec<AssessmentBasisResponse>,
+    #[schema(pattern = "^[0-9]+$")]
+    pub total_bases: String,
+    #[schema(max_items = 64)]
+    pub criteria: Vec<AssessmentCriterionResponse>,
+    #[schema(pattern = "^[0-9]+$")]
+    pub total_criteria: String,
+    #[schema(max_items = 1024)]
+    pub facts: Vec<AssessmentFactResponse>,
+    #[schema(pattern = "^[0-9]+$")]
+    pub total_facts: String,
+    #[schema(max_items = 256)]
+    pub evaluations: Vec<AssessmentEvaluationResponse>,
+    #[schema(pattern = "^[0-9]+$")]
+    pub total_evaluations: String,
 }
 
 /// One recorded skill use: a load, a resource fetch or a script run. Content
@@ -428,6 +656,300 @@ fn investigation(
     }
 }
 
+type Originals = std::collections::BTreeMap<String, zobba_infrastructure::citation::ViewerOriginal>;
+
+/// Every original an assessment snapshot cites or references.
+fn assessment_originals(view: &AssessmentSnapshot) -> Vec<String> {
+    let mut ids = std::collections::BTreeSet::new();
+    for fact in &view.facts {
+        ids.extend(fact.sources.iter().map(|s| s.source.original_id.clone()));
+    }
+    for criterion in &view.criteria {
+        if let Authority::Original(source) = &criterion.criterion.authority {
+            ids.insert(source.original_id.clone());
+        }
+    }
+    for basis in &view.bases {
+        ids.extend(basis.basis.population.iter().map(|p| p.original_id.clone()));
+    }
+    ids.into_iter().collect()
+}
+
+fn verified_source(
+    source: &zobba_domain::citation::VerifiedSource,
+    originals: &Originals,
+) -> crate::answers::CitationSourceResponse {
+    use crate::answers::CitationVerificationResponse as V;
+    let original = crate::answers::exact_original(
+        originals,
+        &source.source.original_id,
+        source.original_sha256.as_deref(),
+    );
+    crate::answers::source_response(
+        &source.source,
+        original,
+        match source.verification {
+            Verification::Verified => (V::Verified, None),
+            Verification::Unverified(reason) => (V::Unverified, Some(reason.as_str().into())),
+        },
+    )
+}
+
+fn measure(m: Option<&Measure>) -> Option<String> {
+    m.map(Measure::label)
+}
+
+fn assessment(view: AssessmentSnapshot, originals: &Originals) -> AssessmentResponse {
+    AssessmentResponse {
+        total_bases: view.total_bases.to_string(),
+        total_criteria: view.total_criteria.to_string(),
+        total_facts: view.total_facts.to_string(),
+        total_evaluations: view.total_evaluations.to_string(),
+        bases: view
+            .bases
+            .iter()
+            .map(|b| AssessmentBasisResponse {
+                id: b.id.clone(),
+                invocation_id: b.invocation_id.clone(),
+                key: b.basis.key.clone(),
+                supersedes: b.basis.supersedes.clone(),
+                objective: b.basis.objective.clone(),
+                criteria: b.basis.criteria.clone(),
+                period_from: b.basis.period_from.render(),
+                period_to: b.basis.period_to.render(),
+                as_of: b.basis.as_of.map(|i| i.render()),
+                population: b
+                    .basis
+                    .population
+                    .iter()
+                    .zip(&b.population_sha256)
+                    .map(|(p, sha)| PopulationReferenceResponse {
+                        original_id: p.original_id.clone(),
+                        unit: p.unit.clone(),
+                        selection: p.selection.clone(),
+                        sha256: sha.clone(),
+                        filename: crate::answers::exact_original(
+                            originals,
+                            &p.original_id,
+                            sha.as_deref(),
+                        )
+                        .and_then(|o| o.filename.clone()),
+                    })
+                    .collect(),
+                limitations: b.basis.limitations.clone(),
+                methodology_binding_id: b.methodology_binding_id.clone(),
+                execution_epoch: b.execution_epoch.to_string(),
+            })
+            .collect(),
+        criteria: view
+            .criteria
+            .iter()
+            .map(|c| {
+                let (requirement_id, criterion_ordinal, authority_source) =
+                    match &c.criterion.authority {
+                        Authority::Method {
+                            requirement_id,
+                            criterion_ordinal,
+                        } => (Some(requirement_id.clone()), Some(*criterion_ordinal), None),
+                        Authority::Original(source) => (
+                            None,
+                            None,
+                            Some(verified_source(
+                                &zobba_domain::citation::VerifiedSource {
+                                    source: source.clone(),
+                                    original_sha256: c.authority.original_sha256.clone(),
+                                    verification: if c.authority.verified {
+                                        Verification::Verified
+                                    } else {
+                                        Verification::Unverified(match c.authority.reason {
+                                            Some(AuthorityReason::LocationMissing) => {
+                                                UnverifiedReason::LocationMissing
+                                            }
+                                            Some(AuthorityReason::SourceUnreadable) => {
+                                                UnverifiedReason::SourceUnreadable
+                                            }
+                                            Some(AuthorityReason::PageOnly) => {
+                                                UnverifiedReason::PageOnly
+                                            }
+                                            _ => UnverifiedReason::NotFoundAtLocation,
+                                        })
+                                    },
+                                },
+                                originals,
+                            )),
+                        ),
+                    };
+                AssessmentCriterionResponse {
+                    id: c.id.clone(),
+                    invocation_id: c.invocation_id.clone(),
+                    key: c.criterion.key.clone(),
+                    supersedes: c.criterion.supersedes.clone(),
+                    assertion: c.criterion.assertion.clone(),
+                    kind: c.criterion.method.kind().as_str().into(),
+                    authority_kind: c.criterion.authority.kind().as_str().into(),
+                    authority_verified: c.authority.verified,
+                    authority_reason: c.authority.reason.map(|r| r.as_str().into()),
+                    requirement_id,
+                    criterion_ordinal,
+                    authority_text_sha256: c.authority.text_sha256.clone(),
+                    authority_source,
+                    effective_from: c.criterion.effective_from.map(|d| d.render()),
+                    effective_to: c.criterion.effective_to.map(|d| d.render()),
+                    applicability: c.criterion.applicability.as_ref().map(|p| p.describe()),
+                    rule: match &c.criterion.method {
+                        CriterionMethod::Rule(p) => Some(p.describe()),
+                        CriterionMethod::Judgment { .. } => None,
+                    },
+                    rubric: match &c.criterion.method {
+                        CriterionMethod::Judgment { rubric } => Some(rubric.clone()),
+                        CriterionMethod::Rule(_) => None,
+                    },
+                    required_facts: c
+                        .criterion
+                        .required_facts
+                        .iter()
+                        .map(|r| RequiredFactResponse {
+                            name: r.name.clone(),
+                            fact_type: r.kind.as_str().into(),
+                            measure: measure(r.measure.as_ref()),
+                        })
+                        .collect(),
+                    methodology_binding_id: c.methodology_binding_id.clone(),
+                    execution_epoch: c.execution_epoch.to_string(),
+                }
+            })
+            .collect(),
+        facts: view
+            .facts
+            .iter()
+            .map(|f| {
+                let (
+                    value_kind,
+                    value,
+                    measure_label,
+                    mantissa,
+                    scale,
+                    utc,
+                    offset,
+                    reason,
+                    candidates,
+                ) = match &f.fact.state {
+                    FactState::Value(v) => {
+                        let (mantissa, scale) = match v {
+                            FactValue::Decimal { value, .. } => (
+                                Some(value.mantissa.to_string()),
+                                Some(u32::from(value.scale)),
+                            ),
+                            _ => (None, None),
+                        };
+                        let (utc, offset) = match v {
+                            FactValue::Instant(i) => {
+                                (Some(i.render_utc()), Some(i32::from(i.offset_minutes)))
+                            }
+                            _ => (None, None),
+                        };
+                        (
+                            v.kind().as_str().to_string(),
+                            Some(v.text()),
+                            measure(v.measure()),
+                            mantissa,
+                            scale,
+                            utc,
+                            offset,
+                            None,
+                            None,
+                        )
+                    }
+                    FactState::Unavailable(r) => (
+                        "unavailable".into(),
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        Some(r.as_str().to_string()),
+                        None,
+                    ),
+                    FactState::Ambiguous { candidates } => (
+                        "ambiguous".into(),
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        Some(*candidates),
+                    ),
+                };
+                AssessmentFactResponse {
+                    id: f.id.clone(),
+                    invocation_id: f.invocation_id.clone(),
+                    basis_id: f.basis_id.clone(),
+                    subject: f.fact.subject.clone(),
+                    subject_unit: f.fact.subject_unit.clone(),
+                    name: f.fact.name.clone(),
+                    value_kind,
+                    value,
+                    measure: measure_label,
+                    mantissa,
+                    scale,
+                    utc,
+                    offset_minutes: offset,
+                    unavailable_reason: reason,
+                    candidates,
+                    rule: f.fact.rule.map(|r| r.as_str().into()),
+                    support: f.support.as_str().into(),
+                    support_reason: f.support.reason().map(|r| r.as_str().into()),
+                    job_id: f.fact.job_id.clone(),
+                    sources: f
+                        .sources
+                        .iter()
+                        .map(|s| verified_source(s, originals))
+                        .collect(),
+                    methodology_binding_id: f.methodology_binding_id.clone(),
+                    execution_epoch: f.execution_epoch.to_string(),
+                }
+            })
+            .collect(),
+        evaluations: view
+            .evaluations
+            .iter()
+            .map(|e| AssessmentEvaluationResponse {
+                id: e.id.clone(),
+                invocation_id: e.invocation_id.clone(),
+                basis_id: e.basis_id.clone(),
+                criterion_id: e.criterion_id.clone(),
+                subject: e.subject.clone(),
+                applicability: e.outcome.applicability.as_str().into(),
+                execution: e.outcome.execution.as_str().into(),
+                verdict: e.outcome.verdict.map(|v| v.as_str().into()),
+                reason: e.outcome.reason.map(|r| r.as_str().into()),
+                origin: e.outcome.origin.as_str().into(),
+                inputs: e
+                    .outcome
+                    .inputs
+                    .iter()
+                    .map(|(id, digest)| EvaluationInputResponse {
+                        fact_id: id.clone(),
+                        digest: digest.clone(),
+                    })
+                    .collect(),
+                output_digest: e.output_digest.clone(),
+                judgment: e.judgment.as_ref().map(|j| JudgmentResponse {
+                    supporting: j.supporting.clone(),
+                    contrary: j.contrary.clone(),
+                    rationale: j.rationale.clone(),
+                    uncertainty: j.uncertainty.clone(),
+                }),
+                methodology_binding_id: e.methodology_binding_id.clone(),
+                execution_epoch: e.execution_epoch.to_string(),
+            })
+            .collect(),
+    }
+}
+
 fn compaction(record: CompactionSummary) -> CompactionResponse {
     CompactionResponse {
         sequence: record.sequence,
@@ -519,6 +1041,8 @@ fn work_response(
     model_available: bool,
     view: Option<zobba_infrastructure::investigation::InvestigationView>,
     investigation_unavailable: bool,
+    assessed: Option<AssessmentResponse>,
+    assessment_unavailable: bool,
 ) -> TaskWorkResponse {
     let questions = view.as_ref().map_or(0, |view| view.open_questions.len());
     let attention = match work.attention {
@@ -535,6 +1059,8 @@ fn work_response(
     TaskWorkResponse {
         investigation: view.map(investigation),
         investigation_unavailable,
+        assessment: assessed,
+        assessment_unavailable,
         task_id: work.task_id,
         cycle_id: work.cycle_id,
         model_available,
@@ -602,11 +1128,37 @@ pub(crate) async fn get_work(
         },
         None => (None, false),
     };
+    // The same rule for assessment records: a read failure leaves them out
+    // with a fixed marker. Source quotes, filenames and versions are shown
+    // only for an exact original the viewer may read now.
+    let (assessed, assessment_unavailable) = match (&state.assessments, &state.answers) {
+        (Some(assessments), Some((citations, _))) => {
+            match assessments
+                .view(&current.identity.id, &scope, &task_id)
+                .await
+            {
+                Ok(snapshot) => {
+                    let ids = assessment_originals(&snapshot);
+                    match citations
+                        .viewer_originals(&current.identity.id, &scope, &ids)
+                        .await
+                    {
+                        Ok(originals) => (Some(assessment(snapshot, &originals)), false),
+                        Err(_) => (None, true),
+                    }
+                }
+                Err(_) => (None, true),
+            }
+        }
+        _ => (None, false),
+    };
     Json(work_response(
         work,
         model_available,
         view,
         investigation_unavailable,
+        assessed,
+        assessment_unavailable,
     ))
     .into_response()
 }

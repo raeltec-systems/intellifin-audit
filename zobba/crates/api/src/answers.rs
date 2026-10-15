@@ -212,7 +212,7 @@ pub(crate) async fn get_answers(
 
 /// Only the exact original verification read, as the viewer may read it now,
 /// is navigable: with no recorded digest, nothing is.
-fn exact_original<'a>(
+pub(crate) fn exact_original<'a>(
     originals: &'a std::collections::BTreeMap<String, ViewerOriginal>,
     id: &str,
     sha256: Option<&str>,
@@ -231,7 +231,7 @@ fn unchecked(source: &CitationSource) -> CitationSourceResponse {
     )
 }
 
-fn source_response(
+pub(crate) fn source_response(
     source: &CitationSource,
     original: Option<&ViewerOriginal>,
     (verification, reason): (CitationVerificationResponse, Option<String>),

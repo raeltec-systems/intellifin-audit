@@ -496,3 +496,64 @@ fn method_and_skill_requests_decode_and_notes_alone_are_a_turn() {
     };
     assert!(!malformed.is_valid());
 }
+
+#[test]
+fn assessment_fields_are_optional_bounded_and_counted_when_invalid() {
+    // A 22.6 answer (no 24.1 fields) decodes to the same value and is not an
+    // assessment request; the assessment schema asks for the five fields.
+    let mut value = answer_json();
+    if let JsonValue::Object(map) = &mut value {
+        if let Some(JsonValue::Array(segments)) = map.get_mut("segments")
+            && let JsonValue::Object(second) = &mut segments[1]
+        {
+            second.remove(" The contract and email agree.");
+        }
+        for key in [
+            "read_method",
+            "use_skills",
+            "run_skill_script",
+            "method_notes",
+        ] {
+            map.insert(key.into(), JsonValue::Array(vec![]));
+        }
+    }
+    let old = CitedAnswer::from_json(&value).unwrap();
+    assert!(!old.requests_assessment());
+    assert!(CitedAnswer::investigation_schema().accepts(&value));
+    assert!(!CitedAnswer::assessment_schema().accepts(&value));
+    assert!(CitedAnswer::assessment_schema().is_valid());
+    if let JsonValue::Object(map) = &mut value {
+        for key in [
+            "propose_criteria",
+            "propose_basis",
+            "record_facts",
+            "judgments",
+        ] {
+            map.insert(key.into(), JsonValue::Array(vec![]));
+        }
+        map.insert(
+            "evaluate".into(),
+            JsonValue::Array(vec![s("crit-1"), s("crit-1"), s("not an id")]),
+        );
+    }
+    assert!(CitedAnswer::assessment_schema().accepts(&value));
+    assert!(
+        !CitedAnswer::investigation_schema().accepts(&value),
+        "investigation-only work never sees 24.1 fields"
+    );
+    let answer = CitedAnswer::from_json(&value).unwrap();
+    assert_eq!(answer.evaluate, vec!["crit-1"]);
+    assert_eq!(answer.discarded, 2, "a repeated and an invalid entry");
+    assert!(answer.requests_assessment());
+    // Evaluate alone is a valid turn (it asks trusted code to act).
+    let alone = CitedAnswer {
+        evaluate: vec!["crit-1".into()],
+        ..CitedAnswer::default()
+    };
+    assert!(alone.is_valid() && !alone.is_answer());
+    // A wrong JSON type still refuses the answer.
+    if let JsonValue::Object(map) = &mut value {
+        map.insert("record_facts".into(), s("facts"));
+    }
+    assert!(CitedAnswer::from_json(&value).is_none());
+}

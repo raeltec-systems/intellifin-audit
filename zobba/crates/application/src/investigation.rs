@@ -1621,4 +1621,4 @@ pub fn model_error(error: InvestigationError) -> ModelError {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

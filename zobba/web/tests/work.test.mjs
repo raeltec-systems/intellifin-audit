@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 const step = { ordinal: 0, kind: 'model_turn', status: 'proposed', intent_revision: '1', execution_epoch: '1', invocation_id: 'inv-a', operation_id: null, next_action: 'tool:send_exact', current_work: 'Model turn 1 proposed tools', knowledge_omitted: 2, reason: null, estimated_input_tokens: '4096', actual_input_tokens: '3900' };
 const brief = { command_id: 'cmd-a', cycle_id: 'cycle-a', content: 'Objective', received_cursor: '1', applied_boundary: 0, applied_cursor: '2', superseded_by: null };
 const compaction = { sequence: 0, first_ordinal: 0, last_ordinal: 5, digest_sha256: 'a'.repeat(64), sources: [{ id: 'record-a', revision: '1', status: 'withdrawn' }], omissions: [{ category: 'steps_compacted', count: 6 }, { category: 'stale_sources', count: 1 }], estimated_tokens: '4096', created_at: '1767225600' };
-const work = { task_id: 'task-a', cycle_id: 'cycle-a', model_available: true, methodology_binding_id: 'binding-a', methodology_status: 'neutral', current_work: 'Model turn 1 proposed tools', next_action: 'tool:send_exact', next_action_invocation_id: 'inv-a', attention: null, steps: [step], briefs: [brief], total_steps: 9, compactions: [compaction], total_compactions: 1, investigation: null, investigation_unavailable: false };
+const work = { task_id: 'task-a', cycle_id: 'cycle-a', model_available: true, methodology_binding_id: 'binding-a', methodology_status: 'neutral', current_work: 'Model turn 1 proposed tools', next_action: 'tool:send_exact', next_action_invocation_id: 'inv-a', attention: null, steps: [step], briefs: [brief], total_steps: 9, compactions: [compaction], total_compactions: 1, investigation: null, investigation_unavailable: false, assessment: null, assessment_unavailable: false };
 
 test('work projection is strictly parsed and bound to the requested Task', () => {
   assert.deepEqual(parseWork(work, 'task-a'), work);
@@ -35,6 +35,8 @@ test('work projection is strictly parsed and bound to the requested Task', () =>
     { ...work, compactions: [{ ...compaction, created_at: undefined }] },
     { ...work, investigation_unavailable: undefined },
     { ...work, investigation_unavailable: 'no' },
+    { ...work, assessment_unavailable: undefined },
+    { ...work, assessment_unavailable: true, assessment: { bases: [] } },
   ]) assert.throws(() => parseWork(bad, 'task-a'));
   // An unreadable investigation leaves the rest of the work view intact.
   assert.equal(parseWork({ ...work, investigation_unavailable: true }, 'task-a').investigation_unavailable, true);

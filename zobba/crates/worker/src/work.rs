@@ -130,6 +130,7 @@ impl<T: ModelTransport + 'static> WorkRunner for Composition<T> {
                 },
                 reading: zobba_application::work::NoReading,
                 investigation: zobba_application::work::NoInvestigation,
+                assessment: zobba_application::assessment::NoAssessment,
                 dispatch: GatewayDispatch {
                     gateway: self.gateway.clone(),
                     operations: OperationRepository::new(self.pool.clone())
@@ -169,6 +170,10 @@ pub struct ReadingComposition<T, X, O> {
     /// Story 22.6: the bound method and installed skills shape each turn
     /// (method outline, skill listing, loads, fetches and sandboxed scripts).
     pub investigation: bool,
+    /// Story 24.1: with an investigation, the agent may propose criteria, an
+    /// assessment basis, typed facts and judgments; trusted code checks each
+    /// against its exact source and evaluates rule criteria itself.
+    pub assessment: bool,
 }
 
 impl<T, X, O> WorkRunner for ReadingComposition<T, X, O>
@@ -245,6 +250,7 @@ where
                     coordinator,
                     reading,
                     investigation: zobba_application::work::NoInvestigation,
+                    assessment: zobba_application::assessment::NoAssessment,
                     dispatch,
                     settings,
                     bind: bind_disclosure,
@@ -261,11 +267,32 @@ where
                 store: &investigations,
                 scripts: &reading,
             };
+            if !self.assessment {
+                let work = WorkLoop {
+                    steps,
+                    coordinator,
+                    reading: &reading,
+                    investigation,
+                    assessment: zobba_application::assessment::NoAssessment,
+                    dispatch,
+                    settings,
+                    bind: bind_disclosure,
+                    delay: |duration| Box::pin(tokio::time::sleep(duration)),
+                };
+                return Some(Box::pin(work.run(basis, cancellation)).await);
+            }
+            // The assessment port: records under the claim's own custody, and
+            // the same 22.5 trusted reader that verifies citations, so every
+            // fact and authority quote is checked at its exact location.
+            let assessments =
+                zobba_infrastructure::assessment::AssessmentRepository::new(base.pool.clone());
+            let assessment = zobba_application::assessment::Assessment::new(&assessments, &reading);
             let work = WorkLoop {
                 steps,
                 coordinator,
                 reading: &reading,
                 investigation,
+                assessment,
                 dispatch,
                 settings,
                 bind: bind_disclosure,

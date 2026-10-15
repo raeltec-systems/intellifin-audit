@@ -293,6 +293,7 @@ impl Harness {
             },
             reading: zobba_application::work::NoReading,
             investigation: zobba_application::work::NoInvestigation,
+            assessment: zobba_application::assessment::NoAssessment,
             dispatch: Dispatch {
                 operations: self.operations.clone(),
                 hang_after_consume: hang.clone(),
@@ -3109,6 +3110,7 @@ async fn stale_after_withdrawal(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>
         coordinator: base.coordinator,
         reading: base.reading,
         investigation: base.investigation,
+        assessment: base.assessment,
         dispatch: base.dispatch,
         settings: base.settings,
         bind: base.bind,

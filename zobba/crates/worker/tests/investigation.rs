@@ -744,6 +744,7 @@ async fn method_and_skills_shape_investigation_with_recorded_basis() {
         analysis: target(),
         classification: "audit".into(),
         investigation: true,
+        assessment: false,
     });
     let config = executor::Config::new(std::path::PathBuf::from("/bin/false"), 10).unwrap();
     let (stop, shutdown) = tokio::sync::watch::channel(false);
@@ -1543,6 +1544,7 @@ async fn an_oversized_skill_item_is_left_out_whole_and_the_step_succeeds() {
         analysis: target(),
         classification: "audit".into(),
         investigation: true,
+        assessment: false,
     });
     let config = executor::Config::new(std::path::PathBuf::from("/bin/false"), 10).unwrap();
     let (stop, shutdown) = tokio::sync::watch::channel(false);

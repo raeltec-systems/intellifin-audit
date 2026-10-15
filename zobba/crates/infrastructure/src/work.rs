@@ -92,7 +92,7 @@ fn source_status(status: RecordStatus) -> SourceStatus {
 }
 
 /// The decoded JSON subset of a stored digest (integers only, no floats).
-fn json_value(value: &serde_json::Value) -> Option<JsonValue> {
+pub(crate) fn json_value(value: &serde_json::Value) -> Option<JsonValue> {
     Some(match value {
         serde_json::Value::Null => JsonValue::Null,
         serde_json::Value::Bool(b) => JsonValue::Bool(*b),

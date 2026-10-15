@@ -2,7 +2,7 @@
 title: '24.1 — Bind typed criteria and facts to an assessment basis'
 type: 'feature'
 created: '2026-10-14'
-status: 'ready-for-dev'
+status: 'review'
 baseline_commit: '2be8298686e5ab98fddfe0045ddcad5ab4d19ca8'
 review_loop_iteration: 0
 context:
@@ -73,15 +73,15 @@ context:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `zobba/crates/domain/src/assessment.rs` (+ `lib.rs`) -- types, exact decimal, civil date, instant with offset, parse rules, closed vocabularies, pure `evaluate`, canonical output digest.
-- [ ] `zobba/crates/domain/src/citation.rs` -- five answer fields, bounds, schema, old-answer decode unchanged.
-- [ ] `zobba/crates/application/src/assessment.rs` + `work.rs` hook -- verify authority and fact quotes via `citation::verify`, re-parse, record, evaluate on request, judgment recording, outline tier text.
-- [ ] `zobba/migrations/0018_assessment_basis.sql`, `infrastructure/src/assessment.rs`, `schema-v18.catalog`, `lib.rs` chain, `SCHEMA_VERSION` 18.
-- [ ] `zobba/crates/worker/src/work.rs` -- compose the hook.
-- [ ] `zobba/crates/api/src/work.rs` + `openapi.json` + generated client -- assessment section.
-- [ ] `zobba/web/src/TaskWorkPanel.tsx` (+ small `AssessmentBasis.tsx`) -- read-only display.
-- [ ] Tests -- every matrix row: domain unit (typed date/currency/zone/null fixtures, determinism by repeat digest), PostgreSQL (immutability, RLS, guard), worker loopback (synthetic model), web unit, one browser case.
-- [ ] `zobba/README.md` -- what is proven offline.
+- [x] `zobba/crates/domain/src/assessment.rs` (+ `lib.rs`) -- types, exact decimal, civil date, instant with offset, parse rules, closed vocabularies, pure `evaluate`, canonical output digest.
+- [x] `zobba/crates/domain/src/citation.rs` -- five answer fields, bounds, schema, old-answer decode unchanged.
+- [x] `zobba/crates/application/src/assessment.rs` + `work.rs` hook -- verify authority and fact quotes via `citation::verify`, re-parse, record, evaluate on request, judgment recording, outline tier text.
+- [x] `zobba/migrations/0018_assessment_basis.sql`, `infrastructure/src/assessment.rs`, `schema-v18.catalog`, `lib.rs` chain, `SCHEMA_VERSION` 18.
+- [x] `zobba/crates/worker/src/work.rs` -- compose the hook.
+- [x] `zobba/crates/api/src/work.rs` + `openapi.json` + generated client -- assessment section.
+- [x] `zobba/web/src/TaskWorkPanel.tsx` (+ small `AssessmentBasis.tsx`) -- read-only display.
+- [x] Tests -- every matrix row: domain unit (typed date/currency/zone/null fixtures, determinism by repeat digest), PostgreSQL (immutability, RLS, guard), worker loopback (synthetic model), web unit, one browser case.
+- [x] `zobba/README.md` -- what is proven offline.
 
 **Acceptance Criteria:**
 - Given an evaluated criterion, when its basis is inspected, then criterion version, period, population references and every input fact are pinned with typed units and verified source support.
@@ -115,3 +115,16 @@ record_facts[0] = {subject:"INV-0042", unit:"invoice", name:"amount",
 3. **Exact decimal and time zones.** Recommend an in-house `i128`+scale decimal and UTC-instant-plus-source-offset with no tz database (no new crates). Alternative: add `rust_decimal` and `jiff` for IANA zone arithmetic.
 4. **Human judgment entry.** Recommend 24.1 records only deterministic and model-proposal origins; human judgment/disposition stays in 24.3.
 5. **Larger deterministic programs.** Recommend 24.1 supports only the closed pure-Rust predicate set; custom sandbox-program criteria (22.4 program digest as evaluator) follow in 24.2/24.3.
+
+## Suggested Review Order
+
+1. `zobba/crates/domain/src/assessment.rs` (+ `assessment/tests.rs`) — closed vocabularies, exact decimal, civil date, instant with offset, parse rules, and the pure `evaluate` and `output_digest`. Read the order of checks in `evaluate`: failed analysis, effective period, applicability, authority, facts, then the predicate.
+2. `zobba/crates/domain/src/citation.rs` — the five optional answer fields, their bounds, `assessment_schema()` (only when assessing) and discard counting; old answers decode unchanged.
+3. `zobba/crates/application/src/assessment.rs` (+ `assessment/tests.rs`) — `Assessment::after_answer`: criteria authority checks, basis pinning, fact verification through `citation::verify` and re-parse, rule evaluation on request, judgments; the reclaim rule (a re-run of the same answer continues the work and writes nothing).
+4. `zobba/crates/application/src/work.rs` — the `A = NoAssessment` parameter, outline/feedback in tier 2, and the hook after reading and investigation.
+5. `zobba/migrations/0018_assessment_basis.sql` — tables, CHECKs that mirror the documents, `assessment_guard` (invocation/binding/epoch, same-Task references, job outcome = a `completed` event, decided verdicts on supported facts only), deferred `assessment_complete`, immutability/retention triggers, RLS. Then `schema-v18.catalog` and `infrastructure/src/lib.rs` (inventory, grants, catalogue chain).
+6. `zobba/crates/infrastructure/src/assessment.rs` — the repository under claim custody and the scoped view.
+7. `zobba/crates/worker/src/work.rs` and `zobba/crates/worker/tests/assessment.rs` — composition and the end-to-end proof (loopback model, real PostgreSQL, S3-protocol originals, Docker sandbox, failing job, database guards, recorded fixture).
+8. `zobba/crates/api/src/work.rs`, `openapi.json`, `web/src/generated/api.ts` — the `assessment` section and `assessment_unavailable`.
+9. `zobba/web/src/assessment.ts`, `web/src/AssessmentBasis.tsx`, `web/src/TaskWorkPanel.tsx`, `web/tests/assessment.test.mjs`, `web/tests/browser/assessment.spec.ts` — strict parsing and the read-only display with four separate evaluation words.
+10. `zobba/fixtures/documents/generate.py` (AP invoices and policy fixtures), schema-18 updates in `scripts/smoke.py`, `web/src/health.ts` and browser runtime helpers, and `zobba/README.md`.

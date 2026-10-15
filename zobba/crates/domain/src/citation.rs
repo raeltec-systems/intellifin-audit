@@ -10,6 +10,10 @@ use std::collections::BTreeMap;
 use unicode_normalization::UnicodeNormalization;
 
 use crate::{
+    assessment::{
+        self, MAX_EVALUATE, MAX_JUDGMENTS, MAX_PROPOSED_BASES, MAX_PROPOSED_CRITERIA,
+        MAX_RECORDED_FACTS, ProposedBasis, ProposedCriterion, ProposedFact, ProposedJudgment,
+    },
     identity::valid_scope_id,
     investigation::{
         GapReason, MAX_METHOD_NOTES, MAX_NOTE_BYTES, MAX_NOTE_SEGMENTS, MAX_PART_ID_BYTES,
@@ -339,6 +343,18 @@ pub struct CitedAnswer {
     pub run_skill_script: Vec<ScriptRequest>,
     /// Story 22.6: gaps, contextual questions and statements per requirement.
     pub method_notes: Vec<MethodNote>,
+    /// Story 24.1: criterion versions the agent proposes (checked and
+    /// recorded by trusted code before they become records).
+    pub propose_criteria: Vec<ProposedCriterion>,
+    /// Story 24.1: at most one assessment basis version per answer.
+    pub propose_basis: Vec<ProposedBasis>,
+    /// Story 24.1: typed fact observations with their cited sources.
+    pub record_facts: Vec<ProposedFact>,
+    /// Story 24.1: rule criteria (IDs or same-answer keys) trusted code
+    /// evaluates deterministically; the model never writes a rule verdict.
+    pub evaluate: Vec<String>,
+    /// Story 24.1: proposed judgments of judgment criteria, in words.
+    pub judgments: Vec<ProposedJudgment>,
     /// Story 22.6: investigation requests and notes that were individually
     /// invalid, repeated or over their bound and so were left out on decode.
     /// The rest of the answer stands; trusted code reports the count.
@@ -395,7 +411,8 @@ impl CitedAnswer {
         (!self.segments.is_empty()
             || self.requests_reading()
             || self.requests_investigation()
-            || !self.method_notes.is_empty())
+            || !self.method_notes.is_empty()
+            || self.requests_assessment())
             && self.segments.len() <= MAX_SEGMENTS
             && self.text().len() <= MAX_ANSWER_BYTES
             && self.segments.iter().all(|s| {
@@ -441,6 +458,29 @@ impl CitedAnswer {
                         .iter()
                         .all(|s| (*s as usize) < self.segments.len())
             })
+            && self.propose_criteria.len() <= MAX_PROPOSED_CRITERIA
+            && self
+                .propose_criteria
+                .iter()
+                .all(ProposedCriterion::is_valid)
+            && self.propose_basis.len() <= MAX_PROPOSED_BASES
+            && self.propose_basis.iter().all(ProposedBasis::is_valid)
+            && self.record_facts.len() <= MAX_RECORDED_FACTS
+            && self.record_facts.iter().all(ProposedFact::is_valid)
+            && self.evaluate.len() <= MAX_EVALUATE
+            && self.evaluate.iter().all(|c| valid_scope_id(c))
+            && distinct(&self.evaluate)
+            && self.judgments.len() <= MAX_JUDGMENTS
+            && self.judgments.iter().all(ProposedJudgment::is_valid)
+    }
+    /// Whether the answer proposes criteria, a basis, facts, evaluations or
+    /// judgments (Story 24.1). Only a composed assessment acts on these.
+    pub fn requests_assessment(&self) -> bool {
+        !self.propose_criteria.is_empty()
+            || !self.propose_basis.is_empty()
+            || !self.record_facts.is_empty()
+            || !self.evaluate.is_empty()
+            || !self.judgments.is_empty()
     }
     /// Whether the answer asks for more native reading or its own analysis
     /// program before it is complete (Story 22.5).
@@ -464,14 +504,20 @@ impl CitedAnswer {
     /// Strict structured-output schema of a cited answer (Story 22.5). Every
     /// property is required (OpenAI strict output); empty arrays mean "none".
     pub fn schema() -> ArgumentSchema {
-        Self::schema_with(false)
+        Self::schema_with(false, false)
     }
     /// The cited answer with the Story 22.6 method and skill fields, used only
     /// when an investigation is composed.
     pub fn investigation_schema() -> ArgumentSchema {
-        Self::schema_with(true)
+        Self::schema_with(true, false)
     }
-    fn schema_with(investigating: bool) -> ArgumentSchema {
+    /// The investigation schema with the Story 24.1 assessment fields, used
+    /// only when an assessment is composed. The other two are unchanged, so
+    /// requests of compositions without assessment keep their bytes.
+    pub fn assessment_schema() -> ArgumentSchema {
+        Self::schema_with(true, true)
+    }
+    fn schema_with(investigating: bool, assessing: bool) -> ArgumentSchema {
         let string = |max: usize| ArgumentSchema::String {
             max_bytes: max as u32,
             enumeration: vec![],
@@ -562,6 +608,9 @@ impl CitedAnswer {
                 ("run_skill_script", array(script, MAX_SCRIPT_RUNS)),
                 ("method_notes", array(note, MAX_METHOD_NOTES)),
             ]);
+        }
+        if assessing {
+            fields.extend(assessment::answer_fields());
         }
         object(fields)
     }
@@ -720,6 +769,71 @@ impl CitedAnswer {
                 }
             }
         }
+        // Story 24.1 fields: the same rule. Each entry stands alone; an invalid,
+        // repeated or over-bound one is left out and counted.
+        fn entries<T: PartialEq>(
+            object: &BTreeMap<String, JsonValue>,
+            key: &str,
+            max: usize,
+            decode: fn(&JsonValue) -> Option<T>,
+            discarded: &mut u32,
+        ) -> Option<Vec<T>> {
+            let Some(value) = object.get(key) else {
+                return Some(vec![]);
+            };
+            let mut out: Vec<T> = Vec::new();
+            for item in as_array(value)? {
+                match decode(item) {
+                    Some(entry) if !out.contains(&entry) && out.len() < max => out.push(entry),
+                    _ => *discarded += 1,
+                }
+            }
+            Some(out)
+        }
+        let mut propose_criteria = entries(
+            object,
+            "propose_criteria",
+            MAX_PROPOSED_CRITERIA,
+            assessment::decode_criterion,
+            &mut discarded,
+        )?;
+        // Criterion keys are local names: a repeated key is left out too.
+        let mut seen = std::collections::BTreeSet::new();
+        propose_criteria.retain(|c| {
+            let fresh = seen.insert(c.key.clone());
+            if !fresh {
+                discarded += 1;
+            }
+            fresh
+        });
+        let propose_basis = entries(
+            object,
+            "propose_basis",
+            MAX_PROPOSED_BASES,
+            assessment::decode_basis,
+            &mut discarded,
+        )?;
+        let record_facts = entries(
+            object,
+            "record_facts",
+            MAX_RECORDED_FACTS,
+            assessment::decode_fact,
+            &mut discarded,
+        )?;
+        let evaluate = entries(
+            object,
+            "evaluate",
+            MAX_EVALUATE,
+            |v| as_string(v).filter(|s| valid_scope_id(s)).map(String::from),
+            &mut discarded,
+        )?;
+        let judgments = entries(
+            object,
+            "judgments",
+            MAX_JUDGMENTS,
+            assessment::decode_judgment,
+            &mut discarded,
+        )?;
         let answer = Self {
             segments,
             limitations,
@@ -729,6 +843,11 @@ impl CitedAnswer {
             use_skills,
             run_skill_script,
             method_notes,
+            propose_criteria,
+            propose_basis,
+            record_facts,
+            evaluate,
+            judgments,
             discarded,
         };
         answer.is_valid().then_some(answer)

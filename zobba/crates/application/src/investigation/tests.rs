@@ -44,7 +44,7 @@ fn requirement(id: &str, mandatory: bool, criteria: Option<Vec<&str>>) -> Resolv
     }
 }
 
-fn binding(id: &str) -> Binding {
+pub(crate) fn binding(id: &str) -> Binding {
     Binding {
         id: id.into(),
         candidate_version_ids: vec!["ap-method-v1".into()],
@@ -509,7 +509,7 @@ impl ScriptRunner for Scripts {
     }
 }
 
-fn invocation(id: &str, binding: &str) -> Invocation {
+pub(crate) fn invocation(id: &str, binding: &str) -> Invocation {
     Invocation {
         id: id.into(),
         key: id.into(),

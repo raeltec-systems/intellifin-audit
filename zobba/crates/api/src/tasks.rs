@@ -41,6 +41,8 @@ pub(crate) struct TaskHttpState {
     )>,
     /// Story 22.6 method basis, skill uses and notes of the current cycle.
     pub(crate) investigations: Option<zobba_infrastructure::investigation::InvestigationRepository>,
+    /// Story 24.1 assessment records of the Task.
+    pub(crate) assessments: Option<zobba_infrastructure::assessment::AssessmentRepository>,
 }
 
 pub(crate) fn router(database: &RuntimeDatabase, identity: AuthState) -> Router {
@@ -69,6 +71,7 @@ pub(crate) fn router(database: &RuntimeDatabase, identity: AuthState) -> Router 
             models: None,
             answers: None,
             investigations: None,
+            assessments: None,
         });
     let conversation = crate::conversation::router(database.pool().clone(), identity.clone());
     let operations = crate::operations::router(database.pool().clone(), identity.clone());
@@ -111,6 +114,9 @@ pub(crate) fn router(database: &RuntimeDatabase, identity: AuthState) -> Router 
                     database.pool().clone(),
                 ),
             ),
+            assessments: Some(zobba_infrastructure::assessment::AssessmentRepository::new(
+                database.pool().clone(),
+            )),
         })
         .merge(conversation)
         .merge(operations);

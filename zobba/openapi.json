@@ -10233,6 +10233,531 @@
           }
         }
       },
+      "AssessmentBasisResponse": {
+        "type": "object",
+        "description": "One immutable assessment basis version.",
+        "required": [
+          "id",
+          "invocation_id",
+          "key",
+          "supersedes",
+          "objective",
+          "criteria",
+          "period_from",
+          "period_to",
+          "as_of",
+          "population",
+          "limitations",
+          "methodology_binding_id",
+          "execution_epoch"
+        ],
+        "properties": {
+          "as_of": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "criteria": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16
+          },
+          "execution_epoch": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "id": {
+            "type": "string"
+          },
+          "invocation_id": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "limitations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8
+          },
+          "methodology_binding_id": {
+            "type": "string"
+          },
+          "objective": {
+            "type": "string"
+          },
+          "period_from": {
+            "type": "string",
+            "description": "Business period, civil dates (`YYYY-MM-DD`)."
+          },
+          "period_to": {
+            "type": "string"
+          },
+          "population": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PopulationReferenceResponse"
+            },
+            "maxItems": 8
+          },
+          "supersedes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "AssessmentCriterionResponse": {
+        "type": "object",
+        "description": "One immutable criterion version. Its assertion is attributed agent text;\nits authority was checked by trusted code.",
+        "required": [
+          "id",
+          "invocation_id",
+          "key",
+          "supersedes",
+          "assertion",
+          "kind",
+          "authority_kind",
+          "authority_verified",
+          "authority_reason",
+          "requirement_id",
+          "criterion_ordinal",
+          "authority_text_sha256",
+          "authority_source",
+          "effective_from",
+          "effective_to",
+          "applicability",
+          "rule",
+          "rubric",
+          "required_facts",
+          "methodology_binding_id",
+          "execution_epoch"
+        ],
+        "properties": {
+          "applicability": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The applicability test, in platform words."
+          },
+          "assertion": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "authority_kind": {
+            "type": "string",
+            "description": "`method` or `original`."
+          },
+          "authority_reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Closed reason when the authority is unverified."
+          },
+          "authority_source": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CitationSourceResponse",
+                "description": "Original authority: the cited quote and its verification."
+              }
+            ]
+          },
+          "authority_text_sha256": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "authority_verified": {
+            "type": "boolean"
+          },
+          "criterion_ordinal": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "effective_from": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "effective_to": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "execution_epoch": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "id": {
+            "type": "string"
+          },
+          "invocation_id": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string",
+            "description": "The agent's local name for it in its answer."
+          },
+          "kind": {
+            "type": "string",
+            "description": "`rule` (decided by trusted code) or `judgment` (proposed by the model)."
+          },
+          "methodology_binding_id": {
+            "type": "string"
+          },
+          "required_facts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RequiredFactResponse"
+            },
+            "maxItems": 8
+          },
+          "requirement_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Method authority: requirement and 0-based criterion ordinal."
+          },
+          "rubric": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 2000
+          },
+          "rule": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The rule predicate, in platform words."
+          },
+          "supersedes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "AssessmentEvaluationResponse": {
+        "type": "object",
+        "description": "One immutable evaluation. Applicability, execution, verdict and origin\nare separate fields; only an applicable, completed evaluation on\nsupported facts can be met or not_met.",
+        "required": [
+          "id",
+          "invocation_id",
+          "basis_id",
+          "criterion_id",
+          "subject",
+          "applicability",
+          "execution",
+          "verdict",
+          "reason",
+          "origin",
+          "inputs",
+          "output_digest",
+          "judgment",
+          "methodology_binding_id",
+          "execution_epoch"
+        ],
+        "properties": {
+          "applicability": {
+            "type": "string",
+            "description": "`applicable`, `not_applicable` or `unknown`."
+          },
+          "basis_id": {
+            "type": "string"
+          },
+          "criterion_id": {
+            "type": "string"
+          },
+          "execution": {
+            "type": "string",
+            "description": "`completed` or `failed`."
+          },
+          "execution_epoch": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "id": {
+            "type": "string"
+          },
+          "inputs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EvaluationInputResponse"
+            },
+            "maxItems": 32
+          },
+          "invocation_id": {
+            "type": "string"
+          },
+          "judgment": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JudgmentResponse"
+              }
+            ]
+          },
+          "methodology_binding_id": {
+            "type": "string"
+          },
+          "origin": {
+            "type": "string",
+            "description": "`deterministic` or `model_proposal`."
+          },
+          "output_digest": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subject": {
+            "type": "string"
+          },
+          "verdict": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`met`, `not_met`, `undetermined`, or null (no verdict)."
+          }
+        }
+      },
+      "AssessmentFactResponse": {
+        "type": "object",
+        "description": "One immutable typed fact observation and its verified sources.",
+        "required": [
+          "id",
+          "invocation_id",
+          "basis_id",
+          "subject",
+          "subject_unit",
+          "name",
+          "value_kind",
+          "value",
+          "measure",
+          "mantissa",
+          "scale",
+          "utc",
+          "offset_minutes",
+          "unavailable_reason",
+          "candidates",
+          "rule",
+          "support",
+          "support_reason",
+          "job_id",
+          "sources",
+          "methodology_binding_id",
+          "execution_epoch"
+        ],
+        "properties": {
+          "basis_id": {
+            "type": "string"
+          },
+          "candidates": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "execution_epoch": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "id": {
+            "type": "string"
+          },
+          "invocation_id": {
+            "type": "string"
+          },
+          "job_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mantissa": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Exact decimal: digit-string mantissa and scale (no float).",
+            "pattern": "^-?[0-9]+$"
+          },
+          "measure": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "methodology_binding_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "offset_minutes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "rule": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "scale": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CitationSourceResponse"
+            },
+            "maxItems": 4
+          },
+          "subject": {
+            "type": "string",
+            "description": "Exactly as stated (leading zeros kept)."
+          },
+          "subject_unit": {
+            "type": "string"
+          },
+          "support": {
+            "type": "string",
+            "description": "`supported`, `unsupported` or `no_value`."
+          },
+          "support_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "unavailable_reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Unavailable reason or ambiguous candidate count."
+          },
+          "utc": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "An instant in UTC; `value` keeps the source offset."
+          },
+          "value": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Canonical value text (decimal `1250.00`, date, RFC 3339 instant)."
+          },
+          "value_kind": {
+            "type": "string",
+            "description": "A fact type, `unavailable` or `ambiguous`."
+          }
+        }
+      },
+      "AssessmentResponse": {
+        "type": "object",
+        "required": [
+          "bases",
+          "total_bases",
+          "criteria",
+          "total_criteria",
+          "facts",
+          "total_facts",
+          "evaluations",
+          "total_evaluations"
+        ],
+        "properties": {
+          "bases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssessmentBasisResponse"
+            },
+            "description": "The Task's newest records of each kind, oldest first; earlier ones\nmay be omitted (see the totals).",
+            "maxItems": 64
+          },
+          "criteria": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssessmentCriterionResponse"
+            },
+            "maxItems": 64
+          },
+          "evaluations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssessmentEvaluationResponse"
+            },
+            "maxItems": 256
+          },
+          "facts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssessmentFactResponse"
+            },
+            "maxItems": 1024
+          },
+          "total_bases": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "total_criteria": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "total_evaluations": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "total_facts": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          }
+        }
+      },
       "AttachmentRequest": {
         "type": "object",
         "required": [
@@ -11267,6 +11792,22 @@
           }
         }
       },
+      "EvaluationInputResponse": {
+        "type": "object",
+        "required": [
+          "fact_id",
+          "digest"
+        ],
+        "properties": {
+          "digest": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "fact_id": {
+            "type": "string"
+          }
+        }
+      },
       "EvidenceBinary": {
         "type": "string",
         "format": "binary",
@@ -11896,6 +12437,38 @@
           }
         },
         "additionalProperties": false
+      },
+      "JudgmentResponse": {
+        "type": "object",
+        "description": "A model's judgment of a judgment criterion, in words. Pending human\ndisposition; there is no confidence score.",
+        "required": [
+          "supporting",
+          "contrary",
+          "rationale",
+          "uncertainty"
+        ],
+        "properties": {
+          "contrary": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "rationale": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "supporting": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "uncertainty": {
+            "type": "string",
+            "maxLength": 2000
+          }
+        }
       },
       "KnowledgeAction": {
         "oneOf": [
@@ -15013,6 +15586,43 @@
           "delegation"
         ]
       },
+      "PopulationReferenceResponse": {
+        "type": "object",
+        "description": "A population or sample reference to a registered original.",
+        "required": [
+          "original_id",
+          "unit",
+          "selection",
+          "sha256",
+          "filename"
+        ],
+        "properties": {
+          "filename": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The filename, only when the viewer may read that exact original now."
+          },
+          "original_id": {
+            "type": "string"
+          },
+          "selection": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The registered digest pinned when the basis was recorded; null when it\nwas not a registered original.",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "unit": {
+            "type": "string"
+          }
+        }
+      },
       "PreviewInvitationRequest": {
         "type": "object",
         "required": [
@@ -15215,6 +15825,31 @@
         "enum": [
           "received"
         ]
+      },
+      "RequiredFactResponse": {
+        "type": "object",
+        "description": "A fact the criterion needs, with its type and (for a decimal) measure.",
+        "required": [
+          "name",
+          "fact_type",
+          "measure"
+        ],
+        "properties": {
+          "fact_type": {
+            "type": "string",
+            "description": "`identifier`, `text`, `boolean`, `enum`, `decimal`, `date` or `instant`."
+          },
+          "measure": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ISO 4217 currency code or unit name, for a decimal."
+          },
+          "name": {
+            "type": "string"
+          }
+        }
       },
       "RevokeInvitationRequest": {
         "type": "object",
@@ -17555,9 +18190,25 @@
           "compactions",
           "total_compactions",
           "investigation",
-          "investigation_unavailable"
+          "investigation_unavailable",
+          "assessment",
+          "assessment_unavailable"
         ],
         "properties": {
+          "assessment": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AssessmentResponse",
+                "description": "Story 24.1: the Task's assessment basis versions, criterion versions,\ntyped facts and evaluations. Null when not composed or not readable;\n`assessment_unavailable` says which."
+              }
+            ]
+          },
+          "assessment_unavailable": {
+            "type": "boolean"
+          },
           "attention": {
             "oneOf": [
               {
