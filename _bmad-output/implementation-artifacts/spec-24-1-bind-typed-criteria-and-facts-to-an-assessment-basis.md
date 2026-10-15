@@ -2,7 +2,7 @@
 title: '24.1 — Bind typed criteria and facts to an assessment basis'
 type: 'feature'
 created: '2026-10-14'
-status: 'draft'
+status: 'ready-for-dev'
 baseline_commit: '2be8298686e5ab98fddfe0045ddcad5ab4d19ca8'
 review_loop_iteration: 0
 context:
@@ -107,6 +107,8 @@ record_facts[0] = {subject:"INV-0042", unit:"invoice", name:"amount",
 - `pnpm --dir zobba/web check` and the work-panel browser case -- expected: pass with accessibility checks.
 
 ## Open Questions (owner decisions)
+
+**Owner decisions (2026-10-15):** keep as one story (K); all five recommendations approved (A): 1(a) agent-proposed Task-scoped criteria; 2 no acceptance gate in 24.1; 3 in-house `i128`+scale decimal and UTC-plus-source-offset, no new crates; 4 deterministic and model-proposal origins only; 5 closed pure-Rust predicate set only.
 
 1. **Where criterion versions come from.** (a) Agent proposes Task-scoped criteria citing the method text or a policy document (recommended: matches the native-agent direction and the design's "proposes through conversation"); (b) Admin authors structured criteria in the 21.2 editor first. Recommend (a) now, (b) later as an optional Admin shortcut.
 2. **Human acceptance of a basis before evaluation.** Recommend no gate in 24.1: records show origin and the auditor corrects through Guide; review binding is 24.5. Alternative: block evaluation until an auditor accepts the basis.
