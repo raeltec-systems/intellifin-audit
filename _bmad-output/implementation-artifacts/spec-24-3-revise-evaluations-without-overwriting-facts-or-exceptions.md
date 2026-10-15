@@ -2,7 +2,7 @@
 title: '24.3 — Revise evaluations without overwriting facts or exceptions'
 type: 'feature'
 created: '2026-10-15'
-status: 'draft'
+status: 'ready-for-dev'
 baseline_commit: '300d14e9b72ec3575090f023196483d47fa7f115'
 review_loop_iteration: 0
 context:
@@ -122,6 +122,8 @@ Size: about 6,300 tokens, far above the 1,600 target (24.1 and 24.2 were also la
 - `pnpm --dir zobba/web check` and the revision browser case -- expected: pass with accessibility and contrast checks.
 
 ## Open Questions (owner decisions)
+
+**Owner decisions (2026-10-15):** decisions 1–7 approved as recommended (A): successor basis with `carry_facts` by reference; any assigned Auditor or Audit manager may dispose, only an Audit manager or the accountable actor may close an exception; deterministic results are never replaced; no waivers; Task-scoped exceptions; custom sandbox-program criteria deferred to a named follow-up Story 24.7; dispositions on a superseded revision are refused and the 409 names the current head. **Split (S)** after independent advisor review: **24.3a** = revision chains, carried facts and human dispositions (with their API, guards and panel parts); **24.3b** = exception occurrences/status and the effective summary (24.3b backfills occurrences from existing `not_met` revisions). Build 24.3a first; order the migration so 24.3b's tables and guard are separable (24.3a migration 0020/v20, 24.3b migration 0021/v21).
 
 1. **Changing a recorded fact.** (a) Recommended: successor basis + `carry_facts` by reference (original verification kept, cheap, explicit). (b) Agent re-records every fact it still needs in the successor basis (re-verified, up to 1,024 quotes again).
 2. **Who may save an evaluation disposition.** (a) Recommended: any currently assigned Auditor or Audit manager of the engagement; exception `closed` only by an Audit manager or the Task's accountable actor. (b) Only the accountable actor or an assigned Audit manager for both (the 20.5 decision rule).

@@ -43,7 +43,7 @@ development_status:
   20-4-keep-one-engagement-conversation-with-attributed-task-cards: done
   20-5-apply-standing-permissions-to-exact-recorded-operations: done
   20-6-administer-membership-without-granting-audit-authority: done
-  20-7-deploy-a-recoverable-qualification-environment: review
+  20-7-deploy-a-recoverable-qualification-environment: done
   epic-20-retrospective: optional
 
   epic-21: in-progress
@@ -59,9 +59,9 @@ development_status:
   22-1-route-native-models-through-a-current-tool-catalog: done
   22-2-continue-a-real-task-under-changing-guidance: done
   22-3-compact-context-without-inventing-authority-or-evidence: done
-  22-4-run-measured-analysis-in-an-isolated-workspace: review
-  22-5-extract-usable-facts-with-stable-source-locations: review
-  22-6-use-methods-and-installed-skills-during-investigation: review
+  22-4-run-measured-analysis-in-an-isolated-workspace: done
+  22-5-extract-usable-facts-with-stable-source-locations: done
+  22-6-use-methods-and-installed-skills-during-investigation: done
   22-7-keep-work-within-budgets-and-responsive-under-contention: backlog
   epic-22-retrospective: optional
 
@@ -77,10 +77,12 @@ development_status:
   epic-24: backlog
   24-1-bind-typed-criteria-and-facts-to-an-assessment-basis: review
   24-2-show-exact-population-sample-and-coverage-denominators: in-progress
-  24-3-revise-evaluations-without-overwriting-facts-or-exceptions: backlog
+  24-3a-revise-evaluations-revisions-carried-facts-and-dispositions: ready-for-dev
+  24-3b-exceptions-and-effective-summary: ready-for-dev
   24-4-create-firm-shaped-work-products-with-supported-claims: backlog
   24-5-review-and-issue-the-exact-work-honestly: backlog
   24-6-reconcile-concurrent-edits-and-stale-review-packages: backlog
+  24-7-custom-sandbox-program-criteria: backlog
   epic-24-retrospective: optional
 
   epic-25: backlog

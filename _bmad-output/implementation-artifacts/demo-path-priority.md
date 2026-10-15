@@ -43,3 +43,16 @@ Remaining on the critical path (24.1 built, awaiting owner review):
 
 Also on the path: UI polish (after the core work) and one live provider qualification run
 (owner approval required).
+
+## Owner decisions 2026-10-15 (later the same day)
+
+- 27.4 helper subtasks moves to after 25.4: the 25.4 scope names a firm document
+  connection and two concurrent Tasks, not helper subtasks (independent advisor review).
+- 24.3 is split into 24.3a (revisions, carried facts, dispositions) and 24.3b
+  (exceptions and effective summary). Custom sandbox-program criteria become Story 24.7,
+  off the critical path.
+- 20.7, 22.4, 22.5 and 22.6 accepted as done. 24.1 stays in review until the owner sees
+  it in the app.
+
+Remaining critical path: Milestone A — 24.2 (in progress), 24.3a, 24.3b, 24.4, 24.5,
+24.6, 25.1, 25.2, 25.3; Milestone B — 22.7, 21.5, 23.1–23.6, then 25.4.
