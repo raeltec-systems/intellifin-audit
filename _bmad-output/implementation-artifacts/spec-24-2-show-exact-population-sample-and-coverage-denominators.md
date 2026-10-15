@@ -117,7 +117,7 @@ The model never counts. It names *where* and *how* (sheet, grain, columns, exhau
 
 ## Open Questions (owner decisions)
 
-Size: about 4,900 tokens, over the 1,600 target (24.1 was larger and was kept). **[K] Keep** (recommended: manifest, opportunities and summary share one recomputing guard and one fixture, so splitting leaves an unverifiable half) or **[S] Split** — 24.2a population manifest + bulk opportunities + summary; 24.2b sample manifests.
+Size: about 5,400 tokens (21.7 KB), over the 1,600 target (24.1 was larger and was kept). **[K] Keep** (recommended: manifest, opportunities and summary share one recomputing guard and one fixture, so splitting leaves an unverifiable half) or **[S] Split** — 24.2a population manifest + bulk opportunities + summary; 24.2b sample manifests.
 
 1. **How the population is read.** (a) Recommended: the agent proposes the manifest spec; the trusted document program enumerates every row of the exact original and trusted Rust builds the manifest. (b) The agent's own 22.4 program writes a member list that trusted code accepts as a descendant — rejected by default, because no trusted code would have read the rows.
 2. **Bulk rule evaluation.** (a) Recommended: trusted code evaluates rule criteria over every in-scope member into a new opportunities table, reusing 24.1 `evaluate`. (b) Only 24.1 per-subject evaluations count (cannot reach 1,000 subjects within the 1,024-fact basis bound).
