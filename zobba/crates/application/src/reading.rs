@@ -2043,6 +2043,40 @@ where
                 sha256: o.sha256,
             }))
     }
+    async fn byte_context(
+        &self,
+        basis: &ClaimBasis,
+        original: &CitedOriginal,
+        start: u64,
+        end: u64,
+    ) -> Result<Option<String>, ReadingError> {
+        let Some(stored) = self
+            .jobs
+            .original(&basis.actor_id, &basis.scope, &original.id)
+            .await?
+        else {
+            return Ok(None);
+        };
+        if stored.identity.sha256 != original.sha256 {
+            return Ok(None);
+        }
+        let object = self
+            .objects
+            .get_version(&original.id, &stored.namespace, &stored.version)
+            .await
+            .map_err(|_| ReadingError::Unavailable)?;
+        if object.identity != stored.identity
+            || self.objects.measure(&object.bytes) != stored.identity
+            || capture_range(&object.bytes, start, end).is_err()
+        {
+            return Ok(None);
+        }
+        Ok(crate::citation::widened(
+            &object.bytes,
+            start as usize,
+            end as usize,
+        ))
+    }
     async fn byte_range(
         &self,
         basis: &ClaimBasis,

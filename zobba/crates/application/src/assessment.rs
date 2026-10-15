@@ -27,7 +27,7 @@ use std::{
 };
 
 use crate::{
-    citation::{CitationReader, ReadingError, verify},
+    citation::{CitationReader, ReadingError, verify_located},
     investigation::{bounded, criteria_missing},
     methodology::Binding,
     model::{Invocation, ModelCancellation, ModelError},
@@ -38,11 +38,11 @@ use zobba_domain::{
         Decimal, EvaluationContext, EvaluationReason, Execution, FactState, FactSupport, FactType,
         FactValue, InputFact, Instant, Measure, Origin, Outcome, ParseRule, PopulationReference,
         Predicate, ProposedBasis, ProposedCriterion, ProposedFact, RequiredFact, UnavailableReason,
-        UnsupportedReason, Verdict, evaluate, judge, output_digest,
+        UnsupportedReason, Verdict, evaluate, judge, output_digest, whole_token, whole_value,
     },
     citation::{
         CitationSource, CitedAnswer, Locator, Segment, UnverifiedReason, Verification,
-        VerifiedSource,
+        VerifiedSource, normalize,
     },
     context::{InputClass, canonical_json, envelope},
     model::JsonValue,
@@ -65,13 +65,39 @@ pub const MAX_ASSESSMENT_FEEDBACK_BYTES: usize = 8 * 1024;
 
 pub const ASSESSMENT_CONSTRAINTS: &str = "When you are ready to assess, use the assessment fields. Propose criteria in propose_criteria: an assertion, its authority (method: a requirement ID and the 0-based criterion ordinal of the bound method; or original: a registered original, an exact locator and the exact quote), the facts it needs with their types and units or ISO 4217 currency, an optional applicability test, and either a rule (one closed predicate that trusted code evaluates) or a judgment rubric. Propose one assessment basis in propose_basis: the objective, its criteria (IDs, or keys of criteria in the same answer), the business period, population references to registered originals, and limitations. Record typed facts in record_facts for one subject each (kept exactly, leading zeros included): the value in canonical form (decimals like 1250.00 with a unit or currency, dates YYYY-MM-DD, instants in RFC 3339 with the source offset), the closed parse rule that turns your quote into that value, and the exact quoted sources; or unavailable with a closed reason, or ambiguous with the number of candidates. Trusted code verifies each quote at its location and re-parses it; a value the source does not show is unsupported. Ask trusted code to evaluate rule criteria in evaluate; you never write a rule verdict. Propose judgments only for judgment criteria, with the facts that support and contradict them and your reasoning and uncertainty in words. Missing, unavailable or unsupported evidence is never an exception, and there is no confidence score. Records are immutable: to change one, propose a new version that supersedes it.";
 
-/// The closed state of an analysis job a fact depends on.
+/// The state of an analysis job a fact depends on, from its latest
+/// outcome event (a `collected` event repeats the outcome before it).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum JobState {
     /// Completed: its outputs may be relied on.
-    Collected,
-    /// Did not complete (failed, over a limit, stopped), or not yet ended.
+    Completed,
+    /// Ended without completing (failed, over a limit, stopped).
     Failed,
+    /// Not ended yet (admitted, starting, running or unknown). A fact that
+    /// depends on it is not recorded: nothing permanent is said about an
+    /// analysis that may still complete.
+    Pending,
+}
+impl JobState {
+    /// The stored label of an ended job.
+    pub const fn label(self) -> Option<&'static str> {
+        match self {
+            Self::Completed => Some("completed"),
+            Self::Failed => Some("failed"),
+            Self::Pending => None,
+        }
+    }
+}
+
+/// Whether trusted code found a fact's subject and measure at, or beside, a
+/// verified source of its value: in the located text of that source, or as
+/// the exact quote of another verified source in the same cell row (a
+/// spreadsheet) or at the same location. Otherwise they are only claims.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Grounding {
+    pub subject: bool,
+    /// For a decimal value; None for every other kind.
+    pub measure: Option<bool>,
 }
 
 /// The checked authority of a criterion version.
@@ -134,6 +160,7 @@ pub struct FactRecord {
     pub fact: ProposedFact,
     pub sources: Vec<VerifiedSource>,
     pub support: FactSupport,
+    pub grounding: Grounding,
     pub job_state: Option<JobState>,
     pub digest: String,
     pub recorded_us: Option<i64>,
@@ -187,6 +214,8 @@ pub struct AssessmentSnapshot {
     pub total_criteria: u64,
     pub total_facts: u64,
     pub total_evaluations: u64,
+    /// The exact fact count of each listed basis (never a sampled count).
+    pub basis_fact_counts: BTreeMap<String, u64>,
 }
 
 /// Durable assessment records under the exact claim producer's custody and
@@ -229,6 +258,15 @@ pub trait AssessmentStore: Send + Sync {
         criterion_id: &str,
         subject: &str,
     ) -> impl Future<Output = Result<Option<EvaluationRecord>, ReadingError>> + Send;
+    /// Every evaluation of one criterion under one basis version (an exact
+    /// read: at most one per subject, and subjects are bounded by
+    /// [`MAX_BASIS_FACTS`]).
+    fn evaluations_of(
+        &self,
+        basis: &ClaimBasis,
+        basis_id: &str,
+        criterion_id: &str,
+    ) -> impl Future<Output = Result<Vec<EvaluationRecord>, ReadingError>> + Send;
     /// The state of a 22.4 job of this Task; None when it is not one.
     fn job_state(
         &self,
@@ -892,14 +930,15 @@ impl FactRecord {
                 "support_reason",
                 opt(self.support.reason().map(UnsupportedReason::as_str)),
             ),
-            ("job_id", opt(f.job_id.as_deref())),
+            ("subject_grounded", JsonValue::Bool(self.grounding.subject)),
             (
-                "job_state",
-                opt(self.job_state.map(|state| match state {
-                    JobState::Collected => "collected",
-                    JobState::Failed => "failed",
-                })),
+                "measure_grounded",
+                self.grounding
+                    .measure
+                    .map_or(JsonValue::Null, JsonValue::Bool),
             ),
+            ("job_id", opt(f.job_id.as_deref())),
+            ("job_state", opt(self.job_state.and_then(JobState::label))),
             ("effective", date_doc(f.effective)),
         ]);
         obj(fields)
@@ -937,16 +976,31 @@ impl FactRecord {
                 get_str(map, "support")?,
                 get_opt(map, "support_reason")?.as_deref(),
             )?,
+            grounding: Grounding {
+                subject: get_bool(map, "subject_grounded")?,
+                measure: match map.get("measure_grounded")? {
+                    JsonValue::Null => None,
+                    JsonValue::Bool(b) => Some(*b),
+                    _ => return None,
+                },
+            },
             job_state: match get_opt(map, "job_state")?.as_deref() {
                 None => None,
-                Some("collected") => Some(JobState::Collected),
+                Some("completed") => Some(JobState::Completed),
                 Some("failed") => Some(JobState::Failed),
                 Some(_) => return None,
             },
             digest: document_digest(document),
             recorded_us,
         };
-        (record.document() == *document).then_some(record)
+        // A decimal value states whether its measure was grounded; no other
+        // value does.
+        let decimal = matches!(
+            record.fact.state,
+            FactState::Value(FactValue::Decimal { .. })
+        );
+        (decimal == record.grounding.measure.is_some() && record.document() == *document)
+            .then_some(record)
     }
     /// The fact as the evaluator reads it.
     pub fn input(&self) -> InputFact {
@@ -956,6 +1010,9 @@ impl FactRecord {
             name: self.fact.name.clone(),
             state: self.fact.state.clone(),
             support: self.support,
+            subject_grounded: self.grounding.subject,
+            measure_grounded: self.grounding.measure,
+            effective: self.fact.effective,
         }
     }
 }
@@ -1076,14 +1133,18 @@ impl EvaluationRecord {
 
 // ----------------------------------------------------------- the service
 
+/// One verified source and the text trusted code read at its location.
+type Located = (VerifiedSource, Vec<String>);
+
 /// Verify sources with the 22.5 verifier: one cited segment per source,
-/// chunked within the answer bounds. Each source's result is in input order.
+/// chunked within the answer bounds. Each source's result is in input order,
+/// with the text read at its location.
 async fn verify_sources<C: CitationReader>(
     reader: &C,
     basis: &ClaimBasis,
     sources: &[CitationSource],
     cancellation: &ModelCancellation,
-) -> Result<Vec<VerifiedSource>, ReadingError> {
+) -> Result<Vec<Located>, ReadingError> {
     let mut out = Vec::with_capacity(sources.len());
     for chunk in sources.chunks(zobba_domain::citation::MAX_SEGMENTS) {
         let answer = CitedAnswer {
@@ -1096,13 +1157,185 @@ async fn verify_sources<C: CitationReader>(
                 .collect(),
             ..CitedAnswer::default()
         };
-        let stored = verify(reader, basis, &answer, cancellation).await?;
-        if stored.len() != chunk.len() || stored.iter().any(|c| c.sources.len() != 1) {
+        let stored = verify_located(reader, basis, &answer, cancellation).await?;
+        if stored.len() != chunk.len()
+            || stored
+                .iter()
+                .any(|(c, texts)| c.sources.len() != 1 || texts.len() != 1)
+        {
             return Err(ReadingError::Invalid);
         }
-        out.extend(stored.into_iter().map(|mut c| c.sources.remove(0)));
+        out.extend(
+            stored
+                .into_iter()
+                .map(|(mut c, mut texts)| (c.sources.remove(0), texts.remove(0))),
+        );
     }
     Ok(out)
+}
+
+/// What one source of a stated value is.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Role {
+    /// Its quote re-parses to the stated value; `whole` when the quote is
+    /// the whole value at its location.
+    Value { whole: bool },
+    /// Its quote is exactly the subject or the measure (a row's invoice
+    /// number cell, a currency column).
+    Grounding,
+    /// A wider byte range of the same original that contains a value
+    /// source's range (the line the value stands in).
+    Context,
+    /// None of these: the source does not show this value.
+    Mismatch,
+}
+
+fn measure_token(measure: &Measure) -> String {
+    match measure {
+        Measure::Currency(code) => code.clone(),
+        Measure::Unit(unit) => unit.clone(),
+    }
+}
+fn same_token(a: &str, b: &str, fold: bool) -> bool {
+    let (a, b) = (normalize(a), normalize(b));
+    if fold {
+        a.to_lowercase() == b.to_lowercase()
+    } else {
+        a == b
+    }
+}
+/// A grounding source stands beside a value source: the same original and,
+/// for spreadsheet cells, the same sheet and an overlapping row; for any
+/// other locator, the same location.
+fn beside(grounding: &CitationSource, value: &CitationSource) -> bool {
+    if grounding.original_id != value.original_id {
+        return false;
+    }
+    match (&grounding.locator, &value.locator) {
+        (
+            Some(Locator::Cell {
+                sheet: a,
+                range: ra,
+            }),
+            Some(Locator::Cell {
+                sheet: b,
+                range: rb,
+            }),
+        ) => a == b && ra.first_row <= rb.last_row && rb.first_row <= ra.last_row,
+        (Some(a), Some(b)) => a == b,
+        _ => false,
+    }
+}
+/// A byte range of the same original that contains the value's range.
+fn contains(context: &CitationSource, value: &CitationSource) -> bool {
+    match (&context.locator, &value.locator) {
+        (Some(Locator::Bytes { start: a, end: b }), Some(Locator::Bytes { start: c, end: d })) => {
+            context.original_id == value.original_id && a <= c && d <= b && (a, b) != (c, d)
+        }
+        _ => false,
+    }
+}
+
+/// Trusted code's judgment of a stated value: its support, its grounding
+/// and the value derived from the verified quotes.
+///
+/// Every source must be verified at its location. Each source either
+/// re-parses to the stated value (a value source), quotes exactly the
+/// subject or the measure (a grounding source), or is a wider byte range
+/// containing a value source (a context source); anything else is a type
+/// mismatch, and at least one value source is needed. A value source's
+/// quote must be the whole value at its location (`2,500.00` inside
+/// `12,500.00` is only a part). The subject and the measure are grounded
+/// when they stand as whole tokens in a value source's located text or a
+/// context source's quote, or as the quote of a grounding source beside a
+/// value source (the same row of a sheet, or the same location).
+pub fn assess_value(
+    subject: &str,
+    value: &FactValue,
+    rule: ParseRule,
+    sources: &[(VerifiedSource, Vec<String>)],
+) -> (FactSupport, Grounding, Option<FactValue>) {
+    let measure = value.measure().map(measure_token);
+    let fold = matches!(value.measure(), Some(Measure::Unit(_)));
+    let derived: Vec<Option<FactValue>> = sources
+        .iter()
+        .map(|(v, _)| {
+            rule.apply(&v.source.quote, value.measure())
+                .filter(|d| value.agrees(d))
+        })
+        .collect();
+    let values: Vec<usize> = (0..sources.len())
+        .filter(|&i| derived[i].is_some())
+        .collect();
+    let roles: Vec<Role> = (0..sources.len())
+        .map(|i| {
+            let (v, texts) = &sources[i];
+            let quote = &v.source.quote;
+            if derived[i].is_some() {
+                Role::Value {
+                    whole: v
+                        .source
+                        .locator
+                        .as_ref()
+                        .is_some_and(|l| whole_value(l, texts, quote)),
+                }
+            } else if same_token(quote, subject, false)
+                || measure
+                    .as_deref()
+                    .is_some_and(|m| same_token(quote, m, fold))
+            {
+                Role::Grounding
+            } else if values
+                .iter()
+                .any(|&j| contains(&v.source, &sources[j].0.source))
+            {
+                Role::Context
+            } else {
+                Role::Mismatch
+            }
+        })
+        .collect();
+    let verified = |i: usize| sources[i].0.verification == Verification::Verified;
+    let grounded = |token: &str, fold: bool| {
+        let whole = |text: &str| {
+            if fold {
+                whole_token(&text.to_lowercase(), &token.to_lowercase())
+            } else {
+                whole_token(text, token)
+            }
+        };
+        (0..sources.len()).any(|i| {
+            verified(i)
+                && match roles[i] {
+                    Role::Value { .. } => sources[i].1.iter().any(|t| whole(t)),
+                    Role::Context => whole(&sources[i].0.source.quote),
+                    Role::Grounding => {
+                        same_token(&sources[i].0.source.quote, token, fold)
+                            && values.iter().any(|&j| {
+                                verified(j) && beside(&sources[i].0.source, &sources[j].0.source)
+                            })
+                    }
+                    Role::Mismatch => false,
+                }
+        })
+    };
+    let grounding = Grounding {
+        subject: grounded(subject, false),
+        measure: measure.as_deref().map(|m| grounded(m, fold)),
+    };
+    let support = if (0..sources.len()).any(|i| !verified(i)) {
+        FactSupport::Unsupported(UnsupportedReason::SourceUnverified)
+    } else if roles.contains(&Role::Mismatch) || values.is_empty() {
+        FactSupport::Unsupported(UnsupportedReason::TypeMismatch)
+    } else if roles.contains(&Role::Value { whole: false }) {
+        FactSupport::Unsupported(UnsupportedReason::PartialValue)
+    } else {
+        FactSupport::Supported
+    };
+    let derived = (support == FactSupport::Supported)
+        .then(|| values.first().and_then(|&i| derived[i].clone()))
+        .flatten();
+    (support, grounding, derived)
 }
 
 fn authority_reason(reason: UnverifiedReason) -> AuthorityReason {
@@ -1248,7 +1481,8 @@ impl<S: AssessmentStore, C: CitationReader> Assessment<'_, S, C> {
                         cancellation,
                     )
                     .await?
-                    .remove(0);
+                    .remove(0)
+                    .0;
                     AuthorityCheck {
                         verified: verified.verification == Verification::Verified,
                         reason: verified.verification.reason().map(authority_reason),
@@ -1356,7 +1590,13 @@ impl<S: AssessmentStore, C: CitationReader> Assessment<'_, S, C> {
                 .map(|b| b.id.clone())
         };
 
-        // 3. Fact observations: sources verified, values re-parsed.
+        // 3. Fact observations: sources verified, values re-parsed. Facts of
+        // a basis are read once (an exact read) and the per-basis bound is
+        // enforced before anything is written.
+        let mut basis_facts: BTreeMap<String, Vec<FactRecord>> = BTreeMap::new();
+        // (basis, subject) pairs whose facts of this answer are still to come:
+        // they are not evaluated or judged in this answer.
+        let mut deferred: BTreeSet<(String, String)> = BTreeSet::new();
         // (record, the fact names a job that is not one of this Task's)
         let mut pending: Vec<(FactRecord, bool)> = Vec::new();
         let mut seen: BTreeSet<(String, String, String)> = BTreeSet::new();
@@ -1381,20 +1621,33 @@ impl<S: AssessmentStore, C: CitationReader> Assessment<'_, S, C> {
                 ));
                 continue;
             };
+            if !basis_facts.contains_key(&basis_id) {
+                let facts = self.store.facts(basis, &basis_id).await?;
+                basis_facts.insert(basis_id.clone(), facts);
+            }
+            let recorded = &basis_facts[&basis_id];
             let key = (
                 basis_id.clone(),
                 proposed.subject.clone(),
                 proposed.name.clone(),
             );
-            let recorded_before = self
-                .store
-                .facts(basis, &basis_id)
-                .await?
+            let recorded_before = recorded
                 .iter()
                 .any(|f| f.fact.subject == proposed.subject && f.fact.name == proposed.name);
-            if !seen.insert(key) || recorded_before {
+            if seen.contains(&key) || recorded_before {
                 feedback.push(format!(
                     "Fact {} of {} was not recorded: that basis already holds it. Facts are pinned to a basis version; propose a new basis version to change one.",
+                    proposed.name, proposed.subject
+                ));
+                continue;
+            }
+            let queued = pending
+                .iter()
+                .filter(|(f, _)| f.basis_id == basis_id)
+                .count();
+            if recorded.len() + queued >= MAX_BASIS_FACTS {
+                feedback.push(format!(
+                    "Fact {} of {} was not recorded: basis {basis_id} already holds {MAX_BASIS_FACTS} facts, the most one basis version may hold. Propose a new basis version for further facts.",
                     proposed.name, proposed.subject
                 ));
                 continue;
@@ -1406,6 +1659,20 @@ impl<S: AssessmentStore, C: CitationReader> Assessment<'_, S, C> {
                 },
                 None => (None, false),
             };
+            if job_state == Some(JobState::Pending) {
+                // Nothing permanent is said about an analysis that may still
+                // complete: the fact is not recorded, and the agent records
+                // it again once the job has ended.
+                feedback.push(format!(
+                    "Fact {} of {} was not recorded: analysis job {} has not ended. Record the fact again after the job completes.",
+                    proposed.name,
+                    proposed.subject,
+                    proposed.job_id.as_deref().unwrap_or_default()
+                ));
+                deferred.insert((basis_id, proposed.subject.clone()));
+                continue;
+            }
+            seen.insert(key);
             pending.push((
                 FactRecord {
                     id: record_id("fact", &basis.task_id, &invocation.id, ordinal),
@@ -1425,6 +1692,7 @@ impl<S: AssessmentStore, C: CitationReader> Assessment<'_, S, C> {
                     },
                     sources: vec![],
                     support: FactSupport::NoValue,
+                    grounding: Grounding::default(),
                     job_state,
                     digest: String::new(),
                     recorded_us: None,
@@ -1436,6 +1704,8 @@ impl<S: AssessmentStore, C: CitationReader> Assessment<'_, S, C> {
             .iter()
             .flat_map(|(f, _)| f.fact.sources.iter().cloned())
             .collect();
+        // Every source is verified before any fact is written: a read that
+        // fails ends the answer with nothing recorded, and a reclaim repeats it.
         let verified = if all_sources.is_empty() {
             vec![]
         } else {
@@ -1444,8 +1714,18 @@ impl<S: AssessmentStore, C: CitationReader> Assessment<'_, S, C> {
         let mut at = 0usize;
         for (mut record, unknown_job) in pending {
             let count = record.fact.sources.len();
-            record.sources = verified[at..at + count].to_vec();
+            let located = &verified[at..at + count];
             at += count;
+            record.sources = located.iter().map(|(v, _)| v.clone()).collect();
+            let assessed = match (&record.fact.state, record.fact.rule) {
+                (FactState::Value(value), Some(rule)) => {
+                    Some(assess_value(&record.fact.subject, value, rule, located))
+                }
+                _ => None,
+            };
+            if let Some((_, grounding, _)) = &assessed {
+                record.grounding = *grounding;
+            }
             // A failed job is an analysis failure; a job that is not one of
             // this Task's leaves the material unverified, never "failed".
             record.support = if record.job_state == Some(JobState::Failed) {
@@ -1453,42 +1733,40 @@ impl<S: AssessmentStore, C: CitationReader> Assessment<'_, S, C> {
             } else if unknown_job {
                 FactSupport::Unsupported(UnsupportedReason::SourceUnverified)
             } else {
-                match &record.fact.state {
-                    FactState::Value(value) => {
-                        if record
-                            .sources
-                            .iter()
-                            .any(|s| s.verification != Verification::Verified)
-                        {
-                            FactSupport::Unsupported(UnsupportedReason::SourceUnverified)
-                        } else {
-                            let rule = record.fact.rule.expect("a stated value names its rule");
-                            let derived: Vec<Option<FactValue>> = record
-                                .sources
-                                .iter()
-                                .map(|s| rule.apply(&s.source.quote, value.measure()))
-                                .collect();
-                            if derived
-                                .iter()
-                                .all(|d| d.as_ref().is_some_and(|d| value.agrees(d)))
-                            {
-                                // The recorded value is the one derived from
-                                // the verified quote.
-                                record.fact.state =
-                                    FactState::Value(derived[0].clone().expect("checked above"));
-                                FactSupport::Supported
-                            } else {
-                                FactSupport::Unsupported(UnsupportedReason::TypeMismatch)
-                            }
+                match assessed {
+                    Some((support, _, derived)) => {
+                        // The recorded value is the one derived from the
+                        // verified quote.
+                        if let Some(derived) = derived {
+                            record.fact.state = FactState::Value(derived);
                         }
+                        support
                     }
-                    _ => FactSupport::NoValue,
+                    None => FactSupport::NoValue,
                 }
             };
             record.digest = document_digest(&record.document());
-            let stored = self.store.record_fact(basis, &record).await?;
-            progress = true;
-            feedback.push(fact_line(&stored));
+            match self.store.record_fact(basis, &record).await {
+                Ok(stored) => {
+                    progress = true;
+                    feedback.push(fact_line(&stored));
+                    basis_facts
+                        .entry(stored.basis_id.clone())
+                        .or_default()
+                        .push(stored);
+                }
+                // The database refused it, for example because the job it
+                // names changed state since it was read. Nothing is recorded;
+                // the agent may record it again.
+                Err(ReadingError::Invalid) => {
+                    feedback.push(format!(
+                        "Fact {} of {} was not recorded: the platform refused it as proposed (its analysis job may have changed state). Record it again.",
+                        record.fact.name, record.fact.subject
+                    ));
+                    deferred.insert((record.basis_id.clone(), record.fact.subject.clone()));
+                }
+                Err(error) => return Err(error),
+            }
         }
 
         // 4. Deterministic evaluation, on request only.
@@ -1499,6 +1777,8 @@ impl<S: AssessmentStore, C: CitationReader> Assessment<'_, S, C> {
             .max()
             .unwrap_or(0);
         let mut written = existing.evaluations.len();
+        let mut bound_reported = false;
+        let bound_line = "Further evaluations were not recorded: the per-answer bound was reached. Ask again in a later answer.";
         for reference in &answer.evaluate {
             let Some(criterion) = self.resolve_criterion(basis, &keys, reference).await? else {
                 feedback.push(format!(
@@ -1520,7 +1800,11 @@ impl<S: AssessmentStore, C: CitationReader> Assessment<'_, S, C> {
                 ));
                 continue;
             };
-            let facts = self.store.facts(basis, &target.id).await?;
+            if !basis_facts.contains_key(&target.id) {
+                let facts = self.store.facts(basis, &target.id).await?;
+                basis_facts.insert(target.id.clone(), facts);
+            }
+            let facts = &basis_facts[&target.id];
             let names = consulted(&criterion.criterion);
             let subjects: BTreeSet<&str> = facts
                 .iter()
@@ -1534,53 +1818,79 @@ impl<S: AssessmentStore, C: CitationReader> Assessment<'_, S, C> {
                 ));
                 continue;
             }
-            if subjects.len() > MAX_SUBJECTS_PER_CRITERION {
-                feedback.push(format!(
-                    "{} has {} subjects under basis {}; the first {MAX_SUBJECTS_PER_CRITERION} in byte order are evaluated.",
-                    criterion.id,
-                    subjects.len(),
-                    target.id
-                ));
-            }
-            for subject in subjects.into_iter().take(MAX_SUBJECTS_PER_CRITERION) {
-                let inputs: Vec<InputFact> = facts
+            // Already-evaluated subjects are set aside before the
+            // per-request bound, so later subjects are reached by a later
+            // request.
+            let done: BTreeMap<String, EvaluationRecord> = self
+                .store
+                .evaluations_of(basis, &target.id, &criterion.id)
+                .await?
+                .into_iter()
+                .map(|e| (e.subject.clone(), e))
+                .collect();
+            let inputs_of = |subject: &str| -> Vec<InputFact> {
+                facts
                     .iter()
                     .filter(|f| f.fact.subject == subject)
                     .map(FactRecord::input)
-                    .collect();
+                    .collect()
+            };
+            let mut todo = Vec::new();
+            for subject in subjects {
+                if deferred.contains(&(target.id.clone(), subject.to_string())) {
+                    feedback.push(format!(
+                        "{} for {subject} under basis {} was not evaluated: some of its facts in your last answer were not recorded yet. Ask again once they are.",
+                        criterion.id, target.id
+                    ));
+                    continue;
+                }
+                let Some(found) = done.get(subject) else {
+                    todo.push(subject);
+                    continue;
+                };
+                let inputs = inputs_of(subject);
                 let outcome = evaluate(
                     &criterion.criterion,
                     &context_for(&target, &criterion, &inputs),
                 );
                 let digest = output_digest(&target.id, &criterion.id, subject, &outcome, None);
-                if let Some(found) = self
-                    .store
-                    .evaluation(basis, &target.id, &criterion.id, subject)
-                    .await?
-                {
-                    feedback.push(if found.output_digest == digest {
-                        format!(
-                            "{} for {subject} under basis {} was already evaluated ({}); re-evaluating gives the same output digest {}.",
-                            criterion.id,
-                            target.id,
-                            found.id,
-                            &digest[..12]
-                        )
-                    } else {
-                        format!(
-                            "{} for {subject} under basis {} was already evaluated ({}); its inputs have changed since. Propose a new basis version to evaluate again.",
-                            criterion.id, target.id, found.id
-                        )
-                    });
-                    continue;
-                }
+                feedback.push(if found.output_digest == digest {
+                    format!(
+                        "{} for {subject} under basis {} was already evaluated ({}); re-evaluating gives the same output digest {}.",
+                        criterion.id,
+                        target.id,
+                        found.id,
+                        &digest[..12]
+                    )
+                } else {
+                    format!(
+                        "{} for {subject} under basis {} was already evaluated ({}); its inputs have changed since. Propose a new basis version to evaluate again.",
+                        criterion.id, target.id, found.id
+                    )
+                });
+            }
+            if todo.len() > MAX_SUBJECTS_PER_CRITERION {
+                feedback.push(format!(
+                    "{} has {} subjects not yet evaluated under basis {}; the first {MAX_SUBJECTS_PER_CRITERION} in byte order are evaluated now. Ask again to continue.",
+                    criterion.id,
+                    todo.len(),
+                    target.id
+                ));
+            }
+            for subject in todo.into_iter().take(MAX_SUBJECTS_PER_CRITERION) {
                 if written >= MAX_INVOCATION_EVALUATIONS {
-                    feedback.push(
-                        "Further evaluations were not recorded: the per-answer bound was reached."
-                            .into(),
-                    );
+                    if !bound_reported {
+                        feedback.push(bound_line.into());
+                        bound_reported = true;
+                    }
                     break;
                 }
+                let inputs = inputs_of(subject);
+                let outcome = evaluate(
+                    &criterion.criterion,
+                    &context_for(&target, &criterion, &inputs),
+                );
+                let digest = output_digest(&target.id, &criterion.id, subject, &outcome, None);
                 let record = EvaluationRecord {
                     id: record_id("eval", &basis.task_id, &invocation.id, ordinal),
                     task_id: basis.task_id.clone(),
@@ -1597,11 +1907,19 @@ impl<S: AssessmentStore, C: CitationReader> Assessment<'_, S, C> {
                     output_digest: digest,
                     recorded_us: None,
                 };
-                let stored = self.store.record_evaluation(basis, &record).await?;
                 ordinal += 1;
                 written += 1;
-                progress = true;
-                feedback.push(evaluation_line(&stored));
+                match self.store.record_evaluation(basis, &record).await {
+                    Ok(stored) => {
+                        progress = true;
+                        feedback.push(evaluation_line(&stored));
+                    }
+                    Err(ReadingError::Invalid) => feedback.push(format!(
+                        "{} for {subject} under basis {} was not recorded: the platform refused it as proposed.",
+                        criterion.id, target.id
+                    )),
+                    Err(error) => return Err(error),
+                }
             }
         }
 
@@ -1635,6 +1953,13 @@ impl<S: AssessmentStore, C: CitationReader> Assessment<'_, S, C> {
                 ));
                 continue;
             };
+            if deferred.contains(&(target.id.clone(), proposed.subject.clone())) {
+                feedback.push(format!(
+                    "The judgment of {} for {} was not recorded: some of its facts in your last answer were not recorded yet. Propose it again once they are.",
+                    criterion.id, proposed.subject
+                ));
+                continue;
+            }
             if let Some(found) = self
                 .store
                 .evaluation(basis, &target.id, &criterion.id, &proposed.subject)
@@ -1646,8 +1971,17 @@ impl<S: AssessmentStore, C: CitationReader> Assessment<'_, S, C> {
                 ));
                 continue;
             }
-            let facts = self.store.facts(basis, &target.id).await?;
-            let inputs: Vec<InputFact> = facts
+            if written >= MAX_INVOCATION_EVALUATIONS {
+                if !bound_reported {
+                    feedback.push(bound_line.into());
+                }
+                break;
+            }
+            if !basis_facts.contains_key(&target.id) {
+                let facts = self.store.facts(basis, &target.id).await?;
+                basis_facts.insert(target.id.clone(), facts);
+            }
+            let inputs: Vec<InputFact> = basis_facts[&target.id]
                 .iter()
                 .filter(|f| f.fact.subject == proposed.subject)
                 .map(FactRecord::input)
@@ -1682,9 +2016,6 @@ impl<S: AssessmentStore, C: CitationReader> Assessment<'_, S, C> {
                     &detail.uncertainty,
                 )),
             );
-            if written >= MAX_INVOCATION_EVALUATIONS {
-                break;
-            }
             let record = EvaluationRecord {
                 id: record_id("eval", &basis.task_id, &invocation.id, ordinal),
                 task_id: basis.task_id.clone(),
@@ -1701,11 +2032,19 @@ impl<S: AssessmentStore, C: CitationReader> Assessment<'_, S, C> {
                 output_digest: digest,
                 recorded_us: None,
             };
-            let stored = self.store.record_evaluation(basis, &record).await?;
             ordinal += 1;
             written += 1;
-            progress = true;
-            feedback.push(evaluation_line(&stored));
+            match self.store.record_evaluation(basis, &record).await {
+                Ok(stored) => {
+                    progress = true;
+                    feedback.push(evaluation_line(&stored));
+                }
+                Err(ReadingError::Invalid) => feedback.push(format!(
+                    "The judgment of {} for {} was not recorded: the platform refused it as proposed.",
+                    criterion.id, proposed.subject
+                )),
+                Err(error) => return Err(error),
+            }
         }
         *self.feedback.lock().expect("feedback lock") = Some((invocation.id.clone(), feedback));
         // A reclaim finds this answer's records already written: the work
@@ -1761,28 +2100,36 @@ impl<S: AssessmentStore, C: CitationReader> Assessment<'_, S, C> {
             .expect("feedback lock")
             .as_ref()
             .filter(|(_, lines)| !lines.is_empty())
-            .map(|(_, lines)| {
-                let mut text =
-                    String::from("Assessment proposals of your last answer (platform facts):");
-                let mut omitted = 0usize;
-                for line in lines {
-                    if text.len() + line.len() + 3 > MAX_ASSESSMENT_FEEDBACK_BYTES - 64 {
-                        omitted += 1;
-                        continue;
-                    }
-                    text.push_str("\n- ");
-                    text.push_str(line);
-                }
-                if omitted > 0 {
-                    text.push_str(&format!("\n- {omitted} further lines are not listed."));
-                }
-                text
-            });
+            .map(|(_, lines)| feedback_text(lines));
         Ok(AssessmentContext {
             outline: outline(&snapshot),
             feedback,
         })
     }
+}
+
+/// What became of the last answer's proposals. The lines repeat keys,
+/// names, subjects and values that came from the agent's answer and from
+/// source documents, so they travel inside the untrusted-content envelope
+/// (escaped) like every other attributed text; they never grant authority.
+pub fn feedback_text(lines: &[String]) -> String {
+    let mut body = String::from(
+        "What trusted code did with the assessment proposals of your last answer (agent and source text is quoted data):",
+    );
+    let mut omitted = 0usize;
+    for line in lines {
+        // The envelope adds its header and escapes; keep room for both.
+        if body.len() + line.len() + 3 > MAX_ASSESSMENT_FEEDBACK_BYTES - 512 {
+            omitted += 1;
+            continue;
+        }
+        body.push_str("\n- ");
+        body.push_str(line);
+    }
+    if omitted > 0 {
+        body.push_str(&format!("\n- {omitted} further lines are not listed."));
+    }
+    envelope(InputClass::ModelOutput, "assessment-feedback", &body)
 }
 
 fn verdict_text(outcome: &Outcome) -> String {
@@ -1888,7 +2235,11 @@ pub fn outline(snapshot: &AssessmentSnapshot) -> Option<String> {
         }
     };
     for b in snapshot.bases.iter().take(MAX_OUTLINE_RECORDS) {
-        let facts = snapshot.facts.iter().filter(|f| f.basis_id == b.id).count();
+        let facts = snapshot
+            .basis_fact_counts
+            .get(&b.id)
+            .copied()
+            .unwrap_or_default();
         push(
             &mut lines,
             format!(
@@ -1932,7 +2283,12 @@ pub fn outline(snapshot: &AssessmentSnapshot) -> Option<String> {
             ),
         );
     }
-    for e in snapshot.evaluations.iter().take(MAX_OUTLINE_RECORDS) {
+    // The newest evaluations: the snapshot holds them oldest first.
+    let skip = snapshot
+        .evaluations
+        .len()
+        .saturating_sub(MAX_OUTLINE_RECORDS);
+    for e in snapshot.evaluations.iter().skip(skip) {
         push(
             &mut lines,
             format!(

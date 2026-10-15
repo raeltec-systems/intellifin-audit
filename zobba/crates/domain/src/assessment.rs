@@ -103,6 +103,9 @@ vocabulary!(UnsupportedReason {
     TypeMismatch => "type_mismatch",
     SourceUnverified => "source_unverified",
     AnalysisFailed => "analysis_failed",
+    // The quote is verified, but it is part of a longer value at its
+    // location (`2,500.00` inside `12,500.00`), not the whole value.
+    PartialValue => "partial_value",
 });
 
 vocabulary!(Comparison {
@@ -180,6 +183,11 @@ vocabulary!(EvaluationReason {
     UnknownApplicability => "unknown_applicability",
     AuthorityUnverified => "authority_unverified",
     AnalysisFailed => "analysis_failed",
+    // The fact's subject was not found at, or beside, its verified source.
+    SubjectUnverified => "subject_unverified",
+    // A decimal's currency or unit was not found at, or beside, its
+    // verified source: its measure is only the agent's claim.
+    UnitUnverified => "unit_unverified",
 });
 
 impl ParseRule {
@@ -490,7 +498,9 @@ impl Instant {
                 return None;
             }
             let minutes = i16::try_from(h * 60 + m).ok()?;
-            if minutes > MAX_OFFSET_MINUTES {
+            // RFC 3339 `-00:00` means "offset unknown": it is not `Z`, and an
+            // unknown offset cannot give a civil date, so it is refused.
+            if minutes > MAX_OFFSET_MINUTES || (sign < 0 && minutes == 0) {
                 return None;
             }
             (clock, sign * minutes)
@@ -703,6 +713,75 @@ impl ParseRule {
         };
         Some(value)
     }
+}
+
+// ----------------------------------------------------- whole values
+
+/// Characters that join the parts of one value when a letter or digit
+/// follows them (`12,500.00`, `INV-0042-A`, `05/03/2026`).
+const fn joiner(c: char) -> bool {
+    matches!(c, ',' | '.' | '-' | '_' | '/' | '\'')
+}
+/// Whether the text on one side of an occurrence ends the value there.
+/// `outward` walks away from the occurrence; `inner` is the occurrence's
+/// character on that side; `leading` is true on its left.
+fn ends_value(mut outward: impl Iterator<Item = char>, inner: char, leading: bool) -> bool {
+    let Some(next) = outward.next() else {
+        return true;
+    };
+    if next.is_alphanumeric() {
+        return false;
+    }
+    if joiner(next) && outward.next().is_some_and(char::is_alphanumeric) {
+        return false;
+    }
+    // A sign or a decimal point directly before a number belongs to it:
+    // `-2,500.00` and `.5` are other values than `2,500.00` and `5`.
+    !(leading && inner.is_ascii_digit() && matches!(next, '-' | '+' | '−' | '.'))
+}
+
+/// Whether `token` occurs in `text` as a whole value: at the edges of the
+/// text, or bounded by characters that are not part of the same value.
+/// Both are compared after [`normalize`].
+pub fn whole_token(text: &str, token: &str) -> bool {
+    let (text, token) = (normalize(text), normalize(token));
+    let (Some(first), Some(last)) = (token.chars().next(), token.chars().last()) else {
+        return false;
+    };
+    let mut from = 0;
+    while let Some(found) = text[from..].find(&token) {
+        let at = from + found;
+        let end = at + token.len();
+        if ends_value(text[..at].chars().rev(), first, true)
+            && ends_value(text[end..].chars(), last, false)
+        {
+            return true;
+        }
+        from = at + first.len_utf8();
+    }
+    false
+}
+
+/// Whether a verified quote is the whole value at its location, not a
+/// fragment of a longer one. A cell is compared whole by the 22.5 verifier;
+/// every other locator confirms by containment, so its located text must
+/// hold the quote as a [`whole_token`].
+pub fn whole_value(locator: &Locator, texts: &[String], quote: &str) -> bool {
+    if locator.exact() {
+        let quote = normalize(quote);
+        return texts.iter().any(|t| normalize(t) == quote);
+    }
+    texts.iter().any(|t| whole_token(t, quote))
+}
+
+/// Whether a key has the shape of a recorded ID: a key that looks like an ID
+/// could silently redirect a reference to the new record.
+fn record_shaped(key: &str) -> bool {
+    key.split_once('-').is_some_and(|(prefix, rest)| {
+        matches!(prefix, "crit" | "basis" | "fact" | "eval")
+            && rest.len() == 40
+            && rest.bytes().all(|b| b.is_ascii_hexdigit())
+    })
 }
 
 /// What the agent states about one fact.
@@ -1004,6 +1083,7 @@ impl ProposedCriterion {
                     .all(|name| required(name).is_some_and(|r| predicate.accepts(r.kind)))
         };
         valid_scope_id(&self.key)
+            && !record_shaped(&self.key)
             && self.supersedes.as_deref().is_none_or(valid_scope_id)
             && text_ok(&self.assertion, MAX_ASSERTION_BYTES)
             && self.authority.is_valid()
@@ -1059,6 +1139,7 @@ pub struct ProposedBasis {
 impl ProposedBasis {
     pub fn is_valid(&self) -> bool {
         valid_scope_id(&self.key)
+            && !record_shaped(&self.key)
             && self.supersedes.as_deref().is_none_or(valid_scope_id)
             && text_ok(&self.objective, MAX_OBJECTIVE_BYTES)
             && !self.criteria.is_empty()
@@ -1166,6 +1247,13 @@ pub struct InputFact {
     pub name: String,
     pub state: FactState,
     pub support: FactSupport,
+    /// The subject was found at, or beside, a verified source of the value.
+    pub subject_grounded: bool,
+    /// For a decimal: its currency or unit was found at, or beside, a
+    /// verified source. None for every other value.
+    pub measure_grounded: Option<bool>,
+    /// The civil date the fact is effective at, when stated.
+    pub effective: Option<CivilDate>,
 }
 
 /// The pinned inputs of one evaluation: the basis period, whether the
@@ -1194,7 +1282,11 @@ impl Outcome {
     /// The structural rules the database also enforces.
     pub fn is_valid(&self) -> bool {
         let decided = matches!(self.verdict, Some(Verdict::Met | Verdict::NotMet));
-        (!decided || (self.applicability == Applicability::Applicable && self.reason.is_none()))
+        // A decided verdict reads at least one fact.
+        (!decided
+            || (self.applicability == Applicability::Applicable
+                && self.reason.is_none()
+                && !self.inputs.is_empty()))
             && (self.execution == Execution::Completed
                 || (self.verdict.is_none() && self.reason == Some(EvaluationReason::AnalysisFailed)))
             && (self.applicability != Applicability::NotApplicable || self.verdict.is_none())
@@ -1227,6 +1319,13 @@ fn usable<'a>(
         (FactState::Value(value), FactSupport::Supported) => {
             if kind.is_some_and(|k| k != value.kind()) {
                 Err(EvaluationReason::FactUnsupported)
+            } else if !fact.subject_grounded {
+                // A verified value of an unproven subject proves nothing
+                // about this subject.
+                Err(EvaluationReason::SubjectUnverified)
+            } else if value.kind() == FactType::Decimal && fact.measure_grounded != Some(true) {
+                // The number is proven; its currency or unit is only claimed.
+                Err(EvaluationReason::UnitUnverified)
             } else {
                 Ok(value)
             }
@@ -1293,8 +1392,12 @@ fn test(predicate: &Predicate, context: &EvaluationContext<'_>) -> Test {
                 _ => return Err(EvaluationReason::FactUnsupported),
             },
             Predicate::MemberOf { fact, values } => match value(fact)? {
+                // Derived values are normalized; members are compared the
+                // same way, so a spacing or composition difference is never
+                // an exception.
                 FactValue::Enum(v) | FactValue::Identifier(v) | FactValue::Text(v) => {
-                    values.contains(v)
+                    let v = normalize(v);
+                    values.iter().any(|member| normalize(member) == v)
                 }
                 _ => return Err(EvaluationReason::FactUnsupported),
             },
@@ -1337,8 +1440,19 @@ fn consulted(criterion: &ProposedCriterion, extra: &[&str]) -> Vec<String> {
     names
 }
 
-/// Applicability, analysis failure and authority, shared by rule and
-/// judgment evaluation. `Err` is a finished outcome.
+/// Authority, effective dates, applicability and analysis failure, shared
+/// by rule and judgment evaluation, in this order. `Err` is a finished
+/// outcome.
+///
+/// 1. An unverified authority decides nothing, not even "does not apply":
+///    its applicability and dates are as unproven as its rule.
+/// 2. A criterion version not in effect for the basis period, or for a
+///    consulted fact's stated effective date, does not apply.
+/// 3. The applicability test: undecidable input keeps its real cause
+///    (`missing_fact`, `fact_unsupported`, ...). An input from a failed
+///    analysis makes the execution fail.
+/// 4. A failed analysis of any other consulted fact fails the execution.
+/// 5. Every required fact must be usable, with its measure.
 fn prepare(
     criterion: &ProposedCriterion,
     context: &EvaluationContext<'_>,
@@ -1359,57 +1473,78 @@ fn prepare(
         origin,
         inputs: inputs.clone(),
     };
-    // A failed analysis is an execution failure, never an exception.
-    if names.iter().any(|name| {
+    let failed = |name: &str| {
         context.facts.iter().any(|f| {
-            &f.name == name
+            f.name == name
                 && f.support == FactSupport::Unsupported(UnsupportedReason::AnalysisFailed)
         })
-    }) {
-        return Err(outcome(
-            Applicability::Unknown,
+    };
+    let analysis_failed = |applicability| {
+        outcome(
+            applicability,
             Execution::Failed,
             None,
             Some(EvaluationReason::AnalysisFailed),
+        )
+    };
+    if !context.authority_verified {
+        return Err(outcome(
+            Applicability::Unknown,
+            Execution::Completed,
+            Some(Verdict::Undetermined),
+            Some(EvaluationReason::AuthorityUnverified),
         ));
     }
-    // A criterion version not in effect during the basis period does not apply.
-    let effective = criterion
+    let in_effect = |date: CivilDate| {
+        criterion.effective_from.is_none_or(|from| from <= date)
+            && criterion.effective_to.is_none_or(|to| date <= to)
+    };
+    let overlaps = criterion
         .effective_from
         .is_none_or(|from| from <= context.period_to)
         && criterion
             .effective_to
             .is_none_or(|to| context.period_from <= to);
-    let applicability = match &criterion.applicability {
-        _ if !effective => Applicability::NotApplicable,
-        None => Applicability::Applicable,
-        Some(predicate) => match test(predicate, context) {
-            Test::True => Applicability::Applicable,
-            Test::False => Applicability::NotApplicable,
-            Test::Undetermined(_) => Applicability::Unknown,
-        },
-    };
-    match applicability {
-        Applicability::NotApplicable => {
-            return Err(outcome(applicability, Execution::Completed, None, None));
-        }
-        Applicability::Unknown => {
-            return Err(outcome(
-                applicability,
-                Execution::Completed,
-                Some(Verdict::Undetermined),
-                Some(EvaluationReason::UnknownApplicability),
-            ));
-        }
-        Applicability::Applicable => {}
-    }
-    if !context.authority_verified {
+    let dated_outside = names.iter().any(|name| {
+        context
+            .facts
+            .iter()
+            .any(|f| &f.name == name && f.effective.is_some_and(|d| !in_effect(d)))
+    });
+    if !overlaps || dated_outside {
         return Err(outcome(
-            applicability,
+            Applicability::NotApplicable,
             Execution::Completed,
-            Some(Verdict::Undetermined),
-            Some(EvaluationReason::AuthorityUnverified),
+            None,
+            None,
         ));
+    }
+    if let Some(predicate) = &criterion.applicability {
+        if predicate.facts().iter().any(|name| failed(name)) {
+            return Err(analysis_failed(Applicability::Unknown));
+        }
+        match test(predicate, context) {
+            Test::True => {}
+            Test::False => {
+                return Err(outcome(
+                    Applicability::NotApplicable,
+                    Execution::Completed,
+                    None,
+                    None,
+                ));
+            }
+            Test::Undetermined(reason) => {
+                return Err(outcome(
+                    Applicability::Unknown,
+                    Execution::Completed,
+                    Some(Verdict::Undetermined),
+                    Some(reason),
+                ));
+            }
+        }
+    }
+    if names.iter().any(|name| failed(name)) {
+        return Err(analysis_failed(Applicability::Applicable));
     }
     for required in &criterion.required_facts {
         let checked =
@@ -1423,7 +1558,7 @@ fn prepare(
             });
         if let Err(reason) = checked {
             return Err(outcome(
-                applicability,
+                Applicability::Applicable,
                 Execution::Completed,
                 Some(Verdict::Undetermined),
                 Some(reason),
@@ -1487,6 +1622,18 @@ pub fn judge(
         Ok(inputs) => inputs,
         Err(outcome) => return outcome,
     };
+    // A judgment rests on the facts it cites: one that cites none is not a
+    // decision, whatever verdict the model wrote.
+    if cited.is_empty() {
+        return Outcome {
+            applicability: Applicability::Applicable,
+            execution: Execution::Completed,
+            verdict: Some(Verdict::Undetermined),
+            reason: Some(EvaluationReason::MissingFact),
+            origin: Origin::ModelProposal,
+            inputs,
+        };
+    }
     for name in &cited {
         if let Err(reason) = usable(context.facts, name, None) {
             return Outcome {

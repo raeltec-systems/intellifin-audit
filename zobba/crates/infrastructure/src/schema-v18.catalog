@@ -165,9 +165,11 @@ column|assessment_facts|18|support_reason|text|false|||
 column|assessment_facts|19|rule|text|false|||
 column|assessment_facts|1|organisation_id|text|true|||
 column|assessment_facts|20|job_id|text|false|||
-column|assessment_facts|21|document|jsonb|true|||
-column|assessment_facts|22|digest|text|true|||
-column|assessment_facts|23|created_us|bigint|true|(floor((EXTRACT(epoch FROM clock_timestamp()) * (1000000)::numeric)))::bigint||
+column|assessment_facts|21|subject_grounded|boolean|true|||
+column|assessment_facts|22|measure_grounded|boolean|false|||
+column|assessment_facts|23|document|jsonb|true|||
+column|assessment_facts|24|digest|text|true|||
+column|assessment_facts|25|created_us|bigint|true|(floor((EXTRACT(epoch FROM clock_timestamp()) * (1000000)::numeric)))::bigint||
 column|assessment_facts|2|client_id|text|true|||
 column|assessment_facts|3|engagement_id|text|true|||
 column|assessment_facts|4|task_id|text|true|||
@@ -1003,7 +1005,7 @@ constraint|answer_verifications|answer_verifications_verified_at_not_null|true|N
 constraint|answer_verifications|answer_verifications_verified_us_not_null|true|NOT NULL verified_us
 constraint|assessment_bases|assessment_bases_actor_id_fkey|true|FOREIGN KEY (actor_id) REFERENCES identities(id)
 constraint|assessment_bases|assessment_bases_actor_id_not_null|true|NOT NULL actor_id
-constraint|assessment_bases|assessment_bases_check1|true|CHECK ((((document ->> 'record'::text) = 'basis'::text) AND ((document ->> 'id'::text) = id) AND ((document ->> 'task_id'::text) = task_id) AND ((document ->> 'cycle_id'::text) = cycle_id) AND ((document ->> 'invocation_id'::text) = invocation_id) AND (((document ->> 'ordinal'::text))::integer = ordinal) AND ((document ->> 'methodology_binding_id'::text) = methodology_binding_id) AND (((document ->> 'execution_epoch'::text))::bigint = execution_epoch) AND ((document ->> 'period_from'::text) = (period_from)::text) AND ((document ->> 'period_to'::text) = (period_to)::text) AND (NOT ((document ->> 'supersedes'::text) IS DISTINCT FROM supersedes)) AND (jsonb_typeof((document -> 'criteria'::text)) = 'array'::text) AND ((jsonb_array_length((document -> 'criteria'::text)) >= 1) AND (jsonb_array_length((document -> 'criteria'::text)) <= 16))))
+constraint|assessment_bases|assessment_bases_check1|true|CHECK ((((document ->> 'record'::text) = 'basis'::text) AND ((document ->> 'id'::text) = id) AND ((document ->> 'task_id'::text) = task_id) AND ((document ->> 'cycle_id'::text) = cycle_id) AND ((document ->> 'invocation_id'::text) = invocation_id) AND (((document ->> 'ordinal'::text))::integer = ordinal) AND ((document ->> 'methodology_binding_id'::text) = methodology_binding_id) AND (((document ->> 'execution_epoch'::text))::bigint = execution_epoch) AND ((document ->> 'period_from'::text) = to_char((period_from)::timestamp with time zone, 'YYYY-MM-DD'::text)) AND ((document ->> 'period_to'::text) = to_char((period_to)::timestamp with time zone, 'YYYY-MM-DD'::text)) AND (NOT ((document ->> 'supersedes'::text) IS DISTINCT FROM supersedes)) AND (jsonb_typeof((document -> 'criteria'::text)) = 'array'::text) AND ((jsonb_array_length((document -> 'criteria'::text)) >= 1) AND (jsonb_array_length((document -> 'criteria'::text)) <= 16))))
 constraint|assessment_bases|assessment_bases_check2|true|CHECK ((supersedes IS DISTINCT FROM id))
 constraint|assessment_bases|assessment_bases_check|true|CHECK ((period_from <= period_to))
 constraint|assessment_bases|assessment_bases_client_id_not_null|true|NOT NULL client_id
@@ -1128,8 +1130,8 @@ constraint|assessment_evaluations|assessment_evaluations_origin_not_null|true|NO
 constraint|assessment_evaluations|assessment_evaluations_output_digest_check|true|CHECK ((output_digest ~ '^[0-9a-f]{64}$'::text))
 constraint|assessment_evaluations|assessment_evaluations_output_digest_not_null|true|NOT NULL output_digest
 constraint|assessment_evaluations|assessment_evaluations_pkey|true|PRIMARY KEY (organisation_id, client_id, engagement_id, id)
-constraint|assessment_evaluations|assessment_evaluations_reason_check|true|CHECK ((reason = ANY (ARRAY['missing_fact'::text, 'fact_unavailable'::text, 'fact_ambiguous'::text, 'fact_unsupported'::text, 'unit_mismatch'::text, 'unknown_applicability'::text, 'authority_unverified'::text, 'analysis_failed'::text])))
-constraint|assessment_evaluations|assessment_evaluations_subject_check|true|CHECK ((((octet_length(subject) >= 1) AND (octet_length(subject) <= 128)) AND (btrim(subject) <> ''::text) AND (subject !~ '[[:cntrl:]]'::text)))
+constraint|assessment_evaluations|assessment_evaluations_reason_check|true|CHECK ((reason = ANY (ARRAY['missing_fact'::text, 'fact_unavailable'::text, 'fact_ambiguous'::text, 'fact_unsupported'::text, 'unit_mismatch'::text, 'unknown_applicability'::text, 'authority_unverified'::text, 'analysis_failed'::text, 'subject_unverified'::text, 'unit_unverified'::text])))
+constraint|assessment_evaluations|assessment_evaluations_subject_check|true|CHECK ((((octet_length(subject) >= 1) AND (octet_length(subject) <= 128)) AND (btrim(subject) <> ''::text) AND (subject !~ '[\x01-\x1f\x7f-\x9f]'::text)))
 constraint|assessment_evaluations|assessment_evaluations_subject_not_null|true|NOT NULL subject
 constraint|assessment_evaluations|assessment_evaluations_task_id_not_null|true|NOT NULL task_id
 constraint|assessment_evaluations|assessment_evaluations_verdict_check|true|CHECK ((verdict = ANY (ARRAY['met'::text, 'not_met'::text, 'undetermined'::text])))
@@ -1160,13 +1162,14 @@ constraint|assessment_facts|assessment_complete|true|TRIGGER DEFERRABLE INITIALL
 constraint|assessment_facts|assessment_facts_actor_id_fkey|true|FOREIGN KEY (actor_id) REFERENCES identities(id)
 constraint|assessment_facts|assessment_facts_actor_id_not_null|true|NOT NULL actor_id
 constraint|assessment_facts|assessment_facts_basis_id_not_null|true|NOT NULL basis_id
-constraint|assessment_facts|assessment_facts_check1|true|CHECK (((value_kind = ANY (ARRAY['unavailable'::text, 'ambiguous'::text])) = (rule IS NULL)))
-constraint|assessment_facts|assessment_facts_check2|true|CHECK (((value_kind <> ALL (ARRAY['unavailable'::text, 'ambiguous'::text])) OR (support = 'no_value'::text) OR (support_reason = ANY (ARRAY['analysis_failed'::text, 'source_unverified'::text]))))
-constraint|assessment_facts|assessment_facts_check3|true|CHECK (((value_kind = ANY (ARRAY['unavailable'::text, 'ambiguous'::text])) OR (support <> 'no_value'::text)))
-constraint|assessment_facts|assessment_facts_check4|true|CHECK (((support_reason IS DISTINCT FROM 'analysis_failed'::text) OR (job_id IS NOT NULL)))
-constraint|assessment_facts|assessment_facts_check5|true|CHECK ((((document ->> 'record'::text) = 'fact'::text) AND ((document ->> 'id'::text) = id) AND ((document ->> 'task_id'::text) = task_id) AND ((document ->> 'cycle_id'::text) = cycle_id) AND ((document ->> 'invocation_id'::text) = invocation_id) AND (((document ->> 'ordinal'::text))::integer = ordinal) AND ((document ->> 'methodology_binding_id'::text) = methodology_binding_id) AND (((document ->> 'execution_epoch'::text))::bigint = execution_epoch) AND ((document ->> 'basis_id'::text) = basis_id) AND ((document ->> 'subject'::text) = subject) AND ((document ->> 'subject_unit'::text) = subject_unit) AND ((document ->> 'name'::text) = name) AND (((document -> 'value'::text) ->> 'kind'::text) = value_kind) AND ((document ->> 'support'::text) = support) AND (NOT ((document ->> 'support_reason'::text) IS DISTINCT FROM support_reason)) AND (NOT ((document ->> 'rule'::text) IS DISTINCT FROM rule)) AND (NOT ((document ->> 'job_id'::text) IS DISTINCT FROM job_id)) AND (jsonb_typeof((document -> 'sources'::text)) = 'array'::text) AND (jsonb_array_length((document -> 'sources'::text)) <= 4)))
-constraint|assessment_facts|assessment_facts_check6|true|CHECK (((value_kind <> 'decimal'::text) OR ((((document -> 'value'::text) ->> 'mantissa'::text) ~ '^-?[0-9]{1,19}$'::text) AND (((((document -> 'value'::text) ->> 'scale'::text))::integer >= 0) AND ((((document -> 'value'::text) ->> 'scale'::text))::integer <= 18)) AND (((((document -> 'value'::text) -> 'measure'::text) ->> 'currency'::text) ~ '^[A-Z]{3}$'::text) OR ((((document -> 'value'::text) -> 'measure'::text) ->> 'unit'::text) ~ '^[a-z][a-z0-9_]{0,63}$'::text)))))
-constraint|assessment_facts|assessment_facts_check7|true|CHECK (((value_kind <> 'instant'::text) OR ((jsonb_typeof(((document -> 'value'::text) -> 'utc_micros'::text)) = 'number'::text) AND (((((document -> 'value'::text) ->> 'offset_minutes'::text))::integer >= '-840'::integer) AND ((((document -> 'value'::text) ->> 'offset_minutes'::text))::integer <= 840)))))
+constraint|assessment_facts|assessment_facts_check1|true|CHECK (((value_kind = 'decimal'::text) = (measure_grounded IS NOT NULL)))
+constraint|assessment_facts|assessment_facts_check2|true|CHECK (((value_kind = ANY (ARRAY['unavailable'::text, 'ambiguous'::text])) = (rule IS NULL)))
+constraint|assessment_facts|assessment_facts_check3|true|CHECK (((value_kind <> ALL (ARRAY['unavailable'::text, 'ambiguous'::text])) OR (support = 'no_value'::text) OR (support_reason = ANY (ARRAY['analysis_failed'::text, 'source_unverified'::text]))))
+constraint|assessment_facts|assessment_facts_check4|true|CHECK (((value_kind = ANY (ARRAY['unavailable'::text, 'ambiguous'::text])) OR (support <> 'no_value'::text)))
+constraint|assessment_facts|assessment_facts_check5|true|CHECK (((support_reason IS DISTINCT FROM 'analysis_failed'::text) OR (job_id IS NOT NULL)))
+constraint|assessment_facts|assessment_facts_check6|true|CHECK ((((document ->> 'record'::text) = 'fact'::text) AND ((document ->> 'id'::text) = id) AND ((document ->> 'task_id'::text) = task_id) AND ((document ->> 'cycle_id'::text) = cycle_id) AND ((document ->> 'invocation_id'::text) = invocation_id) AND (((document ->> 'ordinal'::text))::integer = ordinal) AND ((document ->> 'methodology_binding_id'::text) = methodology_binding_id) AND (((document ->> 'execution_epoch'::text))::bigint = execution_epoch) AND ((document ->> 'basis_id'::text) = basis_id) AND ((document ->> 'subject'::text) = subject) AND ((document ->> 'subject_unit'::text) = subject_unit) AND ((document ->> 'name'::text) = name) AND (((document -> 'value'::text) ->> 'kind'::text) = value_kind) AND ((document ->> 'support'::text) = support) AND (NOT ((document ->> 'support_reason'::text) IS DISTINCT FROM support_reason)) AND (NOT ((document ->> 'rule'::text) IS DISTINCT FROM rule)) AND (NOT ((document ->> 'job_id'::text) IS DISTINCT FROM job_id)) AND (jsonb_typeof((document -> 'subject_grounded'::text)) = 'boolean'::text) AND (((document ->> 'subject_grounded'::text))::boolean = subject_grounded) AND (NOT ((document ->> 'measure_grounded'::text) IS DISTINCT FROM (measure_grounded)::text)) AND (jsonb_typeof((document -> 'sources'::text)) = 'array'::text) AND (jsonb_array_length((document -> 'sources'::text)) <= 4)))
+constraint|assessment_facts|assessment_facts_check7|true|CHECK (((value_kind <> 'decimal'::text) OR ((((document -> 'value'::text) ->> 'mantissa'::text) ~ '^-?[0-9]{1,19}$'::text) AND (((((document -> 'value'::text) ->> 'scale'::text))::integer >= 0) AND ((((document -> 'value'::text) ->> 'scale'::text))::integer <= 18)) AND (((((document -> 'value'::text) -> 'measure'::text) ->> 'currency'::text) ~ '^[A-Z]{3}$'::text) OR ((((document -> 'value'::text) -> 'measure'::text) ->> 'unit'::text) ~ '^[a-z][a-z0-9_]{0,63}$'::text)))))
+constraint|assessment_facts|assessment_facts_check8|true|CHECK (((value_kind <> 'instant'::text) OR ((jsonb_typeof(((document -> 'value'::text) -> 'utc_micros'::text)) = 'number'::text) AND (((((document -> 'value'::text) ->> 'offset_minutes'::text))::integer >= '-840'::integer) AND ((((document -> 'value'::text) ->> 'offset_minutes'::text))::integer <= 840)))))
 constraint|assessment_facts|assessment_facts_check|true|CHECK (((support = 'unsupported'::text) = (support_reason IS NOT NULL)))
 constraint|assessment_facts|assessment_facts_client_id_not_null|true|NOT NULL client_id
 constraint|assessment_facts|assessment_facts_created_us_not_null|true|NOT NULL created_us
@@ -1196,13 +1199,14 @@ constraint|assessment_facts|assessment_facts_organisation_id_client_id_engagemen
 constraint|assessment_facts|assessment_facts_organisation_id_not_null|true|NOT NULL organisation_id
 constraint|assessment_facts|assessment_facts_pkey|true|PRIMARY KEY (organisation_id, client_id, engagement_id, id)
 constraint|assessment_facts|assessment_facts_rule_check|true|CHECK ((rule = ANY (ARRAY['identifier_exact'::text, 'text_exact'::text, 'enum_exact'::text, 'boolean_yes_no'::text, 'boolean_true_false'::text, 'decimal_plain'::text, 'decimal_grouped_comma'::text, 'date_iso'::text, 'date_dmy'::text, 'instant_rfc3339'::text])))
-constraint|assessment_facts|assessment_facts_subject_check|true|CHECK ((((octet_length(subject) >= 1) AND (octet_length(subject) <= 128)) AND (btrim(subject) <> ''::text) AND (subject !~ '[[:cntrl:]]'::text)))
+constraint|assessment_facts|assessment_facts_subject_check|true|CHECK ((((octet_length(subject) >= 1) AND (octet_length(subject) <= 128)) AND (btrim(subject) <> ''::text) AND (subject !~ '[\x01-\x1f\x7f-\x9f]'::text)))
+constraint|assessment_facts|assessment_facts_subject_grounded_not_null|true|NOT NULL subject_grounded
 constraint|assessment_facts|assessment_facts_subject_not_null|true|NOT NULL subject
 constraint|assessment_facts|assessment_facts_subject_unit_check|true|CHECK ((subject_unit ~ '^[a-z][a-z0-9_]{0,63}$'::text))
 constraint|assessment_facts|assessment_facts_subject_unit_not_null|true|NOT NULL subject_unit
 constraint|assessment_facts|assessment_facts_support_check|true|CHECK ((support = ANY (ARRAY['supported'::text, 'unsupported'::text, 'no_value'::text])))
 constraint|assessment_facts|assessment_facts_support_not_null|true|NOT NULL support
-constraint|assessment_facts|assessment_facts_support_reason_check|true|CHECK ((support_reason = ANY (ARRAY['type_mismatch'::text, 'source_unverified'::text, 'analysis_failed'::text])))
+constraint|assessment_facts|assessment_facts_support_reason_check|true|CHECK ((support_reason = ANY (ARRAY['type_mismatch'::text, 'source_unverified'::text, 'analysis_failed'::text, 'partial_value'::text])))
 constraint|assessment_facts|assessment_facts_task_id_not_null|true|NOT NULL task_id
 constraint|assessment_facts|assessment_facts_value_kind_check|true|CHECK ((value_kind = ANY (ARRAY['identifier'::text, 'text'::text, 'boolean'::text, 'enum'::text, 'decimal'::text, 'date'::text, 'instant'::text, 'unavailable'::text, 'ambiguous'::text])))
 constraint|assessment_facts|assessment_facts_value_kind_not_null|true|NOT NULL value_kind
@@ -2437,7 +2441,7 @@ function|analysis_event_guard||47260112bfca2557bf2aab93be9b6c4383fca71b5b86a082d
 function|analysis_immutable||fa2453f087139d68e2d1db8d325a07b7fac0cbb92c9b74f75bfb09eeb3c9e6d2
 function|analysis_output_guard||aa5d5785ef9de0f9290e83adf052d997d3c04a33169a7a83516f70e7b4f45dcb
 function|assessment_complete||8934928ac6785c786d42589842bb79df687b3a597864c53f25ddcfca215e5f65
-function|assessment_guard||a46975ea5d2c0b84bcf9480bff3f9e68f5152c6669ba2ea25a23637c92a95017
+function|assessment_guard||8b94c7280e73a449409ad440e5a95dea446221f9f1e1b77e189e6867e2c789b3
 function|assessment_immutable||38080164dd8df134d51e94338cedc173337a7a8b8513f9ebba3863edc4ecba5d
 function|assessment_retained||217a33308ada2c8e29f45d9cc80f74f03cad25d4ee1fadd6b643d7db87fed0db
 function|engagement_establish|actor text, session_hash text, org text, setup text, new_client text, new_engagement text, daily_limit integer|960fca846b8cd4992c83b64ac764ca1b462d20c43f280e2559697b928f377478

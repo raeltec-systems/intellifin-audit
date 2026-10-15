@@ -793,11 +793,12 @@ impl CitedAnswer {
         let mut propose_criteria = entries(
             object,
             "propose_criteria",
-            MAX_PROPOSED_CRITERIA,
+            usize::MAX,
             assessment::decode_criterion,
             &mut discarded,
         )?;
-        // Criterion keys are local names: a repeated key is left out too.
+        // Criterion keys are local names: a repeated key is left out too,
+        // before the bound, so a repeat never takes a valid entry's place.
         let mut seen = std::collections::BTreeSet::new();
         propose_criteria.retain(|c| {
             let fresh = seen.insert(c.key.clone());
@@ -806,6 +807,10 @@ impl CitedAnswer {
             }
             fresh
         });
+        if propose_criteria.len() > MAX_PROPOSED_CRITERIA {
+            discarded += (propose_criteria.len() - MAX_PROPOSED_CRITERIA) as u32;
+            propose_criteria.truncate(MAX_PROPOSED_CRITERIA);
+        }
         let propose_basis = entries(
             object,
             "propose_basis",

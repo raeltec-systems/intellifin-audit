@@ -309,22 +309,44 @@ impl AssessmentStore for AssessmentRepository {
             return Ok(None);
         }
         let mut tx = scoped(&self.pool, &basis.actor_id, &basis.scope).await?;
-        // The same definition as the database guard: the job completed. A
-        // failed job is collected too, so collection is not success.
-        let collected: Option<bool> = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM public.analysis_job_events e WHERE e.job_id=j.id AND e.status='completed') FROM public.analysis_jobs j WHERE j.id=$1 AND j.task_id=$2")
+        // The same definition as the database guard: the job's latest event
+        // that is not a collection (a `collected` event repeats the outcome
+        // before it).
+        let latest: Option<Option<String>> = sqlx::query_scalar("SELECT (SELECT e.status FROM public.analysis_job_events e WHERE e.job_id=j.id AND e.status<>'collected' ORDER BY e.sequence DESC LIMIT 1) FROM public.analysis_jobs j WHERE j.id=$1 AND j.task_id=$2")
             .bind(job_id)
             .bind(&basis.task_id)
             .fetch_optional(&mut *tx)
             .await
             .map_err(unavailable)?;
         tx.commit().await.map_err(unavailable)?;
-        Ok(collected.map(|c| {
-            if c {
-                JobState::Collected
-            } else {
-                JobState::Failed
-            }
+        Ok(latest.map(|status| match status.as_deref() {
+            Some("completed") => JobState::Completed,
+            Some("failed" | "limit_exceeded" | "stopped") => JobState::Failed,
+            _ => JobState::Pending,
         }))
+    }
+    async fn evaluations_of(
+        &self,
+        basis: &ClaimBasis,
+        basis_id: &str,
+        criterion_id: &str,
+    ) -> Result<Vec<EvaluationRecord>, ReadingError> {
+        let mut tx = scoped(&self.pool, &basis.actor_id, &basis.scope).await?;
+        let rows = sqlx::query("SELECT document,digest,created_us FROM public.assessment_evaluations WHERE task_id=$1 AND basis_id=$2 AND criterion_id=$3 ORDER BY subject COLLATE \"C\" LIMIT $4")
+            .bind(&basis.task_id)
+            .bind(basis_id)
+            .bind(criterion_id)
+            .bind(MAX_BASIS_FACTS as i64 + 1)
+            .fetch_all(&mut *tx)
+            .await
+            .map_err(unavailable)?;
+        // One per subject, and a basis holds at most MAX_BASIS_FACTS facts.
+        if rows.len() > MAX_BASIS_FACTS {
+            return Err(ReadingError::Capacity);
+        }
+        let found = rows.iter().map(evaluation_from).collect::<Result<_, _>>()?;
+        tx.commit().await.map_err(unavailable)?;
+        Ok(found)
     }
     async fn record_criterion(
         &self,
@@ -463,7 +485,7 @@ impl AssessmentStore for AssessmentRepository {
             zobba_domain::assessment::FactState::Unavailable(_) => "unavailable",
             zobba_domain::assessment::FactState::Ambiguous { .. } => "ambiguous",
         };
-        sqlx::query("INSERT INTO public.assessment_facts(organisation_id,client_id,engagement_id,task_id,cycle_id,actor_id,invocation_id,ordinal,id,methodology_binding_id,execution_epoch,basis_id,subject,subject_unit,name,value_kind,support,support_reason,rule,job_id,document,digest) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)")
+        sqlx::query("INSERT INTO public.assessment_facts(organisation_id,client_id,engagement_id,task_id,cycle_id,actor_id,invocation_id,ordinal,id,methodology_binding_id,execution_epoch,basis_id,subject,subject_unit,name,value_kind,support,support_reason,rule,job_id,subject_grounded,measure_grounded,document,digest) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)")
             .bind(&s.organisation_id).bind(&s.client_id).bind(&s.engagement_id)
             .bind(&record.task_id).bind(&record.cycle_id).bind(&basis.actor_id)
             .bind(&record.invocation_id).bind(record.ordinal as i32).bind(&record.id)
@@ -472,6 +494,7 @@ impl AssessmentStore for AssessmentRepository {
             .bind(value_kind).bind(record.support.as_str())
             .bind(record.support.reason().map(|r| r.as_str()))
             .bind(f.rule.map(|r| r.as_str())).bind(&f.job_id)
+            .bind(record.grounding.subject).bind(record.grounding.measure)
             .bind(to_json(&document)).bind(document_digest(&document))
             .execute(&mut *tx).await.map_err(refusal)?;
         for (ordinal, source) in record.sources.iter().enumerate() {
@@ -598,8 +621,21 @@ async fn snapshot(tx: &mut Tx, task_id: &str) -> Result<AssessmentSnapshot, Read
         MAX_OUTLINE_RECORDS * 4,
     )
     .await?;
+    let bases: Vec<BasisRecord> = bases.iter().map(basis_from).collect::<Result<_, _>>()?;
+    // Exact fact counts of the listed bases, never counted from a sample.
+    let ids: Vec<&String> = bases.iter().map(|b| &b.id).collect();
+    let counts: Vec<(String, i64)> = sqlx::query_as("SELECT basis_id,count(*) FROM public.assessment_facts WHERE task_id=$1 AND basis_id = ANY($2) GROUP BY basis_id")
+        .bind(task_id)
+        .bind(&ids)
+        .fetch_all(&mut **tx)
+        .await
+        .map_err(unavailable)?;
     Ok(AssessmentSnapshot {
-        bases: bases.iter().map(basis_from).collect::<Result<_, _>>()?,
+        bases,
+        basis_fact_counts: counts
+            .into_iter()
+            .map(|(id, count)| (id, count as u64))
+            .collect(),
         criteria: criteria
             .iter()
             .map(criterion_from)

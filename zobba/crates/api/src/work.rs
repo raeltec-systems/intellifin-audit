@@ -336,6 +336,10 @@ pub struct AssessmentFactResponse {
     pub name: String,
     /// A fact type, `unavailable` or `ambiguous`.
     pub value_kind: String,
+    /// True when the fact states a value the viewer may not see: the value
+    /// is read from its source quote, and none of its sources is an exact
+    /// original the viewer may read now. The value fields are then null.
+    pub value_withheld: bool,
     /// Canonical value text (decimal `1250.00`, date, RFC 3339 instant).
     #[schema(required = true)]
     pub value: Option<String>,
@@ -362,6 +366,12 @@ pub struct AssessmentFactResponse {
     pub support: String,
     #[schema(required = true)]
     pub support_reason: Option<String>,
+    /// The subject was found at, or beside, a verified source of the value.
+    pub subject_grounded: bool,
+    /// For a decimal: its currency or unit was found at, or beside, a
+    /// verified source; otherwise it is only the agent's claim.
+    #[schema(required = true)]
+    pub measure_grounded: Option<bool>,
     #[schema(required = true)]
     pub job_id: Option<String>,
     #[schema(max_items = 4)]
@@ -883,6 +893,24 @@ fn assessment(view: AssessmentSnapshot, originals: &Originals) -> AssessmentResp
                         Some(*candidates),
                     ),
                 };
+                // The value is read from the source quote: it is shown only
+                // when one of its sources is an exact original the viewer
+                // may read now (21.6: knowledge never grants the original).
+                let valued = value.is_some();
+                let readable = f.sources.iter().any(|s| {
+                    crate::answers::exact_original(
+                        originals,
+                        &s.source.original_id,
+                        s.original_sha256.as_deref(),
+                    )
+                    .is_some()
+                });
+                let withheld = valued && !readable;
+                let (value, mantissa, scale, utc, offset) = if withheld {
+                    (None, None, None, None, None)
+                } else {
+                    (value, mantissa, scale, utc, offset)
+                };
                 AssessmentFactResponse {
                     id: f.id.clone(),
                     invocation_id: f.invocation_id.clone(),
@@ -891,6 +919,7 @@ fn assessment(view: AssessmentSnapshot, originals: &Originals) -> AssessmentResp
                     subject_unit: f.fact.subject_unit.clone(),
                     name: f.fact.name.clone(),
                     value_kind,
+                    value_withheld: withheld,
                     value,
                     measure: measure_label,
                     mantissa,
@@ -902,6 +931,8 @@ fn assessment(view: AssessmentSnapshot, originals: &Originals) -> AssessmentResp
                     rule: f.fact.rule.map(|r| r.as_str().into()),
                     support: f.support.as_str().into(),
                     support_reason: f.support.reason().map(|r| r.as_str().into()),
+                    subject_grounded: f.grounding.subject,
+                    measure_grounded: f.grounding.measure,
                     job_id: f.fact.job_id.clone(),
                     sources: f
                         .sources

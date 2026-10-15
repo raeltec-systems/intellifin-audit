@@ -557,3 +557,200 @@ fn assessment_fields_are_optional_bounded_and_counted_when_invalid() {
     }
     assert!(CitedAnswer::from_json(&value).is_none());
 }
+
+fn assessment_criterion_json(key: &str) -> JsonValue {
+    let predicate = |kind: &str, fact: &str| {
+        object(vec![
+            ("kind", s(kind)),
+            ("fact", s(fact)),
+            ("op", s("")),
+            ("right_fact", s("")),
+            ("constant", s("")),
+            ("unit", s("")),
+            ("currency", s("")),
+            ("values", JsonValue::Array(vec![])),
+        ])
+    };
+    object(vec![
+        ("key", s(key)),
+        ("supersedes", s("")),
+        ("assertion", s("An approver is recorded")),
+        ("authority_kind", s("method")),
+        ("requirement_id", s("AP-1")),
+        ("criterion_ordinal", JsonValue::Integer(0)),
+        ("original_id", s("")),
+        ("locator", s("")),
+        ("quote", s("")),
+        ("effective_from", s("")),
+        ("effective_to", s("")),
+        ("applicability", predicate("", "")),
+        (
+            "required_facts",
+            JsonValue::Array(vec![object(vec![
+                ("name", s("approver")),
+                ("type", s("identifier")),
+                ("unit", s("")),
+                ("currency", s("")),
+            ])]),
+        ),
+        ("method", s("rule")),
+        ("rule", predicate("present", "approver")),
+        ("rubric", s("")),
+    ])
+}
+fn assessment_basis_json(key: &str) -> JsonValue {
+    object(vec![
+        ("key", s(key)),
+        ("supersedes", s("")),
+        ("objective", s("Assess approvals")),
+        ("criteria", JsonValue::Array(vec![s("c0")])),
+        ("period_from", s("2026-01-01")),
+        ("period_to", s("2026-12-31")),
+        ("as_of", s("")),
+        ("population", JsonValue::Array(vec![])),
+        ("limitations", JsonValue::Array(vec![])),
+    ])
+}
+fn assessment_fact_json(subject: &str) -> JsonValue {
+    object(vec![
+        ("basis", s("b1")),
+        ("subject", s(subject)),
+        ("subject_unit", s("invoice")),
+        ("name", s("approver")),
+        ("value_kind", s("unavailable")),
+        ("value", s("")),
+        ("unit", s("")),
+        ("currency", s("")),
+        ("reason", s("evidence_unavailable")),
+        ("candidates", JsonValue::Integer(0)),
+        ("rule", s("")),
+        ("sources", JsonValue::Array(vec![])),
+        ("job_id", s("")),
+        ("effective", s("")),
+    ])
+}
+fn assessment_judgment_json(subject: &str) -> JsonValue {
+    object(vec![
+        ("criterion", s("seg")),
+        ("basis", s("b1")),
+        ("subject", s(subject)),
+        ("verdict", s("undetermined")),
+        ("supporting", JsonValue::Array(vec![])),
+        ("contrary", JsonValue::Array(vec![])),
+        ("rationale", s("The organisation chart is missing.")),
+        ("uncertainty", s("")),
+    ])
+}
+
+#[test]
+fn assessment_answer_bounds_drop_and_count_every_entry_over_them() {
+    use crate::assessment::{
+        MAX_EVALUATE, MAX_JUDGMENTS, MAX_PROPOSED_BASES, MAX_PROPOSED_CRITERIA, MAX_RECORDED_FACTS,
+    };
+    let mut value = answer_json();
+    let many =
+        |n: usize, make: &dyn Fn(usize) -> JsonValue| JsonValue::Array((0..n).map(make).collect());
+    if let JsonValue::Object(map) = &mut value {
+        for key in [
+            "read_method",
+            "use_skills",
+            "run_skill_script",
+            "method_notes",
+        ] {
+            map.insert(key.into(), JsonValue::Array(vec![]));
+        }
+        // Nine distinct criteria plus one repeating the first key: the repeat
+        // never takes a valid entry's place.
+        let mut criteria: Vec<JsonValue> = (0..9)
+            .map(|i| assessment_criterion_json(&format!("c{i}")))
+            .collect();
+        criteria.insert(1, assessment_criterion_json("c0"));
+        map.insert("propose_criteria".into(), JsonValue::Array(criteria));
+        map.insert(
+            "propose_basis".into(),
+            many(2, &|i| assessment_basis_json(&format!("b{i}"))),
+        );
+        map.insert(
+            "record_facts".into(),
+            many(65, &|i| assessment_fact_json(&format!("INV-{i:04}"))),
+        );
+        map.insert("evaluate".into(), many(17, &|i| s(&format!("crit-{i}"))));
+        map.insert(
+            "judgments".into(),
+            many(9, &|i| assessment_judgment_json(&format!("INV-{i:04}"))),
+        );
+    }
+    let answer = CitedAnswer::from_json(&value).unwrap();
+    assert_eq!(
+        (
+            answer.propose_criteria.len(),
+            answer.propose_basis.len(),
+            answer.record_facts.len(),
+            answer.evaluate.len(),
+            answer.judgments.len()
+        ),
+        (
+            MAX_PROPOSED_CRITERIA,
+            MAX_PROPOSED_BASES,
+            MAX_RECORDED_FACTS,
+            MAX_EVALUATE,
+            MAX_JUDGMENTS
+        )
+    );
+    assert_eq!(
+        (
+            MAX_PROPOSED_CRITERIA,
+            MAX_PROPOSED_BASES,
+            MAX_RECORDED_FACTS,
+            MAX_EVALUATE,
+            MAX_JUDGMENTS
+        ),
+        (8, 1, 64, 16, 8)
+    );
+    assert_eq!(
+        answer
+            .propose_criteria
+            .iter()
+            .map(|c| c.key.as_str())
+            .collect::<Vec<_>>(),
+        ["c0", "c1", "c2", "c3", "c4", "c5", "c6", "c7"]
+    );
+    // 1 repeated key + 1 criterion over the bound, 1 basis, 1 fact, 1
+    // evaluate entry and 1 judgment over their bounds.
+    assert_eq!(answer.discarded, 2 + 1 + 1 + 1 + 1);
+    // The schema offers exactly the same bounds.
+    let ArgumentSchema::Object { properties, .. } = CitedAnswer::assessment_schema() else {
+        panic!("an object schema");
+    };
+    for (field, max) in [
+        ("propose_criteria", MAX_PROPOSED_CRITERIA),
+        ("propose_basis", MAX_PROPOSED_BASES),
+        ("record_facts", MAX_RECORDED_FACTS),
+        ("evaluate", MAX_EVALUATE),
+        ("judgments", MAX_JUDGMENTS),
+    ] {
+        match &properties[field] {
+            ArgumentSchema::Array { max_items, .. } => {
+                assert_eq!(*max_items as usize, max, "{field}")
+            }
+            other => panic!("{field}: {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn the_older_answer_schemas_keep_their_exact_bytes() {
+    // Requests of compositions without assessment keep their bytes: the
+    // 22.5 and 22.6 schemas are pinned by digest, so a 24.1 change that
+    // touched them would fail here. Both digests were computed on the
+    // commit before Story 24.1 (`54564e1^`).
+    let digest = |schema: ArgumentSchema| crate::work::sha256_hex(format!("{schema:?}").as_bytes());
+    assert_eq!(
+        digest(CitedAnswer::schema()),
+        "2696416dc57b3fc45ec7cdd1fbac725ed4a878add3f4d536dbcd7994715007d5"
+    );
+    assert_eq!(
+        digest(CitedAnswer::investigation_schema()),
+        "496af7e3f64172b774280951e43f68fe122d9fb8f2ac3823af8d6341dc06b674"
+    );
+}

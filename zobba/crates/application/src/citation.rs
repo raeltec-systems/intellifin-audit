@@ -60,6 +60,21 @@ pub trait CitationReader: Send + Sync {
         start: u64,
         end: u64,
     ) -> impl Future<Output = Result<Located, ReadingError>> + Send;
+    /// The text of an exact original range widened by up to two characters
+    /// on each side (fewer at the text's edges). Trusted code reads it only to
+    /// check that a verified quote is a whole value, never to verify a quote.
+    /// None: no context could be read (a fact's quote is then not proven
+    /// whole).
+    fn byte_context(
+        &self,
+        basis: &ClaimBasis,
+        original: &CitedOriginal,
+        start: u64,
+        end: u64,
+    ) -> impl Future<Output = Result<Option<String>, ReadingError>> + Send {
+        let _ = (basis, original, start, end);
+        async { Ok(None) }
+    }
     /// Text at each structured locator, in order, read by the trusted
     /// document program in the sandbox over this exact original.
     fn locate(
@@ -99,6 +114,23 @@ pub async fn verify<C: CitationReader>(
     answer: &CitedAnswer,
     cancellation: &ModelCancellation,
 ) -> Result<Vec<StoredCitation>, ReadingError> {
+    Ok(verify_located(reader, basis, answer, cancellation)
+        .await?
+        .into_iter()
+        .map(|(citation, _)| citation)
+        .collect())
+}
+
+/// [`verify`], also returning the text trusted code read at each source's
+/// location (in source order; empty when nothing was read). Story 24.1 uses
+/// it to check that a fact's quote is a whole value at its location, and
+/// that the fact's subject and measure stand beside it.
+pub async fn verify_located<C: CitationReader>(
+    reader: &C,
+    basis: &ClaimBasis,
+    answer: &CitedAnswer,
+    cancellation: &ModelCancellation,
+) -> Result<Vec<(StoredCitation, Vec<Vec<String>>)>, ReadingError> {
     if !answer.is_valid() {
         return Err(ReadingError::Invalid);
     }
@@ -143,10 +175,14 @@ pub async fn verify<C: CitationReader>(
     let mut out = Vec::new();
     for (index, span) in answer.spans() {
         let mut sources = Vec::new();
+        let mut texts = Vec::new();
         for source in &answer.segments[index].sources {
             let original = originals.get(&source.original_id).cloned().flatten();
-            let verification = match &original {
-                None => Verification::Unverified(UnverifiedReason::SourceUnreadable),
+            let (verification, text) = match &original {
+                None => (
+                    Verification::Unverified(UnverifiedReason::SourceUnreadable),
+                    vec![],
+                ),
                 Some(original) => {
                     decide_one(reader, basis, original, source, &located, cancellation).await?
                 }
@@ -156,12 +192,16 @@ pub async fn verify<C: CitationReader>(
                 original_sha256: original.map(|o| o.sha256),
                 verification,
             });
+            texts.push(text);
         }
-        out.push(StoredCitation {
-            segment: index as u32,
-            span,
-            sources,
-        });
+        out.push((
+            StoredCitation {
+                segment: index as u32,
+                span,
+                sources,
+            },
+            texts,
+        ));
     }
     Ok(out)
 }
@@ -173,9 +213,13 @@ async fn decide_one<C: CitationReader>(
     source: &CitationSource,
     located: &BTreeMap<(String, Locator), Located>,
     cancellation: &ModelCancellation,
-) -> Result<Verification, ReadingError> {
+) -> Result<(Verification, Vec<String>), ReadingError> {
     let Some(locator) = &source.locator else {
-        return Ok(decide(source, None, None));
+        return Ok((decide(source, None, None), vec![]));
+    };
+    let texts = |found: Option<&Located>| match found {
+        Some(Located::Found(texts)) => texts.clone(),
+        _ => vec![],
     };
     match locator {
         Locator::Page { page } => {
@@ -183,25 +227,65 @@ async fn decide_one<C: CitationReader>(
                 Ok(facts) => facts,
                 Err(error) => unreadable::<PageFacts>(error)?,
             };
-            Ok(decide(source, None, facts.as_ref()))
+            let text = facts
+                .as_ref()
+                .and_then(|f| f.text_layer.clone())
+                .into_iter()
+                .collect();
+            Ok((decide(source, None, facts.as_ref()), text))
         }
         Locator::Bytes { start, end } => {
             let found = match reader.byte_range(basis, original, *start, *end).await {
                 Ok(found) => Some(found),
                 Err(error) => unreadable::<Located>(error)?,
             };
-            Ok(decide(
-                source,
-                Some(&found.unwrap_or(Located::Unreadable)),
-                None,
-            ))
+            let found = found.unwrap_or(Located::Unreadable);
+            let verification = decide(source, Some(&found), None);
+            // A byte range shows only itself; the text around it says
+            // whether the quote is a whole value (`2,500.00` cut from
+            // `12,500.00`). Read only for a verified quote.
+            let context = if verification == Verification::Verified {
+                match reader.byte_context(basis, original, *start, *end).await {
+                    Ok(context) => context,
+                    Err(error) => unreadable::<String>(error)?,
+                }
+            } else {
+                None
+            };
+            Ok((verification, context.into_iter().collect()))
         }
-        _ => Ok(decide(
-            source,
-            located.get(&(original.id.clone(), locator.clone())),
-            None,
-        )),
+        _ => {
+            let found = located.get(&(original.id.clone(), locator.clone()));
+            Ok((decide(source, found, None), texts(found)))
+        }
     }
+}
+
+/// An exact range of plain UTF-8 text widened by up to two characters on
+/// each side (fewer at the text's edges). None when the range is not a
+/// character-aligned range of valid text.
+pub fn widened(bytes: &[u8], start: usize, end: usize) -> Option<String> {
+    let text = std::str::from_utf8(bytes).ok()?;
+    if start >= end
+        || end > text.len()
+        || !text.is_char_boundary(start)
+        || !text.is_char_boundary(end)
+    {
+        return None;
+    }
+    let from = text[..start]
+        .char_indices()
+        .rev()
+        .take(2)
+        .last()
+        .map_or(start, |(i, _)| i);
+    let to = end
+        + text[end..]
+            .chars()
+            .take(2)
+            .map(char::len_utf8)
+            .sum::<usize>();
+    Some(text[from..to].to_string())
 }
 
 /// A definite refusal of a read (`Invalid`) is not proof of absence: it is

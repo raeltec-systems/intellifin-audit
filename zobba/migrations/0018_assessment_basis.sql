@@ -72,7 +72,7 @@ CREATE TABLE public.assessment_bases (
  CHECK(document->>'record'='basis' AND document->>'id'=id AND document->>'task_id'=task_id AND document->>'cycle_id'=cycle_id
    AND document->>'invocation_id'=invocation_id AND (document->>'ordinal')::integer=ordinal
    AND document->>'methodology_binding_id'=methodology_binding_id AND (document->>'execution_epoch')::bigint=execution_epoch
-   AND document->>'period_from'=period_from::text AND document->>'period_to'=period_to::text
+   AND document->>'period_from'=to_char(period_from,'YYYY-MM-DD') AND document->>'period_to'=to_char(period_to,'YYYY-MM-DD')
    AND document->>'supersedes' IS NOT DISTINCT FROM supersedes
    AND jsonb_typeof(document->'criteria')='array' AND jsonb_array_length(document->'criteria') BETWEEN 1 AND 16),
  CHECK(supersedes IS DISTINCT FROM id),
@@ -108,19 +108,25 @@ CREATE TABLE public.assessment_facts (
  methodology_binding_id text NOT NULL CHECK(methodology_binding_id ~ '^[A-Za-z0-9_-]{1,128}$'),
  execution_epoch bigint NOT NULL CHECK(execution_epoch > 0),
  basis_id text NOT NULL,
- -- The subject exactly as stated: leading zeros and case are kept.
- subject text NOT NULL CHECK(octet_length(subject) BETWEEN 1 AND 128 AND btrim(subject) <> '' AND subject !~ '[[:cntrl:]]'),
+ -- The subject exactly as stated: leading zeros and case are kept. Control
+ -- characters are the exact Unicode Cc range Rust refuses (never a locale class).
+ subject text NOT NULL CHECK(octet_length(subject) BETWEEN 1 AND 128 AND btrim(subject) <> '' AND subject !~ '[\x01-\x1f\x7f-\x9f]'),
  subject_unit text NOT NULL CHECK(subject_unit ~ '^[a-z][a-z0-9_]{0,63}$'),
  name text NOT NULL CHECK(name ~ '^[a-z][a-z0-9_]{0,63}$'),
  value_kind text NOT NULL CHECK(value_kind IN ('identifier','text','boolean','enum','decimal','date','instant','unavailable','ambiguous')),
  support text NOT NULL CHECK(support IN ('supported','unsupported','no_value')),
- support_reason text CHECK(support_reason IN ('type_mismatch','source_unverified','analysis_failed')),
+ support_reason text CHECK(support_reason IN ('type_mismatch','source_unverified','analysis_failed','partial_value')),
  rule text CHECK(rule IN ('identifier_exact','text_exact','enum_exact','boolean_yes_no','boolean_true_false','decimal_plain','decimal_grouped_comma','date_iso','date_dmy','instant_rfc3339')),
  job_id text,
+ -- Whether trusted code found the subject, and a decimal's currency or unit,
+ -- at or beside a verified source of the value; otherwise they are claims.
+ subject_grounded boolean NOT NULL,
+ measure_grounded boolean,
  document jsonb NOT NULL CHECK(jsonb_typeof(document)='object' AND octet_length(document::text) <= 65536),
  digest text NOT NULL CHECK(digest ~ '^[0-9a-f]{64}$'),
  created_us bigint NOT NULL DEFAULT floor(extract(epoch FROM clock_timestamp())*1000000)::bigint,
  CHECK((support='unsupported') = (support_reason IS NOT NULL)),
+ CHECK((value_kind='decimal') = (measure_grounded IS NOT NULL)),
  -- A stated value names its parse rule and is supported or not; an
  -- unavailable or ambiguous fact states no value (unless its analysis failed).
  CHECK((value_kind IN ('unavailable','ambiguous')) = (rule IS NULL)),
@@ -134,6 +140,8 @@ CREATE TABLE public.assessment_facts (
    AND document->>'name'=name AND document->'value'->>'kind'=value_kind AND document->>'support'=support
    AND document->>'support_reason' IS NOT DISTINCT FROM support_reason AND document->>'rule' IS NOT DISTINCT FROM rule
    AND document->>'job_id' IS NOT DISTINCT FROM job_id
+   AND jsonb_typeof(document->'subject_grounded')='boolean' AND (document->>'subject_grounded')::boolean=subject_grounded
+   AND document->>'measure_grounded' IS NOT DISTINCT FROM measure_grounded::text
    AND jsonb_typeof(document->'sources')='array' AND jsonb_array_length(document->'sources') <= 4),
  -- No float: a decimal is a digit string mantissa and an integer scale.
  CHECK(value_kind <> 'decimal' OR (document->'value'->>'mantissa' ~ '^-?[0-9]{1,19}$' AND (document->'value'->>'scale')::integer BETWEEN 0 AND 18
@@ -181,11 +189,11 @@ CREATE TABLE public.assessment_evaluations (
  execution_epoch bigint NOT NULL CHECK(execution_epoch > 0),
  basis_id text NOT NULL,
  criterion_id text NOT NULL,
- subject text NOT NULL CHECK(octet_length(subject) BETWEEN 1 AND 128 AND btrim(subject) <> '' AND subject !~ '[[:cntrl:]]'),
+ subject text NOT NULL CHECK(octet_length(subject) BETWEEN 1 AND 128 AND btrim(subject) <> '' AND subject !~ '[\x01-\x1f\x7f-\x9f]'),
  applicability text NOT NULL CHECK(applicability IN ('applicable','not_applicable','unknown')),
  execution text NOT NULL CHECK(execution IN ('completed','failed')),
  verdict text CHECK(verdict IN ('met','not_met','undetermined')),
- reason text CHECK(reason IN ('missing_fact','fact_unavailable','fact_ambiguous','fact_unsupported','unit_mismatch','unknown_applicability','authority_unverified','analysis_failed')),
+ reason text CHECK(reason IN ('missing_fact','fact_unavailable','fact_ambiguous','fact_unsupported','unit_mismatch','unknown_applicability','authority_unverified','analysis_failed','subject_unverified','unit_unverified')),
  origin text NOT NULL CHECK(origin IN ('deterministic','model_proposal')),
  document jsonb NOT NULL CHECK(jsonb_typeof(document)='object' AND octet_length(document::text) <= 65536),
  output_digest text NOT NULL CHECK(output_digest ~ '^[0-9a-f]{64}$'),
@@ -225,7 +233,7 @@ CREATE INDEX assessment_evaluations_task ON public.assessment_evaluations(organi
 -- verified authority.
 CREATE FUNCTION public.assessment_guard() RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,public AS $body$
-DECLARE criterion public.assessment_criteria%ROWTYPE; input jsonb;
+DECLARE criterion public.assessment_criteria%ROWTYPE; input jsonb; outcome text;
 BEGIN
  IF TG_TABLE_NAME IN ('assessment_criteria','assessment_bases','assessment_facts','assessment_evaluations') THEN
   IF NOT EXISTS(SELECT 1 FROM public.model_invocations i WHERE (i.organisation_id,i.client_id,i.engagement_id,i.id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.invocation_id)
@@ -253,12 +261,28 @@ BEGIN
   IF NOT EXISTS(SELECT 1 FROM public.assessment_bases b WHERE (b.organisation_id,b.client_id,b.engagement_id,b.id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.basis_id) AND b.task_id=NEW.task_id) THEN
    RAISE EXCEPTION 'a fact belongs to a basis of its own Task' USING ERRCODE='23514';
   END IF;
-  -- A fact that names an analysis job names one of its own Task; it is an
-  -- analysis failure exactly when that job did not complete (a failed job is
-  -- also collected, so collection alone is not success).
-  IF NEW.job_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.analysis_jobs j WHERE j.id=NEW.job_id AND j.task_id=NEW.task_id
-     AND (NEW.support_reason IS NOT DISTINCT FROM 'analysis_failed') = NOT EXISTS(SELECT 1 FROM public.analysis_job_events e WHERE e.job_id=j.id AND e.status='completed')) THEN
-   RAISE EXCEPTION 'a fact names an analysis job of its Task and its true outcome' USING ERRCODE='23514';
+  -- A basis version holds at most 1024 facts, so every exact read of its
+  -- facts stays bounded. Writers of one basis are serialised here.
+  PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(NEW.organisation_id||'/'||NEW.client_id||'/'||NEW.engagement_id||'/'||NEW.basis_id, 2402));
+  IF (SELECT count(*) FROM public.assessment_facts f WHERE (f.organisation_id,f.client_id,f.engagement_id,f.basis_id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.basis_id)) >= 1024 THEN
+   RAISE EXCEPTION 'a basis holds at most 1024 facts' USING ERRCODE='23514';
+  END IF;
+  -- A fact that names an analysis job names one of its own Task that has
+  -- ended. Its outcome is the latest event that is not a collection (a
+  -- `collected` event repeats the outcome before it): analysis_failed exactly
+  -- when the job ended without completing. Nothing is recorded about a job
+  -- that has not ended.
+  IF NEW.job_id IS NOT NULL THEN
+   IF NOT EXISTS(SELECT 1 FROM public.analysis_jobs j WHERE j.id=NEW.job_id AND j.task_id=NEW.task_id) THEN
+    RAISE EXCEPTION 'a fact names an analysis job of its Task' USING ERRCODE='23514';
+   END IF;
+   SELECT e.status INTO outcome FROM public.analysis_job_events e WHERE e.job_id=NEW.job_id AND e.status<>'collected' ORDER BY e.sequence DESC LIMIT 1;
+   IF outcome IS NULL OR outcome NOT IN ('completed','failed','limit_exceeded','stopped') THEN
+    RAISE EXCEPTION 'a fact waits for its analysis job to end' USING ERRCODE='23514';
+   END IF;
+   IF (NEW.support_reason IS NOT DISTINCT FROM 'analysis_failed') <> (outcome <> 'completed') THEN
+    RAISE EXCEPTION 'a fact names its analysis job''s true outcome' USING ERRCODE='23514';
+   END IF;
   END IF;
  ELSIF TG_TABLE_NAME='assessment_fact_sources' THEN
   IF NOT EXISTS(SELECT 1 FROM public.assessment_facts f WHERE (f.organisation_id,f.client_id,f.engagement_id,f.id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.fact_id)
@@ -286,8 +310,9 @@ BEGIN
   FOR input IN SELECT value FROM jsonb_array_elements(NEW.document->'inputs') LOOP
    IF NOT EXISTS(SELECT 1 FROM public.assessment_facts f WHERE (f.organisation_id,f.client_id,f.engagement_id,f.id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,input->>'id')
      AND f.basis_id=NEW.basis_id AND f.subject=NEW.subject AND f.digest=input->>'digest'
-     AND (NEW.verdict NOT IN ('met','not_met') OR NEW.verdict IS NULL OR f.support='supported')) THEN
-    RAISE EXCEPTION 'an evaluation input is a fact of its basis and subject, and a decided verdict reads only supported facts' USING ERRCODE='23514';
+     AND (NEW.verdict NOT IN ('met','not_met') OR NEW.verdict IS NULL
+       OR (f.support='supported' AND f.subject_grounded AND f.measure_grounded IS NOT FALSE))) THEN
+    RAISE EXCEPTION 'an evaluation input is a fact of its basis and subject, and a decided verdict reads only supported, grounded facts' USING ERRCODE='23514';
    END IF;
   END LOOP;
   IF NEW.verdict IN ('met','not_met') AND jsonb_array_length(NEW.document->'inputs') = 0 THEN

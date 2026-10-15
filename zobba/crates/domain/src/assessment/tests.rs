@@ -7,12 +7,16 @@ fn date(text: &str) -> CivilDate {
     CivilDate::parse_iso(text).unwrap()
 }
 fn fact(name: &str, state: FactState, support: FactSupport) -> InputFact {
+    let decimal = matches!(state, FactState::Value(FactValue::Decimal { .. }));
     InputFact {
         id: format!("fact-{name}"),
         digest: format!("{:0>64}", name.len()),
         name: name.into(),
         state,
         support,
+        subject_grounded: true,
+        measure_grounded: decimal.then_some(true),
+        effective: None,
     }
 }
 fn amount(text: &str, measure: Measure) -> InputFact {
@@ -352,9 +356,11 @@ fn unsupported_ambiguous_unit_mismatch_and_authority_stay_undetermined() {
             true,
         ),
     );
-    // The unsupported amount cannot establish applicability.
+    // The unsupported amount cannot establish applicability, and the
+    // record says why (the I/O matrix's value-mismatch row).
     assert_eq!(mistyped.applicability, Applicability::Unknown);
     assert_eq!(mistyped.verdict, Some(Verdict::Undetermined));
+    assert_eq!(mistyped.reason, Some(EvaluationReason::FactUnsupported));
     // With the amount supported, an unsupported approver is fact_unsupported.
     let unsupported = evaluate(
         &criterion,
@@ -412,6 +418,313 @@ fn unsupported_ambiguous_unit_mismatch_and_authority_stay_undetermined() {
         Some(EvaluationReason::AuthorityUnverified)
     );
     assert_eq!(unverified.verdict, Some(Verdict::Undetermined));
+    // An unverified authority decides nothing, not even "does not apply".
+    assert_eq!(unverified.applicability, Applicability::Unknown);
+    let small = evaluate(&criterion, &context(&[amount("980.00", usd())], false));
+    assert_eq!(
+        (small.applicability, small.reason),
+        (
+            Applicability::Unknown,
+            Some(EvaluationReason::AuthorityUnverified)
+        )
+    );
+}
+
+#[test]
+fn applicability_that_cannot_be_decided_keeps_its_real_cause() {
+    let criterion = approval_criterion();
+    let cause = |facts: &[InputFact]| {
+        let outcome = evaluate(&criterion, &context(facts, true));
+        assert_eq!(outcome.applicability, Applicability::Unknown);
+        assert_eq!(outcome.verdict, Some(Verdict::Undetermined));
+        assert!(outcome.is_valid());
+        outcome.reason
+    };
+    assert_eq!(
+        cause(&[supported_approver()]),
+        Some(EvaluationReason::MissingFact)
+    );
+    assert_eq!(
+        cause(&[
+            fact(
+                "amount",
+                FactState::Unavailable(UnavailableReason::EvidenceUnavailable),
+                FactSupport::NoValue
+            ),
+            supported_approver()
+        ]),
+        Some(EvaluationReason::FactUnavailable)
+    );
+    assert_eq!(
+        cause(&[amount("1250.00", Measure::Currency("EUR".into()))]),
+        Some(EvaluationReason::UnitMismatch)
+    );
+    // An applicability input from a failed analysis fails the execution.
+    let failed = evaluate(
+        &criterion,
+        &context(
+            &[
+                fact(
+                    "amount",
+                    FactState::Value(FactValue::Decimal {
+                        value: Decimal::parse_plain("1250.00").unwrap(),
+                        measure: usd(),
+                    }),
+                    FactSupport::Unsupported(UnsupportedReason::AnalysisFailed),
+                ),
+                supported_approver(),
+            ],
+            true,
+        ),
+    );
+    assert_eq!(
+        (failed.applicability, failed.execution, failed.reason),
+        (
+            Applicability::Unknown,
+            Execution::Failed,
+            Some(EvaluationReason::AnalysisFailed)
+        )
+    );
+}
+
+#[test]
+fn analysis_failure_comes_after_effective_dates_and_applicability() {
+    let failed_approver = approver(
+        FactState::Value(FactValue::Identifier("J. Smith".into())),
+        FactSupport::Unsupported(UnsupportedReason::AnalysisFailed),
+    );
+    // Not applicable (amount under the threshold) stays not applicable even
+    // though the approver came from a failed analysis.
+    let small = evaluate(
+        &approval_criterion(),
+        &context(&[amount("980.00", usd()), failed_approver.clone()], true),
+    );
+    assert_eq!(
+        (small.applicability, small.execution, small.verdict),
+        (Applicability::NotApplicable, Execution::Completed, None)
+    );
+    // Out of effect for the period: not applicable, not a failed execution.
+    let mut old = approval_criterion();
+    old.effective_to = Some(date("2025-12-31"));
+    let out = evaluate(
+        &old,
+        &context(&[amount("1250.00", usd()), failed_approver.clone()], true),
+    );
+    assert_eq!(out.applicability, Applicability::NotApplicable);
+    // Applicable: the failed analysis fails the execution.
+    let applicable = evaluate(
+        &approval_criterion(),
+        &context(&[amount("1250.00", usd()), failed_approver], true),
+    );
+    assert_eq!(
+        (
+            applicable.applicability,
+            applicable.execution,
+            applicable.reason
+        ),
+        (
+            Applicability::Applicable,
+            Execution::Failed,
+            Some(EvaluationReason::AnalysisFailed)
+        )
+    );
+}
+
+#[test]
+fn a_criterion_version_does_not_apply_to_a_fact_dated_outside_its_window() {
+    let mut criterion = approval_criterion();
+    criterion.effective_from = Some(date("2026-07-01"));
+    let mut early = amount("1250.00", usd());
+    early.effective = Some(date("2026-03-05"));
+    let outcome = evaluate(&criterion, &context(&[early, supported_approver()], true));
+    assert_eq!(outcome.applicability, Applicability::NotApplicable);
+    let mut late = amount("1250.00", usd());
+    late.effective = Some(date("2026-07-01"));
+    assert_eq!(
+        evaluate(&criterion, &context(&[late, supported_approver()], true)).verdict,
+        Some(Verdict::Met)
+    );
+}
+
+#[test]
+fn an_ungrounded_subject_or_measure_never_decides() {
+    let criterion = approval_criterion();
+    // A EUR amount the agent labelled USD: the number is verified, the
+    // currency is not, so the threshold is never compared.
+    let mut claimed = amount("4200.00", usd());
+    claimed.measure_grounded = Some(false);
+    let unit = evaluate(&criterion, &context(&[claimed, supported_approver()], true));
+    assert_eq!(
+        (unit.applicability, unit.verdict, unit.reason),
+        (
+            Applicability::Unknown,
+            Some(Verdict::Undetermined),
+            Some(EvaluationReason::UnitUnverified)
+        )
+    );
+    let mut stranger = supported_approver();
+    stranger.subject_grounded = false;
+    let subject = evaluate(
+        &criterion,
+        &context(&[amount("1250.00", usd()), stranger], true),
+    );
+    assert_eq!(
+        (subject.verdict, subject.reason),
+        (
+            Some(Verdict::Undetermined),
+            Some(EvaluationReason::SubjectUnverified)
+        )
+    );
+}
+
+#[test]
+fn a_judgment_without_facts_is_never_decided() {
+    let criterion = ProposedCriterion {
+        applicability: None,
+        required_facts: vec![],
+        method: CriterionMethod::Judgment {
+            rubric: "Segregation is adequate given the organisation chart".into(),
+        },
+        ..approval_criterion()
+    };
+    assert!(criterion.is_valid());
+    for verdict in [Verdict::Met, Verdict::NotMet, Verdict::Undetermined] {
+        let judgment = ProposedJudgment {
+            criterion: "crit-1".into(),
+            basis: "basis-1".into(),
+            subject: "INV-0042".into(),
+            verdict,
+            supporting: vec![],
+            contrary: vec![],
+            rationale: "I think so.".into(),
+            uncertainty: String::new(),
+        };
+        assert!(judgment.is_valid());
+        let outcome = judge(&criterion, &context(&[], true), &judgment);
+        assert_eq!(
+            (outcome.verdict, outcome.reason),
+            (
+                Some(Verdict::Undetermined),
+                Some(EvaluationReason::MissingFact)
+            )
+        );
+        assert!(outcome.is_valid());
+    }
+    // The structural rule the database also enforces: a decided verdict
+    // reads at least one fact.
+    let bare = Outcome {
+        applicability: Applicability::Applicable,
+        execution: Execution::Completed,
+        verdict: Some(Verdict::Met),
+        reason: None,
+        origin: Origin::ModelProposal,
+        inputs: vec![],
+    };
+    assert!(!bare.is_valid());
+}
+
+#[test]
+fn member_of_compares_normalized_members() {
+    let criterion = ProposedCriterion {
+        applicability: None,
+        required_facts: vec![RequiredFact {
+            name: "status".into(),
+            kind: FactType::Enum,
+            measure: None,
+        }],
+        method: CriterionMethod::Rule(Predicate::MemberOf {
+            fact: "status".into(),
+            values: vec!["Fully  approved".into(), "Cafe\u{301}".into()],
+        }),
+        ..approval_criterion()
+    };
+    assert!(criterion.is_valid());
+    for value in ["Fully approved", "Caf\u{e9}"] {
+        let facts = [fact(
+            "status",
+            FactState::Value(FactValue::Enum(value.into())),
+            FactSupport::Supported,
+        )];
+        assert_eq!(
+            evaluate(&criterion, &context(&facts, true)).verdict,
+            Some(Verdict::Met),
+            "{value}"
+        );
+    }
+}
+
+#[test]
+fn a_quote_is_a_whole_value_only_at_value_boundaries() {
+    let bytes = Locator::parse("bytes:0-40").unwrap();
+    let cell = Locator::parse("cell:Sheet1!B4").unwrap();
+    let at = |text: &str, quote: &str| whole_value(&bytes, &[text.to_string()], quote);
+    // Fragments of a longer value are refused.
+    for (text, quote) in [
+        ("Total 12,500.00 USD", "2,500.00"),
+        ("Total 12,500.00 USD", "12,500.0"),
+        ("Dated 15/03/2026", "5/03/2026"),
+        ("Invoice INV-00421 paid", "INV-0042"),
+        ("Notarised: Yes", "No"),
+        ("Credit -2,500.00 USD", "2,500.00"),
+        ("Rate .5 per cent", "5"),
+        ("Approved 2026-03-05T23:30:00-05:00", "2026-03-05"),
+        ("Total 1,250.00.5", "1,250.00"),
+    ] {
+        assert!(!at(text, quote), "{quote} in {text}");
+    }
+    // Whole values, including at the edges and before punctuation.
+    for (text, quote) in [
+        ("Total 12,500.00 USD", "12,500.00"),
+        ("12,500.00", "12,500.00"),
+        ("Total: 1,250.00.", "1,250.00"),
+        ("Dated 05/03/2026, paid", "05/03/2026"),
+        ("Invoice INV-0042, approved", "INV-0042"),
+        ("Approved: No", "No"),
+        ("(1,250.00)", "1,250.00"),
+        ("Amount:1,250.00", "1,250.00"),
+    ] {
+        assert!(at(text, quote), "{quote} in {text}");
+    }
+    // A cell is the whole value or nothing.
+    assert!(whole_value(&cell, &["1,250.00".into()], "1,250.00"));
+    assert!(!whole_value(&cell, &["12,500.00".into()], "2,500.00"));
+    assert!(whole_token("Invoice INV-0042 in USD", "USD"));
+    assert!(!whole_token("Invoice INV-0042 in USDT", "USD"));
+}
+
+#[test]
+fn an_unknown_offset_is_refused_never_read_as_utc() {
+    assert!(Instant::parse_rfc3339("2026-03-05T23:30:00-00:00").is_none());
+    assert_eq!(
+        Instant::parse_rfc3339("2026-03-05T23:30:00+00:00")
+            .unwrap()
+            .render(),
+        "2026-03-05T23:30:00Z"
+    );
+    assert!(Instant::parse_rfc3339("2026-03-05T23:30:00Z").is_some());
+}
+
+#[test]
+fn a_key_shaped_like_a_record_id_is_refused() {
+    let mut criterion = approval_criterion();
+    criterion.key = format!("crit-{}", "a".repeat(40));
+    assert!(!criterion.is_valid());
+    criterion.key = "crit-a".into();
+    assert!(criterion.is_valid());
+}
+
+#[test]
+fn the_output_digest_is_a_fixed_canonical_vector() {
+    let facts = [amount("1250.00", usd()), supported_approver()];
+    let outcome = evaluate(&approval_criterion(), &context(&facts, true));
+    // A change to the canonical form would silently change the digests of
+    // new records against stored ones: this vector pins it.
+    assert_eq!(
+        output_digest("basis-1", "crit-1", "INV-0042", &outcome, None),
+        // Independently computed: SHA-256 of Python json.dumps(sort_keys=True,
+        // separators=(",", ":")) of the same object.
+        "82836573a05397e49da38d830c0e6bea7259ea56dab90542bf6f621761d18c26"
+    );
 }
 
 #[test]
@@ -670,5 +983,61 @@ fn a_criterion_version_outside_its_effective_period_does_not_apply() {
     assert_eq!(
         evaluate(&criterion, &context(&facts, true)).verdict,
         Some(Verdict::Met)
+    );
+}
+
+#[test]
+fn answer_bounds_match_the_migration_checks() {
+    // The database refuses a record ordinal beyond the per-answer bound: the
+    // two must agree, or a valid answer entry would be refused at runtime.
+    let migration = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/0018_assessment_basis.sql"
+    ));
+    let table = |name: &str| {
+        let start = migration
+            .find(&format!("CREATE TABLE public.{name} ("))
+            .unwrap();
+        let end = start + migration[start..].find("\n);").unwrap();
+        &migration[start..end]
+    };
+    let has = |name: &str, check: String| {
+        assert!(table(name).contains(&check), "{name}: {check}");
+    };
+    has(
+        "assessment_criteria",
+        format!("ordinal BETWEEN 0 AND {}", MAX_PROPOSED_CRITERIA - 1),
+    );
+    has(
+        "assessment_bases",
+        format!("ordinal = {}", MAX_PROPOSED_BASES - 1),
+    );
+    has(
+        "assessment_bases",
+        format!("BETWEEN 1 AND {MAX_BASIS_CRITERIA}"),
+    );
+    has(
+        "assessment_basis_criteria",
+        format!("ordinal BETWEEN 0 AND {}", MAX_BASIS_CRITERIA - 1),
+    );
+    has(
+        "assessment_facts",
+        format!("ordinal BETWEEN 0 AND {}", MAX_RECORDED_FACTS - 1),
+    );
+    has(
+        "assessment_facts",
+        format!("jsonb_array_length(document->'sources') <= {MAX_FACT_SOURCES}"),
+    );
+    has(
+        "assessment_fact_sources",
+        format!("ordinal BETWEEN 0 AND {}", MAX_FACT_SOURCES - 1),
+    );
+    has(
+        "assessment_facts",
+        format!("BETWEEN {} AND {}", -MAX_OFFSET_MINUTES, MAX_OFFSET_MINUTES),
+    );
+    has(
+        "assessment_facts",
+        format!("BETWEEN 0 AND {MAX_DECIMAL_SCALE}"),
     );
 }
