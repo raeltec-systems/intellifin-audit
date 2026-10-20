@@ -1932,7 +1932,16 @@ impl<S: AssessmentStore + coverage::CoverageStore + revision::RevisionStore, C: 
                     continue;
                 }
                 match self
-                    .plan_revision(basis, head, &target, &criterion, &outcome, &digest, &facts)
+                    .plan_revision(
+                        basis,
+                        head,
+                        &target,
+                        &criterion,
+                        &outcome,
+                        &digest,
+                        &facts,
+                        revision::shown_reconsideration(invocation, head.head_id()),
+                    )
                     .await?
                 {
                     Ok(planned) => todo.push((subject, outcome, digest, Some(planned))),
@@ -2118,7 +2127,16 @@ impl<S: AssessmentStore + coverage::CoverageStore + revision::RevisionStore, C: 
                     continue;
                 }
                 let planned = match self
-                    .plan_revision(basis, head, &target, &criterion, &outcome, &digest, &facts)
+                    .plan_revision(
+                        basis,
+                        head,
+                        &target,
+                        &criterion,
+                        &outcome,
+                        &digest,
+                        &facts,
+                        revision::shown_reconsideration(invocation, head.head_id()),
+                    )
                     .await?
                 {
                     Ok(planned) => planned,
@@ -2202,7 +2220,17 @@ impl<S: AssessmentStore + coverage::CoverageStore + revision::RevisionStore, C: 
             && existing_coverage.populations.is_empty()
             && existing_coverage.samples.is_empty()
             && existing_coverage.summaries.is_empty());
-        Ok(progress || recorded_before)
+        // Story 24.3a: a person's request to reconsider that this turn's
+        // request did not show (it arrived during or after the turn, or the
+        // turn is replayed on a reclaim) is due a further turn that shows it.
+        let unseen = self
+            .store
+            .revision_snapshot(basis)
+            .await?
+            .reconsiderations
+            .iter()
+            .any(|r| !revision::shown_reconsideration(invocation, &r.head_id));
+        Ok(progress || recorded_before || unseen)
     }
 
     /// A criterion by same-answer key, else by exact ID of this Task.

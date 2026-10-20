@@ -418,6 +418,23 @@ impl ChainHead {
     }
 }
 
+/// The outline's words for a pending reconsideration. A revision is caused
+/// by a reconsideration only when the request trusted code sent for the
+/// answering turn showed it (the database checks the same words in the
+/// stored request): replaying an earlier answer on a reclaim never answers a
+/// request the model never saw.
+pub const RECONSIDERATION_MARK: &str = "reconsideration requested of ";
+
+/// Whether the request of `invocation` showed a reconsideration of `head_id`.
+pub fn shown_reconsideration(invocation: &crate::model::Invocation, head_id: &str) -> bool {
+    let mark = format!("{RECONSIDERATION_MARK}{head_id} ");
+    invocation
+        .request
+        .messages
+        .iter()
+        .any(|m| m.text.contains(&mark))
+}
+
 /// A pending reconsideration, for the outline (the person's words are
 /// attributed data and travel inside the untrusted-content envelope).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -720,7 +737,7 @@ pub fn revision_lines(snapshot: &RevisionSnapshot) -> Vec<String> {
     }
     for r in &snapshot.reconsiderations {
         lines.push(format!(
-            "- reconsideration requested of {} ({} for {} under {}) by {} (a person), concern {}; their words: \"{}\"",
+            "- {RECONSIDERATION_MARK}{} ({} for {} under {}) by {} (a person), concern {}; their words: \"{}\"",
             r.head_id,
             r.criterion_id,
             r.subject,
@@ -810,6 +827,7 @@ where
         outcome: &Outcome,
         digest: &str,
         facts: &[FactRecord],
+        shown: bool,
     ) -> Result<Result<Planned, String>, ReadingError> {
         let head_inputs = &head.outcome().inputs;
         let ids: Vec<String> = head_inputs.iter().map(|(id, _)| id.clone()).collect();
@@ -830,7 +848,11 @@ where
             execution: outcome.execution,
             inputs: &new_named,
         };
-        let derived = causes(&head.step(&head_named), &next, head.reconsideration());
+        let derived = causes(
+            &head.step(&head_named),
+            &next,
+            head.reconsideration() && shown,
+        );
         let subject = head.subject();
         if derived.is_empty() {
             return Ok(Err(if digest == head.output_digest() {

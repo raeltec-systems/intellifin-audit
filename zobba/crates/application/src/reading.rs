@@ -1321,13 +1321,9 @@ where
             limits,
         };
         let identity = format!("{}\0{}\0{}", basis.task_id, original.sha256, request);
-        if !population {
-            let key = format!("document-{}", self.hash(&identity));
-            return self
-                .settle(basis, &key, &analysis_request, cancellation)
-                .await;
-        }
-        // A population read (Story 24.2) reuses the newest job of this Task
+        // Every document read (a population read since Story 24.2, and since
+        // Story 24.3a every read, so a corrected fact may cite the cells an
+        // earlier fact cited in an earlier cycle) reuses the newest job of this Task
         // that ran exactly this program (the same original version, sheet,
         // header row and columns): a collected result is read again, and an
         // unfinished one is run on, so a reclaimed answer never starts a
@@ -1362,7 +1358,12 @@ where
                 return Ok(settled);
             }
         }
-        let key = format!("document-{}-p{earlier}", self.hash(&identity));
+        // The first job of an ordinary read keeps its original key.
+        let key = if population || earlier > 0 {
+            format!("document-{}-p{earlier}", self.hash(&identity))
+        } else {
+            format!("document-{}", self.hash(&identity))
+        };
         self.settle(basis, &key, &analysis_request, cancellation)
             .await
     }

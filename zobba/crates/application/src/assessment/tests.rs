@@ -3517,10 +3517,22 @@ fn turn_with(store: &Store, reader: &Reader, turn: &str, answer: CitedAnswer) ->
 }
 fn feedback_after(store: &Store, reader: &Reader, turn: &str, answer: CitedAnswer) -> String {
     let assessment = Assessment::new(store, reader);
+    // The request carries the outline the work loop sends with each turn.
+    let mut sent = invocation(turn, "binding-1");
+    if let Some(outline) = run(assessment.context(&basis("p1"))).unwrap().outline {
+        sent.request
+            .messages
+            .push(zobba_domain::model::ModelMessage {
+                role: zobba_domain::model::MessageRole::User,
+                text: outline,
+                source_id: None,
+                images: vec![],
+            });
+    }
     run(assessment.after_answer(
         &basis("p1"),
         &binding("binding-1"),
-        &invocation(turn, "binding-1"),
+        &sent,
         &answer,
         &ModelCancellation::new(),
     ))
@@ -3909,6 +3921,24 @@ fn a_reconsideration_request_is_the_only_cause_for_an_unchanged_judgment() {
         &first,
         &first,
         "The organisation chart is out of date.",
+    );
+    // An answer whose request did not show the reconsideration (an earlier
+    // answer replayed on a reclaim) does not answer it.
+    // It is due a further turn that shows it.
+    let mut j = judgment(Verdict::NotMet, "Replayed.", &basis_id);
+    j.criterion = criterion.clone();
+    assert!(turn_with(
+        &store,
+        &reader,
+        "turn-2b",
+        CitedAnswer {
+            judgments: vec![j],
+            ..CitedAnswer::default()
+        },
+    ));
+    assert!(
+        store.state.lock().unwrap().revisions.is_empty(),
+        "a request the model never saw is not answered"
     );
     let feedback = ask("turn-3", "The same manager approves and requests.");
     assert!(feedback.contains("Revision 2 of"), "{feedback}");

@@ -357,7 +357,14 @@ BEGIN
   IF pred_execution='failed' AND NEW.execution='completed' THEN expected := array_append(expected, 'prior_execution_failed'); END IF;
   SELECT d.kind INTO latest FROM public.assessment_dispositions d WHERE (d.organisation_id,d.client_id,d.engagement_id,d.revision_id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.predecessor_id)
     ORDER BY d.created_us DESC, d.id COLLATE "C" DESC LIMIT 1;
-  IF latest IS NOT DISTINCT FROM 'needs_reconsideration' THEN expected := array_append(expected, 'reconsideration_requested'); END IF;
+  -- A reconsideration causes a revision only when the request trusted code
+  -- sent for the answering turn showed it: a replayed earlier answer never
+  -- answers a request the model did not see.
+  IF latest IS NOT DISTINCT FROM 'needs_reconsideration' AND EXISTS(SELECT 1 FROM public.model_invocations i
+     WHERE (i.organisation_id,i.client_id,i.engagement_id,i.id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.invocation_id)
+       AND pg_catalog.strpos(i.request::text, 'reconsideration requested of '||NEW.predecessor_id||' ') > 0) THEN
+   expected := array_append(expected, 'reconsideration_requested');
+  END IF;
   IF NEW.causes IS DISTINCT FROM expected THEN
    RAISE EXCEPTION 'a revision states exactly the causes trusted code derives from its predecessor' USING ERRCODE='23514';
   END IF;

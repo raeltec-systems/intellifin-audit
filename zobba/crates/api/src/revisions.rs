@@ -611,8 +611,14 @@ pub(crate) async fn dispose(
     let Some(request) = command(revision_id, body) else {
         return refusal(DispositionError::Invalid);
     };
+    // Evidence reads are bound to this exact session, like every other
+    // person-facing original read.
+    let evidence = state
+        .evidence
+        .clone()
+        .with_session_hash(secret_hash(&token));
     let reader = PersonReader {
-        metadata: &state.evidence,
+        metadata: &evidence,
         objects: state.objects.as_deref(),
         store: &state.assessments,
     };

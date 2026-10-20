@@ -651,6 +651,13 @@ impl DispositionStore for AssessmentRepository {
             });
         }
         if r.kind == DispositionKind::NeedsReconsideration {
+            // Like new guidance, a request to reconsider resumes a Task that
+            // is waiting for direction; a paused or stopped Task stays so.
+            sqlx::query("UPDATE public.tasks SET state='ready',cessation='none',revision=revision+1 WHERE id=$1 AND state='waiting' AND cessation='confirmed'")
+                .bind(&record.task_id)
+                .execute(&mut *tx)
+                .await
+                .map_err(|_| DispositionError::Unavailable)?;
             task::wake(&mut tx, scope, &record.task_id, &accountable)
                 .await
                 .map_err(task_denied)?;
