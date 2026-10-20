@@ -1395,7 +1395,7 @@ constraint|assessment_population_members|assessment_population_members_digest_ch
 constraint|assessment_population_members|assessment_population_members_digest_not_null|true|NOT NULL digest
 constraint|assessment_population_members|assessment_population_members_disposition_check|true|CHECK ((disposition = ANY (ARRAY['in_scope'::text, 'excluded'::text, 'scope_unknown'::text, 'duplicate_row'::text, 'unkeyed'::text])))
 constraint|assessment_population_members|assessment_population_members_disposition_not_null|true|NOT NULL disposition
-constraint|assessment_population_members|assessment_population_members_document_check|true|CHECK (((jsonb_typeof(document) = 'object'::text) AND (octet_length((document)::text) <= 16384)))
+constraint|assessment_population_members|assessment_population_members_document_check|true|CHECK (((jsonb_typeof(document) = 'object'::text) AND (octet_length((document)::text) <= 65536)))
 constraint|assessment_population_members|assessment_population_members_document_not_null|true|NOT NULL document
 constraint|assessment_population_members|assessment_population_members_engagement_id_not_null|true|NOT NULL engagement_id
 constraint|assessment_population_members|assessment_population_members_ordinal_check|true|CHECK (((ordinal >= 0) AND (ordinal <= 19999)))

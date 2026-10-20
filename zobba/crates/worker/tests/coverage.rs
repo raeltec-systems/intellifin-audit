@@ -1046,6 +1046,27 @@ async fn every_row_is_counted_by_trusted_code_and_recounted_by_the_database() {
         )
     };
     assert_eq!(per_criterion, [c("a"), c("b")]);
+    // Every other per-criterion field, against the same independent counts.
+    let rest: Vec<(String, String, String, String, String)> = sqlx::query_as(
+        "SELECT x->>'not_applicable',x->>'applicability_unknown',x->>'execution_failed',x->>'not_evaluated',x->>'met_unreviewed' FROM public.assessment_summaries s, jsonb_array_elements(s.document->'summary'->'criteria') x WHERE s.ordinal=0 AND s.sample_id IS NULL AND s.received_rows=1256",
+    )
+    .fetch_all(&mut admin)
+    .await
+    .unwrap();
+    let zero = || s("0");
+    assert_eq!(
+        rest,
+        vec![
+            (
+                expected["not_applicable"].to_string(),
+                zero(),
+                zero(),
+                zero(),
+                zero()
+            );
+            2
+        ]
+    );
     // Zero applicable: not a pass.
     assert_eq!(
         (rows[1].0.as_str(), rows[1].4[9], rows[1].4[7]),
@@ -1901,7 +1922,42 @@ async fn database_guards_refuse_altered_coverage_records(
     // summary per population, not a count guard.
     let copy = forged_summary(&[]);
     let message = refused(admin, &copy).await;
-    assert!(!message.contains("a summary count"), "{message}");
+    assert!(
+        message.contains("duplicate key value violates unique constraint"),
+        "the unaltered copy reaches only the one-summary uniqueness: {message}"
+    );
+
+    // The document environment admits only the exact trusted program over
+    // one JSON string literal: an appended line, or a literal holding a
+    // character outside the trusted encoder's set, is refused.
+    let job = |program: &str| {
+        format!(
+            "INSERT INTO public.analysis_jobs SELECT (jsonb_populate_record(NULL::public.analysis_jobs, to_jsonb(j) || jsonb_build_object('id','job-forged-{n}','operation_id','op-forged-{n}','program',{program}))).* FROM public.analysis_jobs j WHERE j.id=(SELECT job_id FROM public.assessment_populations WHERE document->>'key'='low')",
+            n = program.len()
+        )
+    };
+    for program in [
+        "j.program || '# appended' || chr(10)",
+        // The sheet name inside the literal, with a character the encoder
+        // never writes unescaped (the program text holds no "Low").
+        "replace(j.program, 'Low', 'Lo#w')",
+    ] {
+        let statement = job(program);
+        assert_refused(
+            &refused(admin, &statement).await,
+            "only the trusted document program runs in the document environment",
+            &statement,
+        );
+    }
+    // Positive control: the exact program passes the guard and reaches only
+    // the job's operation (one job per operation; a new one has no operation).
+    let statement = job("j.program").replace("'op-forged-9'", "j.operation_id");
+    let message = refused(admin, &statement).await;
+    assert!(
+        message.contains("duplicate key value violates unique constraint")
+            && !message.contains("trusted document program"),
+        "{message}"
+    );
 }
 
 /// A statement refused inside a transaction, rolled back to a savepoint so

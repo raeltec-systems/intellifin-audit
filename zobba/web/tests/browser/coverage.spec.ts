@@ -74,7 +74,7 @@ test('coverage shows exact counts in words, exclusions by reason and no pass the
   const region = page.getByRole('region', { name: 'Coverage', exact: true });
   await expect(region).toBeVisible();
   const summaries = region.locator('.coverage-summaries > li');
-  await expect(summaries).toHaveCount(4);
+  await expect(summaries).toHaveCount(8);
   // AC2: the full population. Two grains, two names: failing invoices and
   // failing opportunities.
   const full = summaries.nth(0);
@@ -101,7 +101,24 @@ test('coverage shows exact counts in words, exclusions by reason and no pass the
   // A sample names its selected items only.
   await expect(summaries.nth(3).locator('.coverage-conclusion')).toContainText('Among the selected items only');
   await expect(summaries.nth(3)).toContainText('25 selected invoices; nothing is inferred about the rest.');
-  await expect(region).not.toContainText(/no exception found|confiden|probab|%/i);
+  for (const index of [0, 1, 2, 3, 4, 6]) {
+    await expect(summaries.nth(index)).not.toContainText(/no exception found/i);
+  }
+  await expect(region).not.toContainText(/confiden|probab|%/i);
+  // The Edge sheet: nothing covers its scope-unknown and unkeyed rows.
+  const edge = summaries.nth(4);
+  await expect(edge.locator('.coverage-conclusion')).toHaveText('Inconclusive.');
+  await expect(edge.getByRole('list', { name: 'Coverage limitations' })).toContainText('3 invoices have an unknown scope; they are unresolved.');
+  await expect(edge.getByRole('list', { name: 'Coverage limitations' })).toContainText('1 received row has no usable key; it was not assessed, so no conclusion covers it.');
+  // The Dated sheet: the one complete population with no exception, and the
+  // naive Excel date-times said in words; its sample concludes nothing
+  // about the population.
+  const dated = summaries.nth(5);
+  await expect(dated.locator('.coverage-conclusion')).toHaveText('No exception found.');
+  await expect(dated).toContainText('3 Excel date or date-time cells carry no time zone; they were read as UTC.');
+  await expect(summaries.nth(6).locator('.coverage-conclusion')).toContainText('Among the selected items only');
+  // The Lines sheet: one subject per invoice line.
+  await expect(summaries.nth(7)).toContainText('6 invoice_lines in scope.');
   // The count mismatch is a reconciliation sentence with both numbers.
   const populations = region.locator('.coverage-populations > li');
   await expect(populations.filter({ hasText: 'Population cover' })).toContainText('the cited control count is 1,251; 1,250 distinct items were found');

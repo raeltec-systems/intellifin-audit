@@ -110,7 +110,9 @@ CREATE TABLE public.assessment_population_members (
  disposition text NOT NULL CHECK(disposition IN ('in_scope','excluded','scope_unknown','duplicate_row','unkeyed')),
  reason text CHECK(reason IN ('out_of_period','period_unparsed','period_missing','conflicting_duplicate')),
  duplicate_of integer,
- document jsonb NOT NULL CHECK(jsonb_typeof(document)='object' AND octet_length(document::text) <= 16384),
+ -- Twelve 256-byte cells of control characters escape to six bytes each in
+ -- JSON text: the bound holds the widest member trusted code can build.
+ document jsonb NOT NULL CHECK(jsonb_typeof(document)='object' AND octet_length(document::text) <= 65536),
  digest text NOT NULL CHECK(digest ~ '^[0-9a-f]{64}$'),
  -- The closed pairs: excluded only out of period; scope unknown by a period
  -- or a conflicting duplicate; a duplicate row names an earlier row.
