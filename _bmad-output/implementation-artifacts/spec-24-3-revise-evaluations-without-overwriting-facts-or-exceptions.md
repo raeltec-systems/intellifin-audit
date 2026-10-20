@@ -209,7 +209,12 @@ Deferred, each with its reason:
   - (12) the panel does not refresh history after a save.
 - VG L2 (the browser answers its own POST) is unchanged. The real route runs in the worker proof. The `_test` name condition of the fixture reset is not tested separately.
 
-Verification after the last change is recorded below. The results are exact.
+Verification after the last change (sequential, exact):
+- `cargo fmt --all --check`: clean. `cargo clippy --workspace --all-targets --locked -- -D warnings`: clean.
+- `cargo test --workspace --locked --no-fail-fast -- --test-threads=1`: 56 targets, 725 passed, 0 failed, 4 ignored. No rerun was needed (`final_validation_expiry` passed in the full run). The first attempt stopped at compile time because the disk was full. `target/debug` was cleared and the whole run was repeated.
+- `pnpm --dir zobba/web check`: 225 tests, 223 passed, 2 failed (the two known IPv6 loopback cases). `pnpm --dir zobba/web build`: ok.
+- Browser `revision.spec.ts`, `coverage.spec.ts`, `assessment.spec.ts`, `investigation.spec.ts`: 11 passed.
+- `python3 scripts/smoke.py`: passed.
 
 ## Suggested Review Order (24.3a)
 
