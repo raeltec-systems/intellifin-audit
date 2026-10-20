@@ -109,7 +109,8 @@ function DispositionForm({ chain, taskId, facts, scope, session }: { chain: Chai
   useEffect(() => () => controller.current?.abort(), []);
   // Verified quotes the person may cite: each is checked again at save.
   const offered = useMemo(() => facts.flatMap(f => f.sources
-    .filter(s => s.readable && s.verification === 'verified' && s.locator && s.quote)
+    // A page alone is never verified at save, so it is never offered.
+    .filter(s => s.readable && s.verification === 'verified' && s.locator && !s.locator.startsWith('page:') && s.quote)
     .map(s => ({ key: `${s.original_id}|${s.locator}|${s.quote}`, label: `${f.name} · ${s.location ?? s.locator} · “${s.quote}”`, reference: { original_id: s.original_id, locator: s.locator!, quote: s.quote! } })))
     .filter((item, index, all) => all.findIndex(o => o.key === item.key) === index), [facts]);
   const command: DispositionCommand = {

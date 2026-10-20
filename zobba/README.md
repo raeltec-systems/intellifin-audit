@@ -2123,32 +2123,58 @@ facts) and **dispositions** (what a person decided about one exact revision).
   changed, nothing is recorded and the feedback says so; a different judgment
   with no cause is refused as feedback. The model never chooses a predecessor,
   a cause or a disposition. The subject unit is not part of the chain identity
-  because 24.1 evaluations do not record it (a documented deviation).
+  because 24.1 evaluations do not record it (a documented deviation). A basis
+  or criterion version has at most one successor and at most 64 earlier
+  versions (refused as feedback when proposed, and by the guard), so every
+  lineage walk reaches its root and a chain never forks. Data recorded before
+  24.3a may hold two revision-1 evaluations of one subject in a lineage (24.1
+  re-evaluated under a successor basis): the newest continues the chain; the
+  older stays closed and inspectable — never an error.
 - **Carried facts.** To correct a fact, the agent proposes a successor basis
   (`supersedes`), lists it in `carry_facts` (≤1) with the (subject, name)
   pairs to leave out, and records the corrected facts there. Every other
   effective fact of the predecessor is carried **by reference** with its
   original verification (`assessment_basis_carries`,
-  `_basis_carried_facts`); the 1,024-fact bound counts carried facts.
+  `_basis_carried_facts`); the 1,024-fact bound counts carried facts. A
+  refused carry stops that successor's evaluation in the same answer (it
+  would read only its own facts). `evaluate_population` reads chain heads with
+  effective facts; a subject whose judgment was revised is counted as not
+  evaluated there (24.3b's effective summary counts its current verdict),
+  never with its superseded first verdict.
 - **Dispositions.** An assigned Auditor or Audit manager (Admin alone is
   refused) posts `accepted`, `replaced` (a model judgment only; a rule verdict
   is never replaced — `400 not_replaceable`) or `needs_reconsideration`
   (concern `facts | rule | authority | scope`) to
-  `POST /tasks/{task}/assessment/revisions/{revision}/dispositions`, with a
+  `POST /tasks/{task}/assessment/revisions/{revision}/dispositions` (a
+  person's met or not_met only on an applicable, completed judgment under a
+  verified authority — `400 verdict_not_decidable`), with a
   rationale of 1–2,000 UTF-8 bytes and ≤8 evidence references. Each reference
   is verified at save against the exact original the person can open now (a
   plain-text byte range from its bytes; a cell, paragraph or email part
-  against a quote trusted code already verified there; a page alone never); one
+  against a quote trusted code already verified there; a page alone never; a
+  quote that is only part of the value there never — the 24.1 whole-value
+  rule); one
   unverified reference refuses the whole request (`409 reference_unverified`
   with its index). A key is idempotent per actor: an exact retry returns the
-  original, a changed one is `409 disposition_conflict`. A disposition on a
+  original only after the session, role and assignment are checked again (a
+  revoked actor gets 403), a changed one is `409 disposition_conflict`. The
+  guard itself requires the person's own live session (the API sets its hash
+  for the write transaction only), so a worker connection cannot save one, and
+  an unset scope is a refusal. A disposition on a
   superseded revision is `409 revision_superseded` naming the head. The
   revision row is never changed. `needs_reconsideration` wakes the Task (a
-  Task waiting for direction resumes; a paused or stopped one stays so) and
-  the person's concern and words reach the model as quoted data inside the
-  outline envelope. A reconsideration causes a revision only when the request
-  sent for the answering turn showed it (the database checks the same words in
-  the stored request), so a replayed earlier answer never answers it.
+  Task waiting for direction resumes with its own `observed` Task event; a
+  paused or stopped one stays so) and the person's concern and words reach the
+  model in their own `assessment-reconsiderations` message (class
+  `person-input`, attributed to the person, never model output), bounded to
+  the newest 8 with the exact count of the rest, separate from the outline so
+  its budget can never drop one. Each is a line starting with the structured
+  marker `- reconsideration <disposition> of <head> (`; every other text there
+  is a JSON-escaped string, so no rationale, document or answer can forge one.
+  A reconsideration causes a revision only when the answering turn's request
+  listed that exact disposition there (Rust and the database check that one
+  message of the stored request), so a replayed earlier answer never answers
+  it; a listed one the model was shown never asks for further turns.
 - **Reads.** The work read adds each evaluation's `chain` head with its causes,
   newest disposition, the effective verdict and origin (`human` only after
   `replaced`) and a derived review state (`unreviewed`, `accepted`,
@@ -2183,7 +2209,19 @@ carries the approver by reference and records the corrected amount (revision
 3: `inputs_changed`, `basis_revised`, `reconsideration_requested`; the amount
 replaced). It checks the history route (pages, cursor, a changed session 412,
 another chain 403, Admin 403) and the forged-record guards by their messages,
-including a two-row carried-fact insert with exactly one bad row. No live
+including a two-row carried-fact insert with exactly one bad row. Review round
+1 adds: the resume event; the person-input message and its marker; a
+disposition racing a revision (it waits on the chain lock and is refused
+naming the new head) and two concurrent revisions of one head (one
+successor); a paused Task that stays paused, then one turn that shows the
+request and no loop; the 16-disposition cap; a replay after revocation, an
+Admin with an assignment and another Task's chain refused; and database
+forgeries that each break one rule beside an accepted control (owner UPDATE
+and DELETE with forced RLS lifted, carries TRUNCATE alone, RLS under two
+engagements, changes three ways, each cause omitted, a false
+`prior_execution_failed`, an unshown reconsideration, excepted and shadowed
+inputs, older versions, a restarted chain, dispositions without scope or
+session, four unverified references, and the 1,024 own+carried bound). No live
 provider is called.
 
 ```sh
