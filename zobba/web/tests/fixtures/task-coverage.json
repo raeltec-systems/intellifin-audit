@@ -3911,14 +3911,230 @@
           "rule": "boolean_yes_no"
         }
       ]
+    },
+    {
+      "basis_id": "id-6",
+      "completeness": "complete",
+      "control_source": null,
+      "counts": {
+        "distinct_subjects": "4",
+        "duplicate_rows": "0",
+        "excluded_out_of_period": "0",
+        "in_scope": "1",
+        "received_rows": "6",
+        "scope_unknown_conflicting_duplicate": "1",
+        "scope_unknown_period_missing": "1",
+        "scope_unknown_period_unparsed": "1",
+        "unkeyed": "1"
+      },
+      "declared_count": null,
+      "execution_epoch": "1",
+      "exhaustive": true,
+      "filename": "AP population.xlsx",
+      "grain": [
+        "Invoice"
+      ],
+      "header_row": 1,
+      "id": "id-19",
+      "incomplete_reason": null,
+      "invocation_id": "0000000000000000000000000000000000000000000000000000000000000014",
+      "job_id": "id-21",
+      "key": "edge",
+      "last_row": 7,
+      "methodology_binding_id": "id-4",
+      "naive_date_times": "0",
+      "original_id": "ap-population",
+      "original_sha256": "0000000000000000000000000000000000000000000000000000000000000007",
+      "period_column": "Invoice date",
+      "period_rule": "date_dmy",
+      "reconciliation": "not_declared",
+      "rows_read": 6,
+      "selection": "Every invoice row of the Edge sheet",
+      "sheet": "Edge",
+      "subject_unit": "invoice",
+      "supersedes": null,
+      "truncated": false,
+      "values": [
+        {
+          "fact_type": "decimal",
+          "header": "Amount",
+          "measure": "USD",
+          "measure_column": "Currency",
+          "name": "amount",
+          "rule": "decimal_grouped_comma"
+        },
+        {
+          "fact_type": "boolean",
+          "header": "Approved",
+          "measure": null,
+          "measure_column": null,
+          "name": "approved",
+          "rule": "boolean_yes_no"
+        },
+        {
+          "fact_type": "boolean",
+          "header": "Approved before payment",
+          "measure": null,
+          "measure_column": null,
+          "name": "approved_before_payment",
+          "rule": "boolean_yes_no"
+        }
+      ]
+    },
+    {
+      "basis_id": "id-6",
+      "completeness": "complete",
+      "control_source": null,
+      "counts": {
+        "distinct_subjects": "3",
+        "duplicate_rows": "0",
+        "excluded_out_of_period": "1",
+        "in_scope": "2",
+        "received_rows": "3",
+        "scope_unknown_conflicting_duplicate": "0",
+        "scope_unknown_period_missing": "0",
+        "scope_unknown_period_unparsed": "0",
+        "unkeyed": "0"
+      },
+      "declared_count": null,
+      "execution_epoch": "1",
+      "exhaustive": true,
+      "filename": "AP population.xlsx",
+      "grain": [
+        "Invoice"
+      ],
+      "header_row": 1,
+      "id": "id-22",
+      "incomplete_reason": null,
+      "invocation_id": "0000000000000000000000000000000000000000000000000000000000000017",
+      "job_id": "id-24",
+      "key": "dated",
+      "last_row": 4,
+      "methodology_binding_id": "id-4",
+      "naive_date_times": "3",
+      "original_id": "ap-population",
+      "original_sha256": "0000000000000000000000000000000000000000000000000000000000000007",
+      "period_column": "Invoice date",
+      "period_rule": "date_iso",
+      "reconciliation": "not_declared",
+      "rows_read": 3,
+      "selection": "Every invoice row of the Dated sheet",
+      "sheet": "Dated",
+      "subject_unit": "invoice",
+      "supersedes": null,
+      "truncated": false,
+      "values": [
+        {
+          "fact_type": "decimal",
+          "header": "Amount",
+          "measure": "USD",
+          "measure_column": "Currency",
+          "name": "amount",
+          "rule": "decimal_grouped_comma"
+        },
+        {
+          "fact_type": "boolean",
+          "header": "Approved",
+          "measure": null,
+          "measure_column": null,
+          "name": "approved",
+          "rule": "boolean_yes_no"
+        },
+        {
+          "fact_type": "boolean",
+          "header": "Approved before payment",
+          "measure": null,
+          "measure_column": null,
+          "name": "approved_before_payment",
+          "rule": "boolean_yes_no"
+        },
+        {
+          "fact_type": "instant",
+          "header": "Approved at",
+          "measure": null,
+          "measure_column": null,
+          "name": "approved_at",
+          "rule": "instant_rfc3339"
+        }
+      ]
+    },
+    {
+      "basis_id": "id-6",
+      "completeness": "complete",
+      "control_source": null,
+      "counts": {
+        "distinct_subjects": "6",
+        "duplicate_rows": "0",
+        "excluded_out_of_period": "0",
+        "in_scope": "6",
+        "received_rows": "6",
+        "scope_unknown_conflicting_duplicate": "0",
+        "scope_unknown_period_missing": "0",
+        "scope_unknown_period_unparsed": "0",
+        "unkeyed": "0"
+      },
+      "declared_count": null,
+      "execution_epoch": "1",
+      "exhaustive": true,
+      "filename": "AP population.xlsx",
+      "grain": [
+        "Invoice",
+        "Line"
+      ],
+      "header_row": 1,
+      "id": "id-25",
+      "incomplete_reason": null,
+      "invocation_id": "000000000000000000000000000000000000000000000000000000000000001a",
+      "job_id": "id-27",
+      "key": "lines",
+      "last_row": 7,
+      "methodology_binding_id": "id-4",
+      "naive_date_times": "0",
+      "original_id": "ap-population",
+      "original_sha256": "0000000000000000000000000000000000000000000000000000000000000007",
+      "period_column": "Invoice date",
+      "period_rule": "date_iso",
+      "reconciliation": "not_declared",
+      "rows_read": 6,
+      "selection": "Every invoice row of the Lines sheet",
+      "sheet": "Lines",
+      "subject_unit": "invoice_line",
+      "supersedes": null,
+      "truncated": false,
+      "values": [
+        {
+          "fact_type": "decimal",
+          "header": "Amount",
+          "measure": "USD",
+          "measure_column": "Currency",
+          "name": "amount",
+          "rule": "decimal_grouped_comma"
+        },
+        {
+          "fact_type": "boolean",
+          "header": "Approved",
+          "measure": null,
+          "measure_column": null,
+          "name": "approved",
+          "rule": "boolean_yes_no"
+        },
+        {
+          "fact_type": "boolean",
+          "header": "Approved before payment",
+          "measure": null,
+          "measure_column": null,
+          "name": "approved_before_payment",
+          "rule": "boolean_yes_no"
+        }
+      ]
     }
   ],
   "samples": [
     {
       "algorithm": "splitmix64-fisher-yates-v1",
       "execution_epoch": "1",
-      "id": "id-19",
-      "invocation_id": "0000000000000000000000000000000000000000000000000000000000000014",
+      "id": "id-28",
+      "invocation_id": "000000000000000000000000000000000000000000000000000000000000001d",
       "justification": "A seeded random selection of 25 in-scope invoices",
       "key": "s1",
       "keys": [
@@ -3955,6 +4171,25 @@
       "seed": "42",
       "selected_count": "25",
       "size": 25,
+      "statistical_inference": false,
+      "strata": "",
+      "substitutions": []
+    },
+    {
+      "algorithm": null,
+      "execution_epoch": "1",
+      "id": "id-30",
+      "invocation_id": "0000000000000000000000000000000000000000000000000000000000000017",
+      "justification": "Every in-scope invoice of the Dated sheet",
+      "key": "every",
+      "keys": [],
+      "keys_withheld": false,
+      "method": "all_in_scope",
+      "methodology_binding_id": "id-4",
+      "population_id": "id-22",
+      "seed": null,
+      "selected_count": "2",
+      "size": 2,
       "statistical_inference": false,
       "strata": "",
       "substitutions": []
@@ -4019,7 +4254,7 @@
       "execution_epoch": "1",
       "failing_opportunities": "27",
       "failing_subjects": "20",
-      "id": "id-21",
+      "id": "id-31",
       "incomplete_reason": null,
       "invocation_id": "0000000000000000000000000000000000000000000000000000000000000003",
       "limitations": [],
@@ -4031,7 +4266,7 @@
       "sample_id": null,
       "selected": null,
       "statistical_inference": false,
-      "summary_sha256": "0000000000000000000000000000000000000000000000000000000000000016",
+      "summary_sha256": "0000000000000000000000000000000000000000000000000000000000000020",
       "unresolved_subjects": "20"
     },
     {
@@ -4082,7 +4317,7 @@
       "execution_epoch": "1",
       "failing_opportunities": "0",
       "failing_subjects": "0",
-      "id": "id-23",
+      "id": "id-33",
       "incomplete_reason": null,
       "invocation_id": "000000000000000000000000000000000000000000000000000000000000000c",
       "limitations": [],
@@ -4094,7 +4329,7 @@
       "sample_id": null,
       "selected": null,
       "statistical_inference": false,
-      "summary_sha256": "0000000000000000000000000000000000000000000000000000000000000018",
+      "summary_sha256": "0000000000000000000000000000000000000000000000000000000000000022",
       "unresolved_subjects": "0"
     },
     {
@@ -4145,7 +4380,7 @@
       "execution_epoch": "1",
       "failing_opportunities": "0",
       "failing_subjects": "0",
-      "id": "id-25",
+      "id": "id-35",
       "incomplete_reason": "not_exhaustive",
       "invocation_id": "000000000000000000000000000000000000000000000000000000000000000f",
       "limitations": [],
@@ -4157,7 +4392,7 @@
       "sample_id": null,
       "selected": null,
       "statistical_inference": false,
-      "summary_sha256": "000000000000000000000000000000000000000000000000000000000000001a",
+      "summary_sha256": "0000000000000000000000000000000000000000000000000000000000000024",
       "unresolved_subjects": "0"
     },
     {
@@ -4208,9 +4443,9 @@
       "execution_epoch": "1",
       "failing_opportunities": "1",
       "failing_subjects": "1",
-      "id": "id-27",
+      "id": "id-37",
       "incomplete_reason": null,
-      "invocation_id": "0000000000000000000000000000000000000000000000000000000000000014",
+      "invocation_id": "000000000000000000000000000000000000000000000000000000000000001d",
       "limitations": [
         {
           "code": "sample_selected_only",
@@ -4224,10 +4459,295 @@
       "not_applicable_to_any": "3",
       "population_id": "id-9",
       "reconciliation": "matched",
-      "sample_id": "id-19",
+      "sample_id": "id-28",
       "selected": "25",
       "statistical_inference": false,
-      "summary_sha256": "000000000000000000000000000000000000000000000000000000000000001c",
+      "summary_sha256": "0000000000000000000000000000000000000000000000000000000000000026",
+      "unresolved_subjects": "0"
+    },
+    {
+      "aggregation": "subject_partition_v1",
+      "basis_id": "id-6",
+      "completeness": "complete",
+      "conclusion": "inconclusive",
+      "counts": {
+        "distinct_subjects": "4",
+        "duplicate_rows": "0",
+        "excluded_out_of_period": "0",
+        "in_scope": "1",
+        "received_rows": "6",
+        "scope_unknown_conflicting_duplicate": "1",
+        "scope_unknown_period_missing": "1",
+        "scope_unknown_period_unparsed": "1",
+        "unkeyed": "1"
+      },
+      "criteria": [
+        {
+          "applicability_unknown": "0",
+          "applicable": "1",
+          "criterion_id": "id-2",
+          "execution_failed": "0",
+          "met": "1",
+          "met_unreviewed": "0",
+          "not_applicable": "0",
+          "not_evaluated": "0",
+          "not_met": "0",
+          "undetermined": "0",
+          "undetermined_by_reason": []
+        },
+        {
+          "applicability_unknown": "0",
+          "applicable": "1",
+          "criterion_id": "id-5",
+          "execution_failed": "0",
+          "met": "1",
+          "met_unreviewed": "0",
+          "not_applicable": "0",
+          "not_evaluated": "0",
+          "not_met": "0",
+          "undetermined": "0",
+          "undetermined_by_reason": []
+        }
+      ],
+      "declared_count": null,
+      "execution_epoch": "1",
+      "failing_opportunities": "0",
+      "failing_subjects": "0",
+      "id": "id-39",
+      "incomplete_reason": null,
+      "invocation_id": "0000000000000000000000000000000000000000000000000000000000000014",
+      "limitations": [
+        {
+          "code": "scope_unknown",
+          "count": "3",
+          "criterion_id": null,
+          "text": "3 subjects have an unknown scope; they are unresolved."
+        },
+        {
+          "code": "unkeyed_rows",
+          "count": "1",
+          "criterion_id": null,
+          "text": "1 received rows have no usable key; they were not assessed, so no conclusion covers them."
+        }
+      ],
+      "meets_every_applicable": "1",
+      "methodology_binding_id": "id-4",
+      "not_applicable_to_any": "0",
+      "population_id": "id-19",
+      "reconciliation": "not_declared",
+      "sample_id": null,
+      "selected": null,
+      "statistical_inference": false,
+      "summary_sha256": "0000000000000000000000000000000000000000000000000000000000000028",
+      "unresolved_subjects": "0"
+    },
+    {
+      "aggregation": "subject_partition_v1",
+      "basis_id": "id-6",
+      "completeness": "complete",
+      "conclusion": "no_exception_found",
+      "counts": {
+        "distinct_subjects": "3",
+        "duplicate_rows": "0",
+        "excluded_out_of_period": "1",
+        "in_scope": "2",
+        "received_rows": "3",
+        "scope_unknown_conflicting_duplicate": "0",
+        "scope_unknown_period_missing": "0",
+        "scope_unknown_period_unparsed": "0",
+        "unkeyed": "0"
+      },
+      "criteria": [
+        {
+          "applicability_unknown": "0",
+          "applicable": "2",
+          "criterion_id": "id-2",
+          "execution_failed": "0",
+          "met": "2",
+          "met_unreviewed": "0",
+          "not_applicable": "0",
+          "not_evaluated": "0",
+          "not_met": "0",
+          "undetermined": "0",
+          "undetermined_by_reason": []
+        },
+        {
+          "applicability_unknown": "0",
+          "applicable": "2",
+          "criterion_id": "id-5",
+          "execution_failed": "0",
+          "met": "2",
+          "met_unreviewed": "0",
+          "not_applicable": "0",
+          "not_evaluated": "0",
+          "not_met": "0",
+          "undetermined": "0",
+          "undetermined_by_reason": []
+        }
+      ],
+      "declared_count": null,
+      "execution_epoch": "1",
+      "failing_opportunities": "0",
+      "failing_subjects": "0",
+      "id": "id-41",
+      "incomplete_reason": null,
+      "invocation_id": "0000000000000000000000000000000000000000000000000000000000000017",
+      "limitations": [
+        {
+          "code": "naive_date_times",
+          "count": "3",
+          "criterion_id": null,
+          "text": "3 Excel date or date-time cells carry no time zone; they were read as UTC."
+        }
+      ],
+      "meets_every_applicable": "2",
+      "methodology_binding_id": "id-4",
+      "not_applicable_to_any": "0",
+      "population_id": "id-22",
+      "reconciliation": "not_declared",
+      "sample_id": null,
+      "selected": null,
+      "statistical_inference": false,
+      "summary_sha256": "000000000000000000000000000000000000000000000000000000000000002a",
+      "unresolved_subjects": "0"
+    },
+    {
+      "aggregation": "subject_partition_v1",
+      "basis_id": "id-6",
+      "completeness": "complete",
+      "conclusion": "inconclusive",
+      "counts": {
+        "distinct_subjects": "3",
+        "duplicate_rows": "0",
+        "excluded_out_of_period": "1",
+        "in_scope": "2",
+        "received_rows": "3",
+        "scope_unknown_conflicting_duplicate": "0",
+        "scope_unknown_period_missing": "0",
+        "scope_unknown_period_unparsed": "0",
+        "unkeyed": "0"
+      },
+      "criteria": [
+        {
+          "applicability_unknown": "0",
+          "applicable": "2",
+          "criterion_id": "id-2",
+          "execution_failed": "0",
+          "met": "2",
+          "met_unreviewed": "0",
+          "not_applicable": "0",
+          "not_evaluated": "0",
+          "not_met": "0",
+          "undetermined": "0",
+          "undetermined_by_reason": []
+        },
+        {
+          "applicability_unknown": "0",
+          "applicable": "2",
+          "criterion_id": "id-5",
+          "execution_failed": "0",
+          "met": "2",
+          "met_unreviewed": "0",
+          "not_applicable": "0",
+          "not_evaluated": "0",
+          "not_met": "0",
+          "undetermined": "0",
+          "undetermined_by_reason": []
+        }
+      ],
+      "declared_count": null,
+      "execution_epoch": "1",
+      "failing_opportunities": "0",
+      "failing_subjects": "0",
+      "id": "id-43",
+      "incomplete_reason": null,
+      "invocation_id": "0000000000000000000000000000000000000000000000000000000000000017",
+      "limitations": [
+        {
+          "code": "sample_selected_only",
+          "count": "2",
+          "criterion_id": null,
+          "text": "A sample of 2 selected items: the counts describe the selected items only, never the population."
+        },
+        {
+          "code": "naive_date_times",
+          "count": "3",
+          "criterion_id": null,
+          "text": "3 Excel date or date-time cells carry no time zone; they were read as UTC."
+        }
+      ],
+      "meets_every_applicable": "2",
+      "methodology_binding_id": "id-4",
+      "not_applicable_to_any": "0",
+      "population_id": "id-22",
+      "reconciliation": "not_declared",
+      "sample_id": "id-30",
+      "selected": "2",
+      "statistical_inference": false,
+      "summary_sha256": "000000000000000000000000000000000000000000000000000000000000002c",
+      "unresolved_subjects": "0"
+    },
+    {
+      "aggregation": "subject_partition_v1",
+      "basis_id": "id-6",
+      "completeness": "complete",
+      "conclusion": "no_exception_found",
+      "counts": {
+        "distinct_subjects": "6",
+        "duplicate_rows": "0",
+        "excluded_out_of_period": "0",
+        "in_scope": "6",
+        "received_rows": "6",
+        "scope_unknown_conflicting_duplicate": "0",
+        "scope_unknown_period_missing": "0",
+        "scope_unknown_period_unparsed": "0",
+        "unkeyed": "0"
+      },
+      "criteria": [
+        {
+          "applicability_unknown": "0",
+          "applicable": "6",
+          "criterion_id": "id-2",
+          "execution_failed": "0",
+          "met": "6",
+          "met_unreviewed": "0",
+          "not_applicable": "0",
+          "not_evaluated": "0",
+          "not_met": "0",
+          "undetermined": "0",
+          "undetermined_by_reason": []
+        },
+        {
+          "applicability_unknown": "0",
+          "applicable": "6",
+          "criterion_id": "id-5",
+          "execution_failed": "0",
+          "met": "6",
+          "met_unreviewed": "0",
+          "not_applicable": "0",
+          "not_evaluated": "0",
+          "not_met": "0",
+          "undetermined": "0",
+          "undetermined_by_reason": []
+        }
+      ],
+      "declared_count": null,
+      "execution_epoch": "1",
+      "failing_opportunities": "0",
+      "failing_subjects": "0",
+      "id": "id-45",
+      "incomplete_reason": null,
+      "invocation_id": "000000000000000000000000000000000000000000000000000000000000001a",
+      "limitations": [],
+      "meets_every_applicable": "6",
+      "methodology_binding_id": "id-4",
+      "not_applicable_to_any": "0",
+      "population_id": "id-25",
+      "reconciliation": "not_declared",
+      "sample_id": null,
+      "selected": null,
+      "statistical_inference": false,
+      "summary_sha256": "000000000000000000000000000000000000000000000000000000000000002e",
       "unresolved_subjects": "0"
     }
   ]
