@@ -370,6 +370,9 @@ pub struct CitedAnswer {
     pub evaluate_population: Vec<PopulationEvaluation>,
     /// Story 24.2: coverage summaries trusted code computes.
     pub summarise: Vec<SummaryRequest>,
+    /// Story 24.3a: a successor basis carries its predecessor's effective
+    /// facts by reference, except the listed (subject, name) pairs.
+    pub carry_facts: Vec<crate::revision::CarryFacts>,
     /// Story 22.6: investigation requests and notes that were individually
     /// invalid, repeated or over their bound and so were left out on decode.
     /// The rest of the answer stands; trusted code reports the count.
@@ -496,6 +499,11 @@ impl CitedAnswer {
             && self.propose_sample.iter().all(ProposedSample::is_valid)
             && self.evaluate_population.len() <= MAX_EVALUATE_POPULATION
             && self.summarise.len() <= MAX_SUMMARISE
+            && self.carry_facts.len() <= crate::revision::MAX_CARRIES
+            && self
+                .carry_facts
+                .iter()
+                .all(crate::revision::CarryFacts::is_valid)
     }
     /// Whether the answer proposes criteria, a basis, facts, evaluations or
     /// judgments (Story 24.1), or a population, a sample, population
@@ -511,6 +519,7 @@ impl CitedAnswer {
             || !self.propose_sample.is_empty()
             || !self.evaluate_population.is_empty()
             || !self.summarise.is_empty()
+            || !self.carry_facts.is_empty()
     }
     /// Whether the answer asks for more native reading or its own analysis
     /// program before it is complete (Story 22.5).
@@ -642,6 +651,7 @@ impl CitedAnswer {
         if assessing {
             fields.extend(assessment::answer_fields());
             fields.extend(coverage::answer_fields());
+            fields.extend(crate::revision::answer_fields());
         }
         object(fields)
     }
@@ -898,6 +908,13 @@ impl CitedAnswer {
             coverage::decode_summary,
             &mut discarded,
         )?;
+        let carry_facts = entries(
+            object,
+            "carry_facts",
+            crate::revision::MAX_CARRIES,
+            crate::revision::decode_carry,
+            &mut discarded,
+        )?;
         let answer = Self {
             segments,
             limitations,
@@ -916,6 +933,7 @@ impl CitedAnswer {
             propose_sample,
             evaluate_population,
             summarise,
+            carry_facts,
             discarded,
         };
         answer.is_valid().then_some(answer)

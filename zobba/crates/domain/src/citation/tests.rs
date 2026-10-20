@@ -542,6 +542,12 @@ fn assessment_fields_are_optional_bounded_and_counted_when_invalid() {
         ] {
             map.insert(key.into(), JsonValue::Array(vec![]));
         }
+        // A stored 24.2 answer (no 24.3a field) still decodes, unchanged,
+        // but the assessment schema now asks for carry_facts too.
+        let earlier = CitedAnswer::from_json(&JsonValue::Object(map.clone())).unwrap();
+        assert!(earlier.carry_facts.is_empty());
+        assert!(!CitedAnswer::assessment_schema().accepts(&JsonValue::Object(map.clone())));
+        map.insert("carry_facts".into(), JsonValue::Array(vec![]));
         map.insert(
             "evaluate".into(),
             JsonValue::Array(vec![s("crit-1"), s("crit-1"), s("not an id")]),
@@ -849,4 +855,30 @@ fn coverage_answer_bounds_drop_and_count_every_entry_over_them() {
         panic!("an object schema");
     };
     assert!(!properties.contains_key("propose_population"));
+}
+
+#[test]
+fn carry_facts_is_one_entry_and_a_second_is_dropped_and_counted() {
+    let mut value = answer_json();
+    let carry = |basis: &str| {
+        object(vec![
+            ("basis", s(basis)),
+            ("except", JsonValue::Array(vec![])),
+        ])
+    };
+    if let JsonValue::Object(map) = &mut value {
+        map.insert(
+            "carry_facts".into(),
+            JsonValue::Array(vec![carry("b2"), carry("b3"), carry("not an id")]),
+        );
+    }
+    let answer = CitedAnswer::from_json(&value).unwrap();
+    assert_eq!(answer.carry_facts.len(), crate::revision::MAX_CARRIES);
+    assert_eq!(answer.carry_facts[0].basis, "b2");
+    assert_eq!(answer.discarded, 2, "one over the bound, one invalid");
+    assert!(answer.requests_assessment());
+    let ArgumentSchema::Object { properties, .. } = CitedAnswer::investigation_schema() else {
+        panic!("an object schema");
+    };
+    assert!(!properties.contains_key("carry_facts"));
 }
