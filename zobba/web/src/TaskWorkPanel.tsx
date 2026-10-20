@@ -133,7 +133,7 @@ export function TaskWorkPanel({ state, citations, session }: Props) {
     {work.investigation_unavailable ? <p className="work-unavailable" role="status">Method and skill use could not be read just now. Current work is shown without it.</p> : null}
     {work.investigation ? <MethodAndSkills investigation={work.investigation} answers={state.answers ?? null} citations={citations} onSourceAccessFailure={() => setNotice('That original is not available to you now. Nothing was opened.')} /> : null}
     {work.assessment_unavailable ? <p className="work-unavailable" role="status">The assessment basis could not be read just now. Current work is shown without it.</p> : null}
-    {work.assessment ? <AssessmentBasis assessment={work.assessment} citations={citations} onSourceAccessFailure={() => setNotice('That original is not available to you now. Nothing was opened.')} /> : null}
+    {work.assessment ? <AssessmentBasis key={session ? `basis/${session.identity.id}/${session.csrf_token}/${work.task_id}` : `basis/${work.task_id}`} assessment={work.assessment} citations={citations} taskId={work.task_id} session={session} onSourceAccessFailure={() => setNotice('That original is not available to you now. Nothing was opened.')} /> : null}
     {work.assessment ? <Coverage key={session ? `${session.identity.id}/${session.csrf_token}/${work.task_id}` : work.task_id} assessment={work.assessment} taskId={work.task_id} scope={citations && session ? citations.scope : undefined} session={session} /> : null}
     <details className="brief-revisions"><summary>Brief revisions ({work.briefs.length})</summary><ol>
       {work.briefs.map(brief => <li key={brief.command_id}>

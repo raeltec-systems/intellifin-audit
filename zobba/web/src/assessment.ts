@@ -5,6 +5,7 @@
 import { parseSource } from './citation.ts';
 import { cursor, identifier } from './conversation.ts';
 import { parsePopulation, parseSample, parseSummary } from './coverage.ts';
+import { parseChain } from './revision.ts';
 import type { components } from './generated/api.ts';
 
 export type Assessment = components['schemas']['AssessmentResponse'];
@@ -77,7 +78,7 @@ export function measure(value: unknown): string {
 
 export const factTypes = ['identifier', 'text', 'boolean', 'enum', 'decimal', 'date', 'instant'] as const;
 const authorityReasons = ['not_found_at_location', 'location_missing', 'source_unreadable', 'page_only', 'method_changed', 'criterion_not_found'] as const;
-const evaluationReasons = ['missing_fact', 'fact_unavailable', 'fact_ambiguous', 'fact_unsupported', 'unit_mismatch', 'unknown_applicability', 'authority_unverified', 'analysis_failed', 'subject_unverified', 'unit_unverified'] as const;
+export const evaluationReasons = ['missing_fact', 'fact_unavailable', 'fact_ambiguous', 'fact_unsupported', 'unit_mismatch', 'unknown_applicability', 'authority_unverified', 'analysis_failed', 'subject_unverified', 'unit_unverified'] as const;
 const supportReasons = ['type_mismatch', 'source_unverified', 'analysis_failed', 'partial_value'] as const;
 export const rules = ['identifier_exact', 'text_exact', 'enum_exact', 'boolean_yes_no', 'boolean_true_false', 'decimal_plain', 'decimal_grouped_comma', 'date_iso', 'date_dmy', 'instant_rfc3339'] as const;
 
@@ -145,7 +146,7 @@ function parseBasis(value: unknown): AssessmentBasis {
   return exact(v, basis);
 }
 
-function parseFact(value: unknown): AssessmentFact {
+export function parseFact(value: unknown): AssessmentFact {
   const v = record(value);
   const valueKind = oneOf(v.value_kind, [...factTypes, 'unavailable', 'ambiguous'] as const);
   const support = oneOf(v.support, ['supported', 'unsupported', 'no_value'] as const);
@@ -221,6 +222,7 @@ function parseEvaluation(value: unknown): AssessmentEvaluation {
     }),
     methodology_binding_id: identifier(v.methodology_binding_id),
     execution_epoch: cursor(v.execution_epoch),
+    chain: nullable(v.chain, parseChain),
   };
   // The same structural rules the database enforces.
   const decided = evaluation.verdict === 'met' || evaluation.verdict === 'not_met';
@@ -229,7 +231,9 @@ function parseEvaluation(value: unknown): AssessmentEvaluation {
     || (evaluation.applicability === 'not_applicable' && evaluation.verdict !== null)
     // A deterministic undetermined verdict names its closed reason.
     || (evaluation.verdict === 'undetermined' && evaluation.origin === 'deterministic' && evaluation.reason === null)
-    || (evaluation.origin === 'model_proposal') !== (evaluation.judgment !== null)) invalid();
+    || (evaluation.origin === 'model_proposal') !== (evaluation.judgment !== null)
+    // Story 24.3a: the chain this evaluation begins (revision 1 is this record).
+    || (evaluation.chain !== null && evaluation.chain.chain_id !== evaluation.id)) invalid();
   return exact(v, evaluation);
 }
 

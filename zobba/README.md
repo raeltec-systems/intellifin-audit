@@ -2103,6 +2103,96 @@ ZOBBA_UPDATE_COVERAGE_FIXTURE=1 cargo test -p zobba-worker --test coverage --loc
 pnpm --dir web exec playwright test tests/browser/coverage.spec.ts
 ```
 
+## Revising evaluations without overwriting facts (Story 24.3a)
+
+Schema 20 is additive; migrations 0001–0019 and catalogues v1–v19 are
+unchanged (`published.rs` now pins 0019 and v19 too). Story 24.3b
+(exception occurrences and the effective summary) adds migration 0021.
+Three layers never overwrite each other: **facts** (what a source showed),
+**revisions** (what trusted code or the model concluded from a pinned set of
+facts) and **dispositions** (what a person decided about one exact revision).
+
+- **Revision chains.** A chain is one Task, basis lineage, criterion lineage
+  and subject. Revision 1 is the 24.1 evaluation; every later one is an
+  immutable `assessment_evaluation_revisions` row naming exactly the revision
+  before it (one successor per head). When the agent asks `evaluate` or
+  `judgments` again, trusted code finds the current head, derives the closed
+  causes (`inputs_changed`, `criterion_revised`, `basis_revised`,
+  `prior_execution_failed`, `reconsideration_requested`) and the fact IDs
+  added, removed and replaced by name, and appends a revision. When nothing
+  changed, nothing is recorded and the feedback says so; a different judgment
+  with no cause is refused as feedback. The model never chooses a predecessor,
+  a cause or a disposition. The subject unit is not part of the chain identity
+  because 24.1 evaluations do not record it (a documented deviation).
+- **Carried facts.** To correct a fact, the agent proposes a successor basis
+  (`supersedes`), lists it in `carry_facts` (≤1) with the (subject, name)
+  pairs to leave out, and records the corrected facts there. Every other
+  effective fact of the predecessor is carried **by reference** with its
+  original verification (`assessment_basis_carries`,
+  `_basis_carried_facts`); the 1,024-fact bound counts carried facts.
+- **Dispositions.** An assigned Auditor or Audit manager (Admin alone is
+  refused) posts `accepted`, `replaced` (a model judgment only; a rule verdict
+  is never replaced — `400 not_replaceable`) or `needs_reconsideration`
+  (concern `facts | rule | authority | scope`) to
+  `POST /tasks/{task}/assessment/revisions/{revision}/dispositions`, with a
+  rationale of 1–2,000 UTF-8 bytes and ≤8 evidence references. Each reference
+  is verified at save against the exact original the person can open now (a
+  plain-text byte range from its bytes; a cell, paragraph or email part
+  against a quote trusted code already verified there; a page alone never); one
+  unverified reference refuses the whole request (`409 reference_unverified`
+  with its index). A key is idempotent per actor: an exact retry returns the
+  original, a changed one is `409 disposition_conflict`. A disposition on a
+  superseded revision is `409 revision_superseded` naming the head. The
+  revision row is never changed. `needs_reconsideration` wakes the Task (a
+  Task waiting for direction resumes; a paused or stopped one stays so) and
+  the person's concern and words reach the model as quoted data inside the
+  outline envelope. A reconsideration causes a revision only when the request
+  sent for the answering turn showed it (the database checks the same words in
+  the stored request), so a replayed earlier answer never answers it.
+- **Reads.** The work read adds each evaluation's `chain` head with its causes,
+  newest disposition, the effective verdict and origin (`human` only after
+  `replaced`) and a derived review state (`unreviewed`, `accepted`,
+  `replaced`, `pending_reconsideration`). The history route
+  (`/tasks/{task}/assessment/chains/{chain}/history?cursor=`) lists 50
+  revisions a page in revision order with an exact total, the facts they read
+  and their dispositions, withholding quotes from a viewer who cannot open the
+  original now. The panel shows the causes in words, the history by keyboard
+  and a disposition form with a byte counter and verified-source chips; there
+  is no confidence score anywhere.
+
+The four tables refuse UPDATE, DELETE and TRUNCATE, including for the owner;
+only an explicit `zobba.disposable_fixture_reset=on` session in a `*_test`
+database may delete. Guards refuse a revision that does not succeed the
+current head, states causes or changes other than the derived ones, reads an
+older basis or criterion version than its head, or reads facts that are not
+effective; a first evaluation of a subject already evaluated in the lineage;
+a disposition by someone not currently assigned, on a non-head, replacing a
+rule verdict, beyond 16 per revision, or with an unverified reference; and a
+carry that is not exactly its stated facts (checked once per statement).
+
+What is proven offline: the worker suite drives the real coordinator with a
+loopback model over `fixtures/documents/AP invoices.xlsx` and `AP policy.txt`:
+late evidence on the same basis (revision 2, `inputs_changed`, the approver
+added), an unchanged re-evaluation that records nothing, the real API saving a
+replaced judgment with a verified policy quote (the evaluation row unchanged),
+its exact and changed retries, a rule verdict refused, a superseded revision
+refused naming the head, one unverified reference refusing the request, Admin
+alone and a revoked assignment refused, then a reconsideration that wakes the
+Task and reaches the model as quoted data, answered by a successor basis that
+carries the approver by reference and records the corrected amount (revision
+3: `inputs_changed`, `basis_revised`, `reconsideration_requested`; the amount
+replaced). It checks the history route (pages, cursor, a changed session 412,
+another chain 403, Admin 403) and the forged-record guards by their messages,
+including a two-row carried-fact insert with exactly one bad row. No live
+provider is called.
+
+```sh
+cargo test -p zobba-domain revision
+cargo test -p zobba-worker --test revision --locked -- --test-threads=1   # guarded _test DB, OIDC fixture, Docker
+ZOBBA_UPDATE_REVISION_FIXTURE=1 cargo test -p zobba-worker --test revision --locked -- --test-threads=1   # rewrites web/tests/fixtures/task-revision.json
+pnpm --dir web exec playwright test tests/browser/revision.spec.ts
+```
+
 ## Establishing an engagement conversationally (Story 22.2 AC4)
 
 Schema 13 is additive; published migrations and catalogues 1–12 are unchanged.

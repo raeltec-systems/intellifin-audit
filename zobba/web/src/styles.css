@@ -734,3 +734,16 @@ textarea:focus-visible, select:focus-visible, summary:focus-visible, [tabindex='
 .methodology-proposal fieldset { display: grid; gap: 0.5rem; max-width: 40rem; }
 .proposal-result { margin-top: 0.75rem; }
 .proposal-cite { display: block; font-size: 0.85em; color: var(--muted, #4a5560); overflow-wrap: anywhere; quotes: "“" "”"; }
+
+/* Story 24.3a revision chains and dispositions. A person's verdict is set
+   apart from Zobba's judgment; the form is ordinary text and controls. */
+.evaluation-review { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--line, #d9d4c7); }
+.evaluation-review .review { font-weight: 600; }
+.evaluation-review .human-verdict { font-weight: 600; }
+.revision-history { margin: 6px 0; padding-left: 1.2rem; }
+.revision-history > li { margin-bottom: 6px; }
+.disposition-form { display: grid; gap: 6px; margin-top: 8px; max-width: 42rem; }
+.disposition-form fieldset { border: 1px solid var(--line, #d9d4c7); border-radius: 6px; padding: 6px 10px; display: grid; gap: 4px; }
+.disposition-form textarea { width: 100%; font: inherit; }
+.disposition-form button[aria-disabled="true"] { opacity: 0.7; cursor: not-allowed; }
+.reference-chip { overflow-wrap: anywhere; }

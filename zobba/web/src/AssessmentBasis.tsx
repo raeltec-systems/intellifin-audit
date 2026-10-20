@@ -4,11 +4,17 @@ import type { CitationSource } from './citation';
 import type { Scope } from './engagements';
 import { applicabilityLabel, executionLabel, groundingLabel, originLabel, reasonLabel, supportLabel, valueLabel, verdictLabel } from './assessment';
 import type { Assessment, AssessmentCriterion, AssessmentEvaluation } from './assessment';
+import type { Session } from './auth';
+import { EvaluationReview } from './EvaluationReview';
 
 interface Props {
   assessment: Assessment;
   citations?: { scope: Scope; accessReady: boolean };
   onSourceAccessFailure: () => void;
+  /// Story 24.3a: the Task whose revisions are reviewed, and the captured
+  /// session that bounds each history read and disposition.
+  taskId?: string;
+  session?: Session;
 }
 
 const short = (value: string) => <abbr title={value}>{value.slice(0, 13)}</abbr>;
@@ -18,7 +24,7 @@ const short = (value: string) => <abbr title={value}>{value.slice(0, 13)}</abbr>
 /// facts with their verified sources, and evaluations whose applicability,
 /// execution, verdict and origin are shown as separate words. Agent text is
 /// attributed data; nothing here is a confidence score or a free-text verdict.
-export function AssessmentBasis({ assessment, citations, onSourceAccessFailure }: Props) {
+export function AssessmentBasis({ assessment, citations, onSourceAccessFailure, taskId, session }: Props) {
   const chip = (sources: CitationSource[]) => {
     if (!sources.length) return <span className="context-note"> · no source</span>;
     if (citations) return <> <Citation scope={citations.scope} sources={sources} accessReady={citations.accessReady} onSourceAccessFailure={onSourceAccessFailure} /></>;
@@ -89,6 +95,9 @@ export function AssessmentBasis({ assessment, citations, onSourceAccessFailure }
           <p>{evaluation.judgment.supporting.length} supporting · {evaluation.judgment.contrary.length} contrary {evaluation.judgment.contrary.length === 1 ? 'fact' : 'facts'}</p>
         </div> : null}
         <p className="context-note">Inputs {evaluation.inputs.length} · output digest {short(evaluation.output_digest)}</p>
+        {evaluation.chain && taskId ? <EvaluationReview chain={evaluation.chain} subject={evaluation.subject} taskId={taskId}
+          facts={assessment.facts.filter(f => f.subject === evaluation.subject)} criterion={criterionName(evaluation.criterion_id)}
+          scope={citations && session ? citations.scope : undefined} session={session} /> : null}
       </li>)}</ul>
     </> : null}
   </section>;

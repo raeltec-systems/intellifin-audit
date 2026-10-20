@@ -1285,38 +1285,71 @@ async fn page_full(browser: &Browser, history: &str) -> serde_json::Value {
 /// digests replaced by stable ones. Set `ZOBBA_UPDATE_REVISION_FIXTURE=1` to
 /// rewrite it after an intended change.
 fn revision_fixture(body: &serde_json::Value) {
-    fn normalise(value: &mut serde_json::Value, ids: &mut Vec<String>) {
-        match value {
-            serde_json::Value::String(text) => {
-                let generated = [
-                    "eval-", "rev-", "fact-", "basis-", "crit-", "disp-", "inv-", "task-",
-                    "cycle-", "binding-", "carry-",
-                ]
-                .iter()
-                .any(|p| text.starts_with(p))
-                    || (text.len() == 64 && text.bytes().all(|b| b.is_ascii_hexdigit()))
-                    || (text.len() > 20 && text.bytes().all(|b| b.is_ascii_digit()));
-                if generated {
-                    let index = ids.iter().position(|i| i == text).unwrap_or_else(|| {
-                        ids.push(text.clone());
+    fn normalise(value: &mut serde_json::Value, ids: &mut Vec<String>, digests: &mut Vec<String>) {
+        let stable =
+            |text: &str, ids: &mut Vec<String>, digests: &mut Vec<String>| -> Option<String> {
+                let hex = |s: &str| {
+                    s.bytes()
+                        .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+                };
+                if text.len() == 64 && hex(text) {
+                    let index = digests.iter().position(|d| d == text).unwrap_or_else(|| {
+                        digests.push(text.into());
+                        digests.len() - 1
+                    });
+                    return Some(format!("{:064x}", index + 1));
+                }
+                if let Some((prefix, rest)) = text.split_once('-')
+                    && matches!(
+                        prefix,
+                        "crit" | "basis" | "fact" | "eval" | "rev" | "disp" | "carry"
+                    )
+                    && rest.len() == 40
+                    && hex(rest)
+                {
+                    let index = ids.iter().position(|d| d == text).unwrap_or_else(|| {
+                        ids.push(text.into());
                         ids.len() - 1
                     });
-                    *text = format!("id-{index:03}");
+                    return Some(format!("{prefix}-{}", index + 1));
+                }
+                None
+            };
+        match value {
+            serde_json::Value::Object(map) => {
+                for (key, field) in map.iter_mut() {
+                    match (key.as_str(), &*field) {
+                        (
+                            "invocation_id" | "methodology_binding_id" | "job_id" | "version",
+                            serde_json::Value::String(id),
+                        ) => {
+                            let id = id.clone();
+                            let index = ids.iter().position(|v| *v == id).unwrap_or_else(|| {
+                                ids.push(id);
+                                ids.len() - 1
+                            });
+                            *field = serde_json::json!(format!("id-{}", index + 1));
+                        }
+                        ("recorded_us", serde_json::Value::String(_)) => {
+                            *field = serde_json::json!("1760000000000000");
+                        }
+                        (_, serde_json::Value::String(text)) => {
+                            if let Some(replaced) = stable(&text.clone(), ids, digests) {
+                                *field = serde_json::json!(replaced);
+                            }
+                        }
+                        _ => normalise(field, ids, digests),
+                    }
                 }
             }
             serde_json::Value::Array(items) => {
-                for item in items {
-                    normalise(item, ids);
-                }
-            }
-            serde_json::Value::Object(map) => {
-                for (key, item) in map.iter_mut() {
-                    if key == "methodology_binding_id" {
-                        *item = serde_json::json!("binding");
-                    } else if key.ends_with("_us") || key == "recorded_at" {
-                        *item = serde_json::json!("0");
+                for item in items.iter_mut() {
+                    if let serde_json::Value::String(text) = &*item {
+                        if let Some(replaced) = stable(&text.clone(), ids, digests) {
+                            *item = serde_json::json!(replaced);
+                        }
                     } else {
-                        normalise(item, ids);
+                        normalise(item, ids, digests);
                     }
                 }
             }
@@ -1335,7 +1368,7 @@ fn revision_fixture(body: &serde_json::Value) {
             )
         });
     }
-    normalise(&mut body, &mut Vec::new());
+    normalise(&mut body, &mut vec![], &mut vec![]);
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../web/tests/fixtures/task-revision.json");
     let text = format!("{}\n", serde_json::to_string_pretty(&body).unwrap());
