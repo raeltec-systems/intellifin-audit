@@ -3,6 +3,7 @@ pub mod analysis;
 pub mod assessment;
 pub mod citation;
 pub mod conversation;
+pub mod disposition;
 pub mod engagement_setup;
 pub mod evidence;
 pub mod identity;

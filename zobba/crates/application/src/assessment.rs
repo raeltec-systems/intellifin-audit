@@ -63,7 +63,9 @@ pub const MAX_OUTLINE_RECORDS: usize = 64;
 pub const MAX_ASSESSMENT_OUTLINE_BYTES: usize = 16 * 1024;
 pub const MAX_ASSESSMENT_FEEDBACK_BYTES: usize = 8 * 1024;
 
-pub const ASSESSMENT_CONSTRAINTS: &str = "When you are ready to assess, use the assessment fields. Propose criteria in propose_criteria: an assertion, its authority (method: a requirement ID and the 0-based criterion ordinal of the bound method; or original: a registered original, an exact locator and the exact quote), the facts it needs with their types and units or ISO 4217 currency, an optional applicability test, and either a rule (one closed predicate that trusted code evaluates) or a judgment rubric. Propose one assessment basis in propose_basis: the objective, its criteria (IDs, or keys of criteria in the same answer), the business period, population references to registered originals, and limitations. Record typed facts in record_facts for one subject each (kept exactly, leading zeros included): the value in canonical form (decimals like 1250.00 with a unit or currency, dates YYYY-MM-DD, instants in RFC 3339 with the source offset), the closed parse rule that turns your quote into that value, and the exact quoted sources; or unavailable with a closed reason, or ambiguous with the number of candidates. Trusted code verifies each quote at its location and re-parses it; a value the source does not show is unsupported. Ask trusted code to evaluate rule criteria in evaluate; you never write a rule verdict. Propose judgments only for judgment criteria, with the facts that support and contradict them and your reasoning and uncertainty in words. Missing, unavailable or unsupported evidence is never an exception, and there is no confidence score. Records are immutable: to change one, propose a new version that supersedes it. To show exact coverage, propose one population manifest in propose_population once you have found the population source: the registered original, the sheet and 1-based header row of a workbook (no sheet and header row 1 for CSV or plain text), the subject unit, one to three grain columns whose exact cell texts form each subject key, an optional period column with its date or instant rule, typed value columns (header, fact name, type, parse rule, a decimal's unit or ISO 4217 currency and the column in the same row that shows it), whether the source is the whole population (a search export or a filtered view is not), and optionally a control count you cite at its exact location. Trusted code reads every row and counts; you never count, list members or decide a row's scope. Propose a sample in propose_sample (all_in_scope, judgmental, or seeded_random with a seed; trusted code recomputes a seeded selection), ask evaluate_population to evaluate a criterion of the population's basis over every in-scope member, and ask summarise for the coverage summary. Counts are exact; there are no percentages and no statistical inference, and a sample describes only the items it selected.";
+use revision::{ChainHead, Planned, head_line};
+
+pub const ASSESSMENT_CONSTRAINTS: &str = "When you are ready to assess, use the assessment fields. Propose criteria in propose_criteria: an assertion, its authority (method: a requirement ID and the 0-based criterion ordinal of the bound method; or original: a registered original, an exact locator and the exact quote), the facts it needs with their types and units or ISO 4217 currency, an optional applicability test, and either a rule (one closed predicate that trusted code evaluates) or a judgment rubric. Propose one assessment basis in propose_basis: the objective, its criteria (IDs, or keys of criteria in the same answer), the business period, population references to registered originals, and limitations. Record typed facts in record_facts for one subject each (kept exactly, leading zeros included): the value in canonical form (decimals like 1250.00 with a unit or currency, dates YYYY-MM-DD, instants in RFC 3339 with the source offset), the closed parse rule that turns your quote into that value, and the exact quoted sources; or unavailable with a closed reason, or ambiguous with the number of candidates. Trusted code verifies each quote at its location and re-parses it; a value the source does not show is unsupported. Ask trusted code to evaluate rule criteria in evaluate; you never write a rule verdict. Propose judgments only for judgment criteria, with the facts that support and contradict them and your reasoning and uncertainty in words. Missing, unavailable or unsupported evidence is never an exception, and there is no confidence score. Records are immutable: to change one, propose a new version that supersedes it. To show exact coverage, propose one population manifest in propose_population once you have found the population source: the registered original, the sheet and 1-based header row of a workbook (no sheet and header row 1 for CSV or plain text), the subject unit, one to three grain columns whose exact cell texts form each subject key, an optional period column with its date or instant rule, typed value columns (header, fact name, type, parse rule, a decimal's unit or ISO 4217 currency and the column in the same row that shows it), whether the source is the whole population (a search export or a filtered view is not), and optionally a control count you cite at its exact location. Trusted code reads every row and counts; you never count, list members or decide a row's scope. Propose a sample in propose_sample (all_in_scope, judgmental, or seeded_random with a seed; trusted code recomputes a seeded selection), ask evaluate_population to evaluate a criterion of the population's basis over every in-scope member, and ask summarise for the coverage summary. Counts are exact; there are no percentages and no statistical inference, and a sample describes only the items it selected. When late evidence arrives, record the new fact on the same basis (a fact not yet recorded there) and ask evaluate or propose the judgment again: trusted code finds the current evaluation, derives why it changed and appends a revision, and records nothing when nothing changed. To correct a recorded fact, propose a successor basis that supersedes it, list it in carry_facts with the (subject, name) pairs to leave out, and record the corrected facts on the successor; every other fact is carried by reference with its original verification. A person may ask you to reconsider an evaluation: the outline shows their concern and their words as quoted data; reconsider by evaluating or judging again. You never choose a predecessor, a cause or a disposition.";
 
 /// The state of an analysis job a fact depends on, from its latest
 /// outcome event (a `collected` event repeats the outcome before it).
@@ -1139,7 +1141,7 @@ type Located = (VerifiedSource, Vec<String>);
 /// Verify sources with the 22.5 verifier: one cited segment per source,
 /// chunked within the answer bounds. Each source's result is in input order,
 /// with the text read at its location.
-async fn verify_sources<C: CitationReader>(
+pub(crate) async fn verify_sources<C: CitationReader>(
     reader: &C,
     basis: &ClaimBasis,
     sources: &[CitationSource],
@@ -1395,7 +1397,9 @@ fn context_for<'f>(
     }
 }
 
-impl<S: AssessmentStore + coverage::CoverageStore, C: CitationReader> Assessment<'_, S, C> {
+impl<S: AssessmentStore + coverage::CoverageStore + revision::RevisionStore, C: CitationReader>
+    Assessment<'_, S, C>
+{
     /// Check, record and evaluate one answered turn's assessment proposals.
     /// Idempotent per invocation: a record of this invocation is never
     /// written twice, and every check is an exact query. True when a new
@@ -1413,6 +1417,10 @@ impl<S: AssessmentStore + coverage::CoverageStore, C: CitationReader> Assessment
         let existing_coverage = self
             .store
             .invocation_coverage(basis, &invocation.id)
+            .await?;
+        let existing_revisions = self
+            .store
+            .invocation_revisions(basis, &invocation.id)
             .await?;
         let mut answer_coverage = coverage::AnswerCoverage::default();
         let mut feedback: Vec<String> = Vec::new();
@@ -1595,6 +1603,19 @@ impl<S: AssessmentStore + coverage::CoverageStore, C: CitationReader> Assessment
                 .map(|b| b.id.clone())
         };
 
+        // 2b. Story 24.3a: a successor basis carries its predecessor's
+        // effective facts by reference, except the listed ones.
+        progress |= self
+            .carry_step(
+                basis,
+                invocation,
+                answer,
+                &answer_basis,
+                &existing_revisions,
+                &mut feedback,
+            )
+            .await?;
+
         // 3. Fact observations: sources verified, values re-parsed. Facts of
         // a basis are read once (an exact read) and the per-basis bound is
         // enforced before anything is written.
@@ -1605,6 +1626,7 @@ impl<S: AssessmentStore + coverage::CoverageStore, C: CitationReader> Assessment
         // (record, the fact names a job that is not one of this Task's)
         let mut pending: Vec<(FactRecord, bool)> = Vec::new();
         let mut seen: BTreeSet<(String, String, String)> = BTreeSet::new();
+        let mut carried: BTreeMap<String, usize> = BTreeMap::new();
         for (ordinal, proposed) in answer.record_facts.iter().enumerate() {
             let ordinal = ordinal as u32;
             if let Some(found) = existing.facts.iter().find(|f| f.ordinal == ordinal) {
@@ -1630,6 +1652,15 @@ impl<S: AssessmentStore + coverage::CoverageStore, C: CitationReader> Assessment
                 let facts = self.store.facts(basis, &basis_id).await?;
                 basis_facts.insert(basis_id.clone(), facts);
             }
+            // The 1,024-fact bound counts the facts carried into the basis.
+            if !carried.contains_key(&basis_id) {
+                let count = self
+                    .store
+                    .carry(basis, &basis_id)
+                    .await?
+                    .map_or(0, |c| c.fact_ids.len());
+                carried.insert(basis_id.clone(), count);
+            }
             let recorded = &basis_facts[&basis_id];
             let key = (
                 basis_id.clone(),
@@ -1641,7 +1672,7 @@ impl<S: AssessmentStore + coverage::CoverageStore, C: CitationReader> Assessment
                 .any(|f| f.fact.subject == proposed.subject && f.fact.name == proposed.name);
             if seen.contains(&key) || recorded_before {
                 feedback.push(format!(
-                    "Fact {} of {} was not recorded: that basis already holds it. Facts are pinned to a basis version; propose a new basis version to change one.",
+                    "Fact {} of {} was not recorded: that basis already holds it. Facts are pinned to a basis version: to correct one, propose a successor basis (supersedes) with carry_facts excepting this subject and name, and record the corrected fact there.",
                     proposed.name, proposed.subject
                 ));
                 continue;
@@ -1650,7 +1681,7 @@ impl<S: AssessmentStore + coverage::CoverageStore, C: CitationReader> Assessment
                 .iter()
                 .filter(|(f, _)| f.basis_id == basis_id)
                 .count();
-            if recorded.len() + queued >= MAX_BASIS_FACTS {
+            if recorded.len() + carried[&basis_id] + queued >= MAX_BASIS_FACTS {
                 feedback.push(format!(
                     "Fact {} of {} was not recorded: basis {basis_id} already holds {MAX_BASIS_FACTS} facts, the most one basis version may hold. Propose a new basis version for further facts.",
                     proposed.name, proposed.subject
@@ -1807,7 +1838,16 @@ impl<S: AssessmentStore + coverage::CoverageStore, C: CitationReader> Assessment
             .map(|e| e.ordinal + 1)
             .max()
             .unwrap_or(0);
-        let mut written = existing.evaluations.len();
+        let mut written = existing.evaluations.len() + existing_revisions.revisions.len();
+        let mut rev_ordinal = existing_revisions
+            .revisions
+            .iter()
+            .map(|r| r.ordinal + 1)
+            .max()
+            .unwrap_or(0);
+        // Effective facts (own and carried) of each basis, read after this
+        // answer's facts are written.
+        let mut effective: BTreeMap<String, Vec<FactRecord>> = BTreeMap::new();
         let mut bound_reported = false;
         let bound_line = "Further evaluations were not recorded: the per-answer bound was reached. Ask again in a later answer.";
         for reference in &answer.evaluate {
@@ -1831,11 +1871,11 @@ impl<S: AssessmentStore + coverage::CoverageStore, C: CitationReader> Assessment
                 ));
                 continue;
             };
-            if !basis_facts.contains_key(&target.id) {
-                let facts = self.store.facts(basis, &target.id).await?;
-                basis_facts.insert(target.id.clone(), facts);
+            if !effective.contains_key(&target.id) {
+                let facts = self.store.effective_facts(basis, &target.id).await?;
+                effective.insert(target.id.clone(), facts);
             }
-            let facts = &basis_facts[&target.id];
+            let facts = effective[&target.id].clone();
             let names = consulted(&criterion.criterion);
             let subjects: BTreeSet<&str> = facts
                 .iter()
@@ -1849,15 +1889,17 @@ impl<S: AssessmentStore + coverage::CoverageStore, C: CitationReader> Assessment
                 ));
                 continue;
             }
-            // Already-evaluated subjects are set aside before the
-            // per-request bound, so later subjects are reached by a later
-            // request.
-            let done: BTreeMap<String, EvaluationRecord> = self
+            // Story 24.3a: every chain of this lineage with its current head,
+            // by an exact query. A subject with no chain is evaluated for the
+            // first time; one with a chain is revised only when trusted code
+            // derives a cause. Subjects that need nothing are set aside
+            // before the per-request bound.
+            let heads: BTreeMap<String, ChainHead> = self
                 .store
-                .evaluations_of(basis, &target.id, &criterion.id)
+                .heads(basis, &target.id, &criterion.id)
                 .await?
                 .into_iter()
-                .map(|e| (e.subject.clone(), e))
+                .map(|h| (h.subject().to_string(), h))
                 .collect();
             let inputs_of = |subject: &str| -> Vec<InputFact> {
                 facts
@@ -1866,7 +1908,7 @@ impl<S: AssessmentStore + coverage::CoverageStore, C: CitationReader> Assessment
                     .map(FactRecord::input)
                     .collect()
             };
-            let mut todo = Vec::new();
+            let mut todo: Vec<(&str, Outcome, String, Option<Planned>)> = Vec::new();
             for subject in subjects {
                 if deferred.contains(&(target.id.clone(), subject.to_string())) {
                     feedback.push(format!(
@@ -1875,40 +1917,39 @@ impl<S: AssessmentStore + coverage::CoverageStore, C: CitationReader> Assessment
                     ));
                     continue;
                 }
-                let Some(found) = done.get(subject) else {
-                    todo.push(subject);
-                    continue;
-                };
                 let inputs = inputs_of(subject);
                 let outcome = evaluate(
                     &criterion.criterion,
                     &context_for(&target, &criterion, &inputs),
                 );
                 let digest = output_digest(&target.id, &criterion.id, subject, &outcome, None);
-                feedback.push(if found.output_digest == digest {
-                    format!(
-                        "{} for {subject} under basis {} was already evaluated ({}); re-evaluating gives the same output digest {}.",
-                        criterion.id,
-                        target.id,
-                        found.id,
-                        &digest[..12]
-                    )
-                } else {
-                    format!(
-                        "{} for {subject} under basis {} was already evaluated ({}); its inputs have changed since. Propose a new basis version to evaluate again.",
-                        criterion.id, target.id, found.id
-                    )
-                });
+                let Some(head) = heads.get(subject) else {
+                    todo.push((subject, outcome, digest, None));
+                    continue;
+                };
+                if head.invocation_id() == invocation.id {
+                    feedback.push(head_line(head));
+                    continue;
+                }
+                match self
+                    .plan_revision(basis, head, &target, &criterion, &outcome, &digest, &facts)
+                    .await?
+                {
+                    Ok(planned) => todo.push((subject, outcome, digest, Some(planned))),
+                    Err(line) => feedback.push(line),
+                }
             }
             if todo.len() > MAX_SUBJECTS_PER_CRITERION {
                 feedback.push(format!(
-                    "{} has {} subjects not yet evaluated under basis {}; the first {MAX_SUBJECTS_PER_CRITERION} in byte order are evaluated now. Ask again to continue.",
+                    "{} has {} subjects to evaluate or revise under basis {}; the first {MAX_SUBJECTS_PER_CRITERION} in byte order are recorded now. Ask again to continue.",
                     criterion.id,
                     todo.len(),
                     target.id
                 ));
             }
-            for subject in todo.into_iter().take(MAX_SUBJECTS_PER_CRITERION) {
+            for (subject, outcome, digest, planned) in
+                todo.into_iter().take(MAX_SUBJECTS_PER_CRITERION)
+            {
                 if written >= MAX_INVOCATION_EVALUATIONS {
                     if !bound_reported {
                         feedback.push(bound_line.into());
@@ -1916,40 +1957,53 @@ impl<S: AssessmentStore + coverage::CoverageStore, C: CitationReader> Assessment
                     }
                     break;
                 }
-                let inputs = inputs_of(subject);
-                let outcome = evaluate(
-                    &criterion.criterion,
-                    &context_for(&target, &criterion, &inputs),
-                );
-                let digest = output_digest(&target.id, &criterion.id, subject, &outcome, None);
-                let record = EvaluationRecord {
-                    id: record_id("eval", &basis.task_id, &invocation.id, ordinal),
-                    task_id: basis.task_id.clone(),
-                    cycle_id: basis.cycle_id.clone(),
-                    invocation_id: invocation.id.clone(),
-                    ordinal,
-                    methodology_binding_id: turn_binding.clone(),
-                    execution_epoch: turn_epoch,
-                    basis_id: target.id.clone(),
-                    criterion_id: criterion.id.clone(),
-                    subject: subject.into(),
-                    outcome,
-                    judgment: None,
-                    output_digest: digest,
-                    recorded_us: None,
-                };
-                ordinal += 1;
                 written += 1;
-                match self.store.record_evaluation(basis, &record).await {
-                    Ok(stored) => {
-                        progress = true;
-                        feedback.push(evaluation_line(&stored));
+                match planned {
+                    None => {
+                        let record = EvaluationRecord {
+                            id: record_id("eval", &basis.task_id, &invocation.id, ordinal),
+                            task_id: basis.task_id.clone(),
+                            cycle_id: basis.cycle_id.clone(),
+                            invocation_id: invocation.id.clone(),
+                            ordinal,
+                            methodology_binding_id: turn_binding.clone(),
+                            execution_epoch: turn_epoch,
+                            basis_id: target.id.clone(),
+                            criterion_id: criterion.id.clone(),
+                            subject: subject.into(),
+                            outcome,
+                            judgment: None,
+                            output_digest: digest,
+                            recorded_us: None,
+                        };
+                        ordinal += 1;
+                        match self.store.record_evaluation(basis, &record).await {
+                            Ok(stored) => {
+                                progress = true;
+                                feedback.push(evaluation_line(&stored));
+                            }
+                            Err(ReadingError::Invalid) => feedback.push(format!(
+                                "{} for {subject} under basis {} was not recorded: the platform refused it as proposed.",
+                                criterion.id, target.id
+                            )),
+                            Err(error) => return Err(error),
+                        }
                     }
-                    Err(ReadingError::Invalid) => feedback.push(format!(
-                        "{} for {subject} under basis {} was not recorded: the platform refused it as proposed.",
-                        criterion.id, target.id
-                    )),
-                    Err(error) => return Err(error),
+                    Some(planned) => {
+                        let record = planned.record(
+                            record_id("rev", &basis.task_id, &invocation.id, rev_ordinal),
+                            basis,
+                            invocation,
+                            rev_ordinal,
+                            (&turn_binding, turn_epoch),
+                            (&target.id, &criterion.id, subject),
+                            outcome,
+                            None,
+                            digest,
+                        );
+                        rev_ordinal += 1;
+                        progress |= self.write_revision(basis, &record, &mut feedback).await?;
+                    }
                 }
             }
         }
@@ -2003,28 +2057,18 @@ impl<S: AssessmentStore + coverage::CoverageStore, C: CitationReader> Assessment
                 ));
                 continue;
             }
-            if let Some(found) = self
-                .store
-                .evaluation(basis, &target.id, &criterion.id, &proposed.subject)
-                .await?
-            {
-                feedback.push(format!(
-                    "The judgment of {} for {} under basis {} is already recorded ({}).",
-                    criterion.id, proposed.subject, target.id, found.id
-                ));
-                continue;
-            }
             if written >= MAX_INVOCATION_EVALUATIONS {
                 if !bound_reported {
                     feedback.push(bound_line.into());
                 }
                 break;
             }
-            if !basis_facts.contains_key(&target.id) {
-                let facts = self.store.facts(basis, &target.id).await?;
-                basis_facts.insert(target.id.clone(), facts);
+            if !effective.contains_key(&target.id) {
+                let facts = self.store.effective_facts(basis, &target.id).await?;
+                effective.insert(target.id.clone(), facts);
             }
-            let inputs: Vec<InputFact> = basis_facts[&target.id]
+            let facts = effective[&target.id].clone();
+            let inputs: Vec<InputFact> = facts
                 .iter()
                 .filter(|f| f.fact.subject == proposed.subject)
                 .map(FactRecord::input)
@@ -2059,6 +2103,51 @@ impl<S: AssessmentStore + coverage::CoverageStore, C: CitationReader> Assessment
                     &detail.uncertainty,
                 )),
             );
+            // Story 24.3a: a chain in this lineage is revised only when
+            // trusted code derives a cause (new facts, a new criterion or
+            // basis version, or a person's reconsideration request).
+            let head = self
+                .store
+                .heads(basis, &target.id, &criterion.id)
+                .await?
+                .into_iter()
+                .find(|h| h.subject() == proposed.subject);
+            if let Some(head) = &head {
+                if head.invocation_id() == invocation.id {
+                    feedback.push(head_line(head));
+                    continue;
+                }
+                let planned = match self
+                    .plan_revision(basis, head, &target, &criterion, &outcome, &digest, &facts)
+                    .await?
+                {
+                    Ok(planned) => planned,
+                    Err(_) => {
+                        feedback.push(format!(
+                            "The judgment of {} for {} was not recorded: {} is already recorded and nothing it reads has changed. A new judgment is recorded only after new facts, a new criterion or basis version, or a person's request to reconsider it.",
+                            criterion.id,
+                            proposed.subject,
+                            head.head_id()
+                        ));
+                        continue;
+                    }
+                };
+                written += 1;
+                let record = planned.record(
+                    record_id("rev", &basis.task_id, &invocation.id, rev_ordinal),
+                    basis,
+                    invocation,
+                    rev_ordinal,
+                    (&turn_binding, turn_epoch),
+                    (&target.id, &criterion.id, &proposed.subject),
+                    outcome,
+                    Some(detail),
+                    digest,
+                );
+                rev_ordinal += 1;
+                progress |= self.write_revision(basis, &record, &mut feedback).await?;
+                continue;
+            }
             let record = EvaluationRecord {
                 id: record_id("eval", &basis.task_id, &invocation.id, ordinal),
                 task_id: basis.task_id.clone(),
@@ -2108,6 +2197,8 @@ impl<S: AssessmentStore + coverage::CoverageStore, C: CitationReader> Assessment
             && existing.bases.is_empty()
             && existing.facts.is_empty()
             && existing.evaluations.is_empty()
+            && existing_revisions.carries.is_empty()
+            && existing_revisions.revisions.is_empty()
             && existing_coverage.populations.is_empty()
             && existing_coverage.samples.is_empty()
             && existing_coverage.summaries.is_empty());
@@ -2153,6 +2244,7 @@ impl<S: AssessmentStore + coverage::CoverageStore, C: CitationReader> Assessment
     pub async fn context(&self, basis: &ClaimBasis) -> Result<AssessmentContext, ReadingError> {
         let snapshot = self.store.snapshot(basis).await?;
         let covered = self.store.coverage_snapshot(basis).await?;
+        let revisions = self.store.revision_snapshot(basis).await?;
         let feedback = self
             .feedback
             .lock()
@@ -2161,7 +2253,7 @@ impl<S: AssessmentStore + coverage::CoverageStore, C: CitationReader> Assessment
             .filter(|(_, lines)| !lines.is_empty())
             .map(|(_, lines)| feedback_text(lines));
         Ok(AssessmentContext {
-            outline: outline_with(&snapshot, &covered),
+            outline: outline_full(&snapshot, &covered, &revisions),
             feedback,
         })
     }
@@ -2286,6 +2378,17 @@ pub fn outline_with(
     snapshot: &AssessmentSnapshot,
     covered: &coverage::CoverageSnapshot,
 ) -> Option<String> {
+    outline_full(snapshot, covered, &revision::RevisionSnapshot::default())
+}
+
+/// The outline with the Story 24.3a revision lines: exact counts of
+/// evaluation heads, revisions and pending reconsiderations per basis, and
+/// each pending reconsideration with the person's concern and words.
+pub fn outline_full(
+    snapshot: &AssessmentSnapshot,
+    covered: &coverage::CoverageSnapshot,
+    revisions: &revision::RevisionSnapshot,
+) -> Option<String> {
     if snapshot.total_bases + snapshot.total_criteria + snapshot.total_facts == 0 {
         return None;
     }
@@ -2374,7 +2477,15 @@ pub fn outline_with(
     for line in coverage::coverage_lines(covered) {
         push(&mut lines, line);
     }
-    let total = snapshot.total_bases
+    // Revision lines are counted as records too, so "further records" stays
+    // exact; pending reconsiderations not listed are counted on their own line.
+    let revision_lines = revision::revision_lines(revisions);
+    let revision_records = revision_lines.len() as u64;
+    for line in revision_lines {
+        push(&mut lines, line);
+    }
+    let total = revision_records
+        + snapshot.total_bases
         + snapshot.total_criteria
         + snapshot.total_evaluations
         + covered.total_populations
@@ -2435,8 +2546,8 @@ impl WorkAssessment for NoAssessment {
     }
 }
 
-impl<S: AssessmentStore + coverage::CoverageStore, C: CitationReader> WorkAssessment
-    for Assessment<'_, S, C>
+impl<S: AssessmentStore + coverage::CoverageStore + revision::RevisionStore, C: CitationReader>
+    WorkAssessment for Assessment<'_, S, C>
 {
     fn enabled(&self) -> bool {
         true
@@ -2461,6 +2572,7 @@ impl<S: AssessmentStore + coverage::CoverageStore, C: CitationReader> WorkAssess
 }
 
 pub mod coverage;
+pub mod revision;
 
 #[cfg(test)]
 mod tests;

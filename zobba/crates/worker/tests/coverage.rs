@@ -1919,7 +1919,11 @@ async fn database_guards_refuse_altered_coverage_records(
         forged_from(
             &format!("{dated} AND s.sample_id IS NULL"),
             Some(free),
-            &[("basis_id", "", "\"basis-ffffffffffffffffffffffffffffffffffffffff\"")],
+            &[(
+                "basis_id",
+                "",
+                "\"basis-ffffffffffffffffffffffffffffffffffffffff\"",
+            )],
         ),
         "a summary reads a population of its own Task and basis",
     ));

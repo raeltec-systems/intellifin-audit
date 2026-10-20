@@ -1052,7 +1052,7 @@ fn judgments_at_unit(
 
 impl<S, C> Assessment<'_, S, C>
 where
-    S: AssessmentStore + CoverageStore,
+    S: AssessmentStore + CoverageStore + super::revision::RevisionStore,
     C: CitationReader,
 {
     async fn population_ref(
