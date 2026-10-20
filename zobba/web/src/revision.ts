@@ -48,13 +48,20 @@ function closedCauses(value: unknown): string[] {
   return list;
 }
 
+/** A person's public label: 1–200 Unicode scalars without controls (the
+ * server's identity rule, counted in characters, never UTF-8 bytes). */
+function personLabel(value: unknown): string {
+  if (typeof value !== 'string' || !value || [...value].length > 200 || /[\u0000-\u001f\u007f-\u009f]/.test(value)) invalid();
+  return value;
+}
+
 export function parseDisposition(value: unknown): Disposition {
   const v = record(value);
   const kind = oneOf(v.kind, kinds);
   const d: Disposition = {
     id: identifier(v.id),
     actor_id: identifier(v.actor_id),
-    actor_label: nullable(v.actor_label, item => text(item, 200)),
+    actor_label: nullable(v.actor_label, personLabel),
     chain_id: chainId(v.chain_id),
     revision: revisionNumber(v.revision),
     revision_id: revisionId(v.revision_id),
@@ -102,8 +109,9 @@ export function parseChain(value: unknown): Chain {
     || (d !== null && c.review !== ({ accepted: 'accepted', replaced: 'replaced', needs_reconsideration: 'pending_reconsideration' } as const)[d.kind])
     || (c.review === 'replaced') !== (c.effective_origin === 'human')
     || (c.review === 'replaced' && (c.origin !== 'model_proposal' || c.effective_verdict !== d?.verdict))
-    || (c.review !== 'replaced' && (c.effective_origin !== c.origin || c.effective_verdict !== c.verdict))
-    || (c.review !== 'unreviewed' && c.earlier_accepted)) invalid();
+    // `earlier_accepted` says an earlier revision was accepted, whatever this
+    // revision's own review state is.
+    || (c.review !== 'replaced' && (c.effective_origin !== c.origin || c.effective_verdict !== c.verdict))) invalid();
   return exact(v, c);
 }
 
@@ -190,7 +198,7 @@ export type DispositionResult =
   | { ok: true; disposition: Disposition }
   | { ok: false; status: number; error: string; head_id: string | null; index: number | null };
 
-const errors = ['disposition_invalid', 'not_replaceable', 'reference_unverified', 'revision_superseded', 'revision_not_found', 'access_denied', 'disposition_conflict', 'disposition_capacity', 'disposition_unavailable'] as const;
+const errors = ['disposition_invalid', 'not_replaceable', 'verdict_not_decidable', 'reference_unverified', 'revision_superseded', 'revision_not_found', 'access_denied', 'disposition_conflict', 'disposition_capacity', 'disposition_unavailable'] as const;
 
 /** Save one disposition of one exact revision, bound to this session. A
  * refusal returns its closed code; nothing is retried automatically. */
@@ -242,6 +250,7 @@ export const reviewLabel: Record<string, string> = {
 export const errorLabel: Record<string, string> = {
   disposition_invalid: 'The disposition is not complete. Nothing was saved.',
   not_replaceable: 'A rule verdict cannot be replaced. Correct the facts or the criterion instead. Nothing was saved.',
+  verdict_not_decidable: 'Met or not met can be given only for an evaluation that applies, completed and reads a verified authority. Nothing was saved.',
   reference_unverified: 'A reference is not an exact quote at its location of a source you can open. Nothing was saved.',
   revision_superseded: 'A newer revision was recorded. Nothing was saved; review the newest revision.',
   revision_not_found: 'That revision is not part of this Task. Nothing was saved.',

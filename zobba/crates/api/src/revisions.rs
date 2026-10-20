@@ -454,7 +454,16 @@ pub(crate) async fn history(
         Ok(originals) => originals,
         Err(_) => return failure(TaskError::Unavailable),
     };
-    Json(ChainHistoryResponse {
+    Json(history_response(&page, &originals)).into_response()
+}
+
+/// One history page for a viewer: fact values and reference quotes are
+/// withheld by the viewer's current access (the 24.1 `value_withheld` rule).
+pub(crate) fn history_response(
+    page: &zobba_application::assessment::revision::HistoryPage,
+    originals: &Originals,
+) -> ChainHistoryResponse {
+    ChainHistoryResponse {
         chain_id: page.chain_id.clone(),
         subject: page.subject.clone(),
         total: page.total.to_string(),
@@ -462,16 +471,15 @@ pub(crate) async fn history(
         entries: page
             .entries
             .iter()
-            .map(|e| entry_response(e, &originals))
+            .map(|e| entry_response(e, originals))
             .collect(),
         facts: page
             .facts
             .iter()
-            .map(|f| crate::work::fact_response(f, &originals))
+            .map(|f| crate::work::fact_response(f, originals))
             .collect(),
         next_cursor: page.next.map(|n| n.to_string()),
-    })
-    .into_response()
+    }
 }
 
 #[derive(Deserialize, ToSchema)]

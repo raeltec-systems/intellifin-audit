@@ -1532,7 +1532,7 @@ pub(crate) async fn answer(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use zobba_application::assessment::{FactRecord, Grounding};
     use zobba_domain::{
@@ -1541,7 +1541,7 @@ mod tests {
     };
     use zobba_infrastructure::citation::ViewerOriginal;
 
-    fn fact() -> FactRecord {
+    pub(crate) fn fact() -> FactRecord {
         let source = CitationSource {
             original_id: "ap-invoices".into(),
             locator: Locator::parse("cell:Sheet1!B2"),

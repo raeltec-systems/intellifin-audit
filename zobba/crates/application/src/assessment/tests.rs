@@ -312,6 +312,9 @@ struct State {
     carried: Vec<(String, String)>,
     revisions: Vec<revision::RevisionRecord>,
     dispositions: Vec<revision::DispositionRecord>,
+    /// The database refuses every revision (for example another revision of
+    /// the same head committed first).
+    refuse_revisions: bool,
 }
 #[derive(Default)]
 struct Store {
@@ -730,6 +733,9 @@ impl revision::RevisionStore for Store {
     ) -> Result<revision::RevisionRecord, ReadingError> {
         assert!(r.is_consistent(), "{r:?}");
         let mut state = self.state.lock().unwrap();
+        if state.refuse_revisions {
+            return Err(ReadingError::Invalid);
+        }
         if let Some(found) = state.revisions.iter().find(|x| x.id == r.id) {
             return if found == r {
                 Ok(found.clone())
@@ -4496,4 +4502,73 @@ fn a_refused_carry_stops_evaluation_of_its_successor_in_the_same_answer() {
         "no regression recorded as a head"
     );
     assert!(state.carries.is_empty());
+}
+
+#[test]
+fn a_revision_the_database_refuses_is_feedback_and_the_cycle_continues() {
+    let (store, reader, basis_id, criterion) = late_evidence_start();
+    store.state.lock().unwrap().refuse_revisions = true;
+    let feedback = feedback_after(
+        &store,
+        &reader,
+        "turn-2",
+        CitedAnswer {
+            record_facts: vec![on(&basis_id, approver_fact("INV-0042", 2))],
+            evaluate: vec![criterion.clone()],
+            ..CitedAnswer::default()
+        },
+    );
+    assert!(
+        feedback.contains("the chain changed meanwhile"),
+        "{feedback}"
+    );
+    assert!(store.state.lock().unwrap().revisions.is_empty());
+}
+
+#[test]
+fn a_carry_over_the_fact_bound_is_refused_with_feedback() {
+    let (store, reader, b1, c1) = late_evidence_start();
+    turn_with(
+        &store,
+        &reader,
+        "turn-2",
+        CitedAnswer {
+            propose_basis: vec![successor_of(&b1, "b2", vec![c1.as_str()])],
+            ..CitedAnswer::default()
+        },
+    );
+    // b1 holds 25 facts; its successor b2 holds 1,000 of its own.
+    {
+        let mut s = store.state.lock().unwrap();
+        let b2 = s.bases[1].id.clone();
+        let template = s.facts[0].clone();
+        for n in 0..24 {
+            let mut f = template.clone();
+            f.id = format!("fact-{n:040x}");
+            f.fact.subject = format!("S-{n}");
+            s.facts.push(f);
+        }
+        for n in 0..1000 {
+            let mut f = template.clone();
+            f.id = format!("fact-{:040x}", 1000 + n);
+            f.basis_id = b2.clone();
+            f.fact.subject = format!("T-{n}");
+            s.facts.push(f);
+        }
+    }
+    let b2 = store.state.lock().unwrap().bases[1].id.clone();
+    let feedback = feedback_after(
+        &store,
+        &reader,
+        "turn-3",
+        CitedAnswer {
+            carry_facts: vec![carry_all(&b2)],
+            ..CitedAnswer::default()
+        },
+    );
+    assert!(
+        feedback.contains("its own and carried facts would be more than 1024"),
+        "{feedback}"
+    );
+    assert!(store.state.lock().unwrap().carries.is_empty());
 }

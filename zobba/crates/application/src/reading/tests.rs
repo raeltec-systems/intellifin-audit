@@ -1676,3 +1676,44 @@ fn repeated_population_reads_reuse_the_collected_job_and_never_run_out_of_keys()
     assert_eq!(once.job_id, twice.job_id);
     assert!(once.failure.is_some() && twice.failure.is_some());
 }
+
+#[test]
+fn an_ordinary_read_in_a_later_cycle_reuses_its_job_without_admitting_again() {
+    // A corrected fact on a successor basis cites the cells an earlier fact
+    // cited in an earlier cycle: the read finds the Task's job of exactly
+    // this program and reads its collected result again. It never admits the
+    // job's key again (the real store refuses that key with a later
+    // operation expiry, which failed the cycle before Story 24.3a).
+    let h = Harness::new(vec![regular("render.json", b"{}")], vec![]);
+    let store = Store {
+        facts: Facts::default(),
+        world: &h.world,
+    };
+    let reading = h.reading(&store);
+    let cancel = ModelCancellation::new();
+    let original = run(store.original("", &crate::analysis::tests::scope(), ORIGINAL))
+        .unwrap()
+        .unwrap();
+    let render = render_request(ORIGINAL, 0);
+    let first = run(reading.document_job_with(
+        &basis("p1"),
+        &original,
+        &render,
+        ENUMERATE_LIMITS,
+        false,
+        &cancel,
+    ))
+    .unwrap();
+    let admitted = h.world.store.admissions();
+    let later = run(reading.document_job_with(
+        &basis("p2"),
+        &original,
+        &render,
+        ENUMERATE_LIMITS,
+        false,
+        &cancel,
+    ))
+    .unwrap();
+    assert_eq!(later.job_id, first.job_id, "the same job is read again");
+    assert_eq!(h.world.store.admissions(), admitted, "no second admission");
+}

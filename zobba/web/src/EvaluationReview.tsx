@@ -2,7 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { Session } from './auth';
 import type { Scope } from './engagements';
 import type { AssessmentFact } from './assessment';
-import { reasonLabel, verdictLabel } from './assessment';
+import { blank as blankText, reasonLabel, verdictLabel } from './assessment';
 import {
   MAX_RATIONALE_BYTES, MAX_REFERENCES, causeLabel, concernLabel, concerns, errorLabel, kindLabel, rationaleBytes, readHistory, reviewLabel, saveDisposition, verdicts,
 } from './revision';
@@ -60,7 +60,7 @@ export function EvaluationReview({ chain, subject, taskId, facts, criterion, sco
     <p>
       <strong>Revision {chain.revision}</strong>{chain.causes.length ? <> · because {chain.causes.map(c => causeLabel[c]).join(', ')}</> : null}
       {' · '}<span className={`review review-${chain.review}`}>{reviewLabel[chain.review]}</span>
-      {chain.earlier_accepted ? ' · an earlier revision was accepted; this one is not reviewed yet' : ''}
+      {chain.earlier_accepted ? (chain.review === 'unreviewed' ? ' · an earlier revision was accepted; this one is not reviewed yet' : ' · an earlier revision was accepted') : ''}
     </p>
     {chain.revision !== '1' ? <p>Current verdict: {verdictLabel(chain.verdict)}{chain.reason ? ` · ${reasonLabel(chain.reason)}` : ''}</p> : null}
     {chain.effective_origin === 'human' ? <p className="human-verdict">A person's verdict: {verdictLabel(chain.effective_verdict)} · Zobba's judgment is kept as it was</p> : null}
@@ -119,11 +119,15 @@ function DispositionForm({ chain, taskId, facts, scope, session }: { chain: Chai
     rationale,
     references: offered.filter(o => chosen.includes(o.key)).map(o => o.reference),
   };
-  // One request key per exact request: a retry of the same request reuses it.
+  // One request key per exact request: a retry of the same request reuses
+  // it. While a request's delivery is uncertain its exact body keeps its
+  // key, even after the person edits the text and restores it, so a request
+  // that did commit is never saved a second time under a new key.
   const content = JSON.stringify(command);
-  const key = useMemo(() => newKey(), [content]);
+  const uncertain = useRef<{ content: string; key: string } | null>(null);
+  const key = useMemo(() => uncertain.current?.content === content ? uncertain.current.key : newKey(), [content]);
   const bytes = rationaleBytes(rationale);
-  const blank = rationale.trim() === '';
+  const blank = blankText.test(rationale);
   const over = bytes > MAX_RATIONALE_BYTES;
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
@@ -133,12 +137,16 @@ function DispositionForm({ chain, taskId, facts, scope, session }: { chain: Chai
     controller.current = c;
     setSaving(true);
     setFailed(false);
+    const sent = { content, key };
     saveDisposition(scope, taskId, chain.head_id, { ...command, key }, session, c.signal).then(r => {
       if (c.signal.aborted) return;
+      // A definite answer (saved or refused) ends the uncertainty.
+      uncertain.current = null;
       setResult(r);
       setSaving(false);
     }, () => {
       if (c.signal.aborted) return;
+      uncertain.current = sent;
       setFailed(true);
       setSaving(false);
     });

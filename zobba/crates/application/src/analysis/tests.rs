@@ -92,10 +92,17 @@ pub(crate) struct StoreState {
     facts: HashMap<String, Vec<(OperationCustody, SourceFact)>>,
     consumed: usize,
     fail_next_observe: bool,
+    /// Every admission request (an exact retry included). The real store
+    /// refuses a second admission under a key whose operation carries a
+    /// later expiry, so a read that reuses its job must not admit again.
+    admissions: usize,
 }
 #[derive(Default)]
 pub(crate) struct Store(Mutex<StoreState>);
 impl Store {
+    pub(crate) fn admissions(&self) -> usize {
+        self.0.lock().unwrap().admissions
+    }
     fn facts(&self, attempt: &str) -> Vec<SourceFact> {
         self.0
             .lock()
@@ -161,6 +168,7 @@ impl OperationStore for Store {
             return Err(OperationError::Invalid);
         }
         let mut state = self.0.lock().unwrap();
+        state.admissions += 1;
         let id = match state.operations.iter().find(|(_, (k, _))| k == key) {
             Some((id, (_, existing)))
                 if existing.material == request.material

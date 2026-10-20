@@ -28,7 +28,8 @@ export function exact<T extends object>(source: Record<string, unknown>, parsed:
 }
 // Rust's `str::trim` removes Unicode White_Space only; JavaScript `trim` also
 // removes U+FEFF, which Rust keeps. Blank means White_Space only.
-const blank = /^[\u0009-\u000d\u0020\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]*$/;
+/** Blank by Rust's Unicode White_Space (JavaScript `trim` also strips U+FEFF). */
+export const blank = /^[\u0009-\u000d\u0020\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]*$/;
 export function nullable<T>(value: unknown, parse: (value: unknown) => T): T | null {
   return value === null ? null : parse(value);
 }

@@ -533,6 +533,45 @@ fn guard_message(error: &sqlx::Error) -> Option<String> {
         _ => None,
     }
 }
+/// What a refused disposition insert means, by the guard's own words.
+#[derive(Debug, PartialEq, Eq)]
+enum Refused {
+    /// Another revision of the chain committed first.
+    Superseded,
+    Other(DispositionError),
+}
+fn refusal_of(message: &str) -> Refused {
+    Refused::Other(if message.contains("current head") {
+        return Refused::Superseded;
+    } else if message.contains("cannot be replaced") {
+        DispositionError::NotReplaceable
+    } else if message.contains("replaces only") {
+        DispositionError::NotDecidable
+    } else if message.contains("at most 16") {
+        DispositionError::Capacity
+    } else if message.contains("disposition reference") {
+        // The guard checks every reference at once; Rust verified each one
+        // first, so this is a reference changed meanwhile.
+        DispositionError::ReferenceUnverified(0)
+    } else if message.contains("assigned auditor") {
+        DispositionError::Denied
+    } else {
+        DispositionError::Unavailable
+    })
+}
+
+/// One history page's room and whether more follow: the first page holds
+/// revision 1 and `HISTORY_PAGE - 1` revision rows; later pages hold
+/// `HISTORY_PAGE` rows. `fetched` is the rows read (at most room + 1).
+fn page_window(after: u32, fetched: usize) -> (usize, bool) {
+    let room = if after < 1 {
+        HISTORY_PAGE - 1
+    } else {
+        HISTORY_PAGE
+    };
+    (room, fetched > room)
+}
+
 fn task_denied(error: TaskError) -> DispositionError {
     match error {
         TaskError::Denied | TaskError::Fenced => DispositionError::Denied,
@@ -689,29 +728,16 @@ impl DispositionStore for AssessmentRepository {
         if let Err(error) = inserted {
             let message = guard_message(&error).unwrap_or_default();
             drop(tx);
-            return Err(if message.contains("current head") {
+            return Err(match refusal_of(&message) {
                 // Another revision committed first: name the head now.
-                match self
+                Refused::Superseded => match self
                     .revision_target(actor, scope, &record.task_id, &r.revision_id)
                     .await?
                 {
                     Some(target) => DispositionError::RevisionSuperseded(target.head_id),
                     None => DispositionError::NotFound,
-                }
-            } else if message.contains("cannot be replaced") {
-                DispositionError::NotReplaceable
-            } else if message.contains("replaces only") {
-                DispositionError::NotDecidable
-            } else if message.contains("at most 16") {
-                DispositionError::Capacity
-            } else if message.contains("disposition reference") {
-                // The guard checks every reference at once; Rust verified
-                // each one first, so this is a reference changed meanwhile.
-                DispositionError::ReferenceUnverified(0)
-            } else if message.contains("assigned auditor") {
-                DispositionError::Denied
-            } else {
-                DispositionError::Unavailable
+                },
+                Refused::Other(error) => error,
             });
         }
         if r.kind == DispositionKind::NeedsReconsideration {
@@ -870,12 +896,7 @@ impl AssessmentRepository {
         let head_id: String = sqlx::query_scalar("SELECT coalesce((SELECT id FROM public.assessment_evaluation_revisions WHERE task_id=$1 AND chain_id=$2 ORDER BY revision DESC LIMIT 1), $2)")
             .bind(task_id).bind(chain_id)
             .fetch_one(&mut *tx).await.map_err(|_| TaskError::Unavailable)?;
-        let room = if after < 1 {
-            HISTORY_PAGE - 1
-        } else {
-            HISTORY_PAGE
-        };
-        let more = later.len() > room;
+        let (room, more) = page_window(after, later.len());
         later.truncate(room);
         let mut ids: Vec<String> = later.iter().map(|r| r.id.clone()).collect();
         if after < 1 {
@@ -928,5 +949,66 @@ impl AssessmentRepository {
             next,
             facts,
         }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn each_guard_refusal_maps_to_its_own_disposition_error() {
+        // The guard's exact words (0020_assessment_revisions.sql).
+        let cases = [
+            (
+                "a disposition names the current head of its chain",
+                Refused::Superseded,
+            ),
+            (
+                "a deterministic verdict cannot be replaced",
+                Refused::Other(DispositionError::NotReplaceable),
+            ),
+            (
+                "a person's met or not_met replaces only an applicable, completed judgment under a verified authority",
+                Refused::Other(DispositionError::NotDecidable),
+            ),
+            (
+                "a revision holds at most 16 dispositions",
+                Refused::Other(DispositionError::Capacity),
+            ),
+            (
+                "a disposition reference is a verified quote of a registered original",
+                Refused::Other(DispositionError::ReferenceUnverified(0)),
+            ),
+            (
+                "a disposition is saved by a currently assigned auditor or audit manager in their own session",
+                Refused::Other(DispositionError::Denied),
+            ),
+            (
+                "a disposition names an evaluation chain of its own Task",
+                Refused::Other(DispositionError::Unavailable),
+            ),
+        ];
+        for (message, expected) in &cases {
+            assert_eq!(&refusal_of(message), expected, "{message}");
+        }
+        let migration = include_str!("../../../../migrations/0020_assessment_revisions.sql");
+        for (message, _) in &cases {
+            assert!(
+                migration.contains(&message.replace('\'', "''")),
+                "{message}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_history_page_holds_fifty_revisions_and_says_when_more_follow() {
+        // The first page: revision 1 plus 49 rows.
+        assert_eq!(page_window(0, 49), (49, false), "exactly 50 revisions");
+        assert_eq!(page_window(0, 50), (49, true), "51 revisions");
+        // Later pages: 50 rows.
+        assert_eq!(page_window(50, 50), (50, false));
+        assert_eq!(page_window(50, 51), (50, true));
+        assert_eq!(page_window(0, 0), (49, false), "revision 1 alone");
     }
 }

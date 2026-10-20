@@ -92,6 +92,8 @@ async fn each_refusal_has_its_status_code_and_detail() {
     let cases = [
         (DispositionError::Invalid, 400, "disposition_invalid"),
         (DispositionError::NotReplaceable, 400, "not_replaceable"),
+        (DispositionError::NotDecidable, 400, "verdict_not_decidable"),
+        (DispositionError::Capacity, 409, "disposition_capacity"),
         (
             DispositionError::ReferenceUnverified(3),
             409,
@@ -277,4 +279,64 @@ fn a_new_revision_after_an_accepted_one_is_unreviewed_and_says_so() {
     assert_eq!(c.review, "unreviewed");
     assert!(c.earlier_accepted);
     assert_eq!(c.causes, vec!["inputs_changed"]);
+}
+
+#[test]
+fn a_history_page_withholds_values_and_quotes_the_viewer_cannot_read_now() {
+    use zobba_application::assessment::revision::{HistoryEntry, HistoryPage};
+    let first = first(Origin::Deterministic);
+    let page = HistoryPage {
+        chain_id: first.id.clone(),
+        subject: first.subject.clone(),
+        total: 1,
+        head_id: first.id.clone(),
+        entries: vec![HistoryEntry::first(
+            &first,
+            vec![(
+                disposition(DispositionKind::Accepted, &rev()),
+                "Alex".into(),
+            )],
+        )],
+        next: None,
+        facts: vec![crate::work::tests::fact()],
+    };
+    // A viewer who cannot read either original: the fact value and the
+    // reference quote are withheld.
+    let hidden = history_response(&page, &Originals::new());
+    assert!(hidden.facts[0].value_withheld);
+    assert!(hidden.facts[0].value.is_none());
+    let reference = &hidden.entries[0].dispositions[0].references[0];
+    assert!(!reference.readable && reference.quote.is_none());
+    let text = serde_json::to_string(&hidden).unwrap();
+    assert!(
+        !text.contains("1,250.00") && !text.contains("Invoic"),
+        "{text}"
+    );
+    // The exact originals, readable now: both are shown.
+    let readable = Originals::from([
+        (
+            "ap-invoices".to_string(),
+            ViewerOriginal {
+                filename: Some("AP invoices.xlsx".into()),
+                version: "v1".into(),
+                sha256: "a".repeat(64),
+            },
+        ),
+        (
+            "ap-policy".to_string(),
+            ViewerOriginal {
+                filename: Some("AP policy.txt".into()),
+                version: "v1".into(),
+                sha256: SHA.into(),
+            },
+        ),
+    ]);
+    let shown = history_response(&page, &readable);
+    assert!(!shown.facts[0].value_withheld);
+    assert_eq!(
+        shown.entries[0].dispositions[0].references[0]
+            .quote
+            .as_deref(),
+        Some("Invoic")
+    );
 }
