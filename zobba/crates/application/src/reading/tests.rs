@@ -1652,7 +1652,8 @@ fn repeated_population_reads_reuse_the_collected_job_and_never_run_out_of_keys()
         seen.push(fresh.job_id);
         assert_eq!(jobs().0, n + 2);
     }
-    // A non-population document job keeps its one fixed key.
+    // A non-population document job keeps its one fixed key, and its
+    // collected outcome (here a failure) is read again, never rerun.
     let render = render_request(ORIGINAL, 0);
     let once = run(reading.document_job_with(
         &basis("p1"),
@@ -1673,4 +1674,5 @@ fn repeated_population_reads_reuse_the_collected_job_and_never_run_out_of_keys()
     ))
     .unwrap();
     assert_eq!(once.job_id, twice.job_id);
+    assert!(once.failure.is_some() && twice.failure.is_some());
 }

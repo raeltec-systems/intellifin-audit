@@ -1351,9 +1351,12 @@ where
                 JobStatus::Collected | JobStatus::Stopped | JobStatus::Unknown => record,
                 _ => self.finish_job(basis, record, cancellation).await?,
             };
+            // An ordinary read keeps its collected outcome, a failure
+            // included (a program over the same bytes fails the same way);
+            // only a population read is retried after a failure.
             if record.latest.status == JobStatus::Collected
                 && let Some(settled) = self.collected(basis, &record).await?
-                && settled.failure.is_none()
+                && (settled.failure.is_none() || !population)
             {
                 return Ok(settled);
             }

@@ -132,3 +132,51 @@ Size: about 6,300 tokens, far above the 1,600 target (24.1 and 24.2 were also la
 5. **Exception identity scope.** (a) Recommended: Task-scoped (criterion lineage, subject unit, subject); continuing cross-period/Check identity stays in Epic 26. (b) Engagement-scoped now.
 6. **Custom sandbox-program criteria (deferred by 24.1 to 24.2/24.3; 24.2 did not build them).** (a) Recommended: still deferred to a named follow-up story — pinning program/environment digests and a trusted output contract is its own work, and the rule-to-authority gap (24.1 Design Notes) grows with programs. (b) Add a `program` criterion method in 24.3 using a completed 22.4 job's output parsed by trusted code into the closed verdict vocabulary.
 7. **Disposition on a superseded revision.** (a) Recommended: refused with the current head named. (b) Allowed and shown as historical.
+
+## 24.3a delivered
+
+Built on `codex/zobba-foundation-batch` (commits 764c194 … HEAD). Migration
+0020 / catalogue v20 / `SCHEMA_VERSION` 20; 0001–0019 and v1–v19 unchanged
+(`published.rs` pins 0019 and v19). 24.3b's exception and effective-summary
+tables are not built; they go in 0021.
+
+Tasks (24.3a parts; 24.3b parts left open):
+- [x] `domain/src/revision.rs` (+ tests) — closed causes and their derivation, changes by fact name, revision digest, disposition request/check, effective outcome, `carry_facts`. (Exception status: 24.3b.)
+- [x] `domain/src/citation.rs` — the `carry_facts` answer field (≤1, excess dropped and counted); older answers still decode. (`summarise_effective`: 24.3b.)
+- [x] `application/src/assessment.rs`, `assessment/revision.rs` (+ tests) — revision path for `evaluate`/`judgments`, no-op reruns record nothing, carried facts, effective facts, fact bound counts carried facts, envelope feedback, revision outline with pending reconsiderations as quoted data.
+- [x] `application/src/disposition.rs` (+ tests) — command, write-time reference verification, refusals.
+- [x] `migrations/0020_assessment_revisions.sql`, `infrastructure/src/assessment/revision.rs`, `schema-v20.catalog`, `lib.rs`, `published.rs`, `bootstrap.rs` — four tables, guards, `revision_first` trigger on `assessment_evaluations`, immutability, RLS.
+- [x] `worker/tests/revision.rs` — synthetic-model end to end: late evidence same basis, unchanged rerun, corrected fact via successor + carry, reconsideration loop through the real API, DB guard forgeries. (Exception rows: 24.3b.)
+- [x] `api/src/revisions.rs` + `work.rs` + `openapi.json` + generated client — disposition POST, history route, chain heads in the work view; API unit tests.
+- [x] `web/src/revision.ts`, `EvaluationReview.tsx`, `AssessmentBasis.tsx` (+ `tests/revision.test.mjs`, `tests/browser/revision.spec.ts` with keyboard path and contrast).
+- [x] `zobba/README.md` — what is proven offline. (No `generate.py` change was needed: the existing `AP invoices.xlsx` and `AP policy.txt` serve.)
+
+Deviations and fixes found on the way (each with a failing-if-broken test):
+- Chain identity is (Task, basis lineage, criterion lineage, subject): 24.1 evaluations record no subject unit.
+- A reconsideration causes a revision only when the request sent for the answering turn showed it (Rust and the SQL guard check the stored request), and an unseen one is due a further turn. Without this, the work loop's idempotent replay of the last answer on a reclaim recorded a revision the model never made.
+- A `needs_reconsideration` disposition resumes a Task that is waiting for direction (paused/stopped stay so); a bare wakeup alone never ran a turn.
+- Disposition reference reads are bound to the person's exact session (evidence repository `with_session_hash`), like every other original read.
+- Pre-existing defect fixed: a document read now reuses the Task's newest job of the same program, so a fact may cite cells an earlier fact cited in an earlier cycle (the deterministic job key's operation carried its own expiry and was refused as a conflict).
+- Pre-existing defect fixed: the work panel gave `AssessmentBasis` and `Coverage` the same React key, which duplicated the panel on re-render.
+- The 24.1 worker assertion about re-evaluation feedback now checks the replayed records (the replay reports what it wrote; no new rows).
+- Smoke, the web health parser and the browser runtime expect schema 20; the browser fixture reset deletes the four new tables.
+
+Verification (sequential):
+- `cargo fmt --all --check`: clean. `cargo clippy --workspace --all-targets --locked -- -D warnings`: clean.
+- `cargo test --workspace --locked --no-fail-fast -- --test-threads=1`: 56 targets, 693 passed, 15 failed on the first run. The 15 were (a) `reading::tests::repeated_population_reads_reuse_the_collected_job_and_never_run_out_of_keys` (my document-job reuse also re-ran a failed ordinary read; fixed: an ordinary read keeps its collected outcome, failure included, and the test now asserts it) and (b) 14 `oidc_protocol` tests whose running OIDC fixture still held the expired, since-regenerated material (fixture restarted). Reruns: application lib 138/138, `oidc_protocol` 14/14, `worker --test revision` 3/3; `worker --test assessment` 3/3 and `--test coverage` 3/3 passed earlier on this tree.
+- `pnpm --dir zobba/web check`: 225 tests, 223 pass, 2 fail (the two known IPv6 loopback cases). `pnpm --dir zobba/web build`: ok.
+- Browser: `revision.spec.ts` 3/3; `assessment.spec.ts` 2/2, `coverage.spec.ts` 2/2, `investigation.spec.ts` 2/2.
+- `python3 scripts/smoke.py`: passed (after updating its expected schema to 20).
+- The local OIDC fixture's certificates had less than a day left; `fixtures/oidc/.local` was regenerated (ignored files, no credentials committed).
+
+## Suggested Review Order (24.3a)
+
+1. `zobba/crates/domain/src/revision.rs` — the vocabulary, `causes`, `changes`, `effective`, `DispositionRequest::check`.
+2. `zobba/migrations/0020_assessment_revisions.sql` — `revision_guard` (head, causes, changes, reconsideration shown), `revision_batch`, `revision_first`, immutability and RLS.
+3. `zobba/crates/application/src/assessment/revision.rs` and the step 4/5 revision path in `assessment.rs` (`plan_revision`, `carry_step`, `shown_reconsideration`, the unseen-reconsideration continuation).
+4. `zobba/crates/application/src/disposition.rs` — `save_disposition`, `PersonReader`.
+5. `zobba/crates/infrastructure/src/assessment/revision.rs` — `record_disposition` (fence, wake, resume), `heads_of`, `history`.
+6. `zobba/crates/api/src/revisions.rs` — routes, strict body, refusal codes.
+7. `zobba/crates/application/src/reading.rs` — document-job reuse.
+8. `zobba/crates/worker/tests/revision.rs` — the end-to-end proof and guard forgeries.
+9. `zobba/web/src/revision.ts`, `EvaluationReview.tsx`, `tests/browser/revision.spec.ts`.
