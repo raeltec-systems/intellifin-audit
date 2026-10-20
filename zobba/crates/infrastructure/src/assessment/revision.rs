@@ -19,7 +19,7 @@ use zobba_application::{
         revision::{
             BasisRevisions, CarryRecord, ChainHead, DispositionRecord, HistoryEntry, HistoryPage,
             InvocationRevisions, MAX_OUTLINE_RECONSIDERATIONS, Reconsideration, RevisionRecord,
-            RevisionSnapshot, RevisionStore,
+            RevisionSnapshot, RevisionStore, VersionKind,
         },
     },
     citation::ReadingError,
@@ -121,6 +121,27 @@ async fn heads_of(
             }
         })
         .collect())
+}
+
+/// One continuing chain per subject of a lineage. `revision_first` keeps
+/// new data to one chain per subject; data recorded before Story 24.3a may
+/// hold more (24.1 evaluated a subject again under a successor basis, which
+/// it then required). Those are never an error: the chain whose revision 1
+/// was recorded last (database time, then ID in byte order) continues, as
+/// the newest 24.1 evaluation was the platform's own current one; every
+/// earlier chain stays as recorded, closed and inspectable in its history.
+pub(crate) fn continuing(heads: Vec<ChainHead>) -> Vec<ChainHead> {
+    let mut by_subject: BTreeMap<String, ChainHead> = BTreeMap::new();
+    for head in heads {
+        let later = |h: &ChainHead| (h.first.recorded_us, h.first.id.clone());
+        match by_subject.get(head.subject()) {
+            Some(kept) if later(kept) >= later(&head) => {}
+            _ => {
+                by_subject.insert(head.subject().to_string(), head);
+            }
+        }
+    }
+    by_subject.into_values().collect()
 }
 
 /// Chains in the lineage of one basis and one criterion version: every
@@ -263,11 +284,7 @@ impl RevisionStore for AssessmentRepository {
             rows.iter().map(evaluation_from).collect::<Result<_, _>>()?;
         let heads = heads_of(&mut tx, &basis.task_id, firsts).await?;
         tx.commit().await.map_err(unavailable)?;
-        // One chain per subject in a lineage (`revision_first`).
-        if heads.windows(2).any(|w| w[0].subject() == w[1].subject()) {
-            return Err(ReadingError::Unavailable);
-        }
-        Ok(heads)
+        Ok(continuing(heads))
     }
     async fn record_carry(
         &self,
@@ -399,6 +416,31 @@ impl RevisionStore for AssessmentRepository {
         tx.commit().await.map_err(unavailable)?;
         Ok(snapshot)
     }
+    async fn successor(
+        &self,
+        basis: &ClaimBasis,
+        kind: VersionKind,
+        id: &str,
+    ) -> Result<Option<String>, ReadingError> {
+        if !valid_scope_id(id) {
+            return Ok(None);
+        }
+        let table = match kind {
+            VersionKind::Basis => "assessment_bases",
+            VersionKind::Criterion => "assessment_criteria",
+        };
+        let mut tx = scoped(&self.pool, &basis.actor_id, &basis.scope).await?;
+        let found: Option<String> = sqlx::query_scalar(&format!(
+            "SELECT id FROM public.{table} WHERE task_id=$1 AND supersedes=$2 ORDER BY id COLLATE \"C\" LIMIT 1"
+        ))
+        .bind(&basis.task_id)
+        .bind(id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(unavailable)?;
+        tx.commit().await.map_err(unavailable)?;
+        Ok(found)
+    }
 }
 
 /// The heads of every chain of a Task, as (chain, head ID, head basis,
@@ -467,6 +509,7 @@ async fn revision_snapshot(tx: &mut Tx, task_id: &str) -> Result<RevisionSnapsho
         total_reconsiderations = row.try_get::<i64, _>("total").map_err(unavailable)? as u64;
         let concern = record.request.concern.unwrap_or(Concern::Facts);
         reconsiderations.push(Reconsideration {
+            disposition_id: record.id.clone(),
             basis_id: row.try_get("basis_id").map_err(unavailable)?,
             criterion_id: row.try_get("criterion_id").map_err(unavailable)?,
             subject: row.try_get("subject").map_err(unavailable)?,
@@ -503,21 +546,24 @@ async fn target_in(
     task_id: &str,
     revision_id: &str,
 ) -> Result<Option<RevisionTarget>, DispositionError> {
-    let found: Option<(String, i32, String)> = if revision_id.starts_with("eval-") {
-        sqlx::query_as(
-            "SELECT id, 1, origin FROM public.assessment_evaluations WHERE task_id=$1 AND id=$2",
-        )
+    // Whether the revision may yield met or not_met: applicable, completed
+    // and its criterion's authority verified (the 24.1 outcome rules).
+    let decidable = "x.applicability='applicable' AND x.execution='completed' AND coalesce((SELECT c.authority_verified FROM public.assessment_criteria c WHERE c.id=x.criterion_id), false)";
+    let found: Option<(String, i32, String, bool)> = if revision_id.starts_with("eval-") {
+        sqlx::query_as(&format!(
+            "SELECT x.id, 1, x.origin, {decidable} FROM public.assessment_evaluations x WHERE x.task_id=$1 AND x.id=$2"
+        ))
         .bind(task_id)
         .bind(revision_id)
         .fetch_optional(&mut **tx)
         .await
         .map_err(|_| DispositionError::Unavailable)?
     } else {
-        sqlx::query_as("SELECT chain_id, revision, origin FROM public.assessment_evaluation_revisions WHERE task_id=$1 AND id=$2")
+        sqlx::query_as(&format!("SELECT x.chain_id, x.revision, x.origin, {decidable} FROM public.assessment_evaluation_revisions x WHERE x.task_id=$1 AND x.id=$2"))
             .bind(task_id).bind(revision_id)
             .fetch_optional(&mut **tx).await.map_err(|_| DispositionError::Unavailable)?
     };
-    let Some((chain_id, revision, origin)) = found else {
+    let Some((chain_id, revision, origin, decidable)) = found else {
         return Ok(None);
     };
     let head: Option<(String, i32)> = sqlx::query_as("SELECT id, revision FROM public.assessment_evaluation_revisions WHERE task_id=$1 AND chain_id=$2 ORDER BY revision DESC LIMIT 1")
@@ -530,6 +576,7 @@ async fn target_in(
         origin: Origin::parse(&origin).ok_or(DispositionError::Unavailable)?,
         head_id,
         head_revision: head_revision as u32,
+        decidable,
     }))
 }
 
@@ -538,9 +585,15 @@ impl DispositionStore for AssessmentRepository {
         &self,
         actor: &str,
         scope: &Scope,
+        session_hash: &str,
         key: &str,
     ) -> Result<Option<DispositionRecord>, DispositionError> {
         let mut tx = scoped(&self.pool, actor, scope).await?;
+        // A replay answers only an actor who may dispose now, in this exact
+        // session (the original is never returned to a revoked actor).
+        task::admission_fence(&mut tx, actor, scope, Some(session_hash))
+            .await
+            .map_err(task_denied)?;
         let found = sqlx::query("SELECT document,digest,created_us FROM public.assessment_dispositions WHERE actor_id=$1 AND key=$2")
             .bind(actor).bind(key)
             .fetch_optional(&mut *tx).await.map_err(|_| DispositionError::Unavailable)?
@@ -619,6 +672,13 @@ impl DispositionStore for AssessmentRepository {
         };
         let document = record.document();
         let r = &record.request;
+        // The guard requires this person's own live session for the write
+        // transaction only: a worker connection holds none.
+        sqlx::query("SELECT set_config('zobba.session_hash',$1,true)")
+            .bind(session_hash)
+            .execute(&mut *tx)
+            .await
+            .map_err(|_| DispositionError::Unavailable)?;
         let inserted = sqlx::query("INSERT INTO public.assessment_dispositions(organisation_id,client_id,engagement_id,task_id,actor_id,id,key,chain_id,revision,revision_id,kind,concern,verdict,rationale,document,digest) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)")
             .bind(&scope.organisation_id).bind(&scope.client_id).bind(&scope.engagement_id)
             .bind(&record.task_id).bind(actor).bind(&record.id).bind(&r.key)
@@ -640,9 +700,13 @@ impl DispositionStore for AssessmentRepository {
                 }
             } else if message.contains("cannot be replaced") {
                 DispositionError::NotReplaceable
+            } else if message.contains("replaces only") {
+                DispositionError::NotDecidable
             } else if message.contains("at most 16") {
                 DispositionError::Capacity
-            } else if message.contains("reference") {
+            } else if message.contains("disposition reference") {
+                // The guard checks every reference at once; Rust verified
+                // each one first, so this is a reference changed meanwhile.
                 DispositionError::ReferenceUnverified(0)
             } else if message.contains("assigned auditor") {
                 DispositionError::Denied
@@ -653,11 +717,17 @@ impl DispositionStore for AssessmentRepository {
         if r.kind == DispositionKind::NeedsReconsideration {
             // Like new guidance, a request to reconsider resumes a Task that
             // is waiting for direction; a paused or stopped Task stays so.
-            sqlx::query("UPDATE public.tasks SET state='ready',cessation='none',revision=revision+1 WHERE id=$1 AND state='waiting' AND cessation='confirmed'")
+            // The change is a Task event like every other state change.
+            let resumed: Option<String> = sqlx::query_scalar("UPDATE public.tasks SET state='ready',cessation='none',revision=revision+1 WHERE id=$1 AND state='waiting' AND cessation='confirmed' RETURNING cycle_id")
                 .bind(&record.task_id)
-                .execute(&mut *tx)
+                .fetch_optional(&mut *tx)
                 .await
                 .map_err(|_| DispositionError::Unavailable)?;
+            if let Some(cycle) = resumed {
+                task::event(&mut tx, scope, &record.task_id, &cycle, None, "observed")
+                    .await
+                    .map_err(task_denied)?;
+            }
             task::wake(&mut tx, scope, &record.task_id, &accountable)
                 .await
                 .map_err(task_denied)?;

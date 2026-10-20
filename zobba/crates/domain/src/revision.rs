@@ -35,7 +35,9 @@ pub const MAX_DISPOSITION_RATIONALE_BYTES: usize = 2_000;
 pub const MAX_DISPOSITION_REFERENCES: usize = 8;
 /// Dispositions one revision may hold (the latest is effective).
 pub const MAX_DISPOSITIONS_PER_REVISION: usize = 16;
-/// Basis or criterion versions trusted code walks back to a lineage root.
+/// Earlier versions a basis or criterion version may have: a version with
+/// more is refused when proposed, so every lineage walk (at most this many
+/// steps, in Rust and SQL) reaches its root.
 pub const MAX_LINEAGE: usize = 64;
 /// Revisions one history page lists.
 pub const HISTORY_PAGE: usize = 50;
@@ -325,6 +327,10 @@ pub enum DispositionRefusal {
     /// `replaced` on a deterministic revision: a rule verdict is changed only
     /// by corrected facts or a new criterion version.
     NotReplaceable,
+    /// `replaced` with met or not_met on a head that cannot yield one (not
+    /// applicable, failed, or its criterion's authority is unverified): the
+    /// 24.1 outcome rules hold for a person's verdict too.
+    NotDecidable,
 }
 
 impl DispositionRequest {
@@ -352,12 +358,20 @@ impl DispositionRequest {
                 .all(|(i, r)| !self.references[..i].contains(r))
     }
     /// Whether this disposition may be saved on a revision of `origin`.
-    pub fn check(&self, origin: Origin) -> Result<(), DispositionRefusal> {
+    /// `decidable` says whether that revision may yield met or not_met: it is
+    /// applicable, completed and its criterion's authority is verified.
+    pub fn check(&self, origin: Origin, decidable: bool) -> Result<(), DispositionRefusal> {
         if !self.is_valid() {
             return Err(DispositionRefusal::Invalid);
         }
         if self.kind == DispositionKind::Replaced && origin != Origin::ModelProposal {
             return Err(DispositionRefusal::NotReplaceable);
+        }
+        if self.kind == DispositionKind::Replaced
+            && matches!(self.verdict, Some(Verdict::Met | Verdict::NotMet))
+            && !decidable
+        {
+            return Err(DispositionRefusal::NotDecidable);
         }
         Ok(())
     }

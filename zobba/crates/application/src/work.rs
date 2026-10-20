@@ -1196,6 +1196,20 @@ where
                     user("assessment-feedback", feedback.clone()),
                 ));
             }
+            // Story 24.3a: pending reconsiderations, the people's words
+            // attributed to them, in a message of their own.
+            if let Some(reconsiderations) = &assessment.reconsiderations {
+                fixed.push((
+                    Some(entry(
+                        crate::assessment::revision::RECONSIDERATIONS_SOURCE,
+                        None,
+                    )),
+                    user(
+                        crate::assessment::revision::RECONSIDERATIONS_SOURCE,
+                        reconsiderations.clone(),
+                    ),
+                ));
+            }
         }
         // Story 22.5: what the agent may read and what it has read this cycle,
         // as attributed data. Bounded by the reading service.

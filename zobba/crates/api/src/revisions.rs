@@ -7,7 +7,10 @@
 //! verified at write time; an unverified one refuses the whole request (409
 //! `reference_unverified`, naming its index). A disposition on a revision
 //! that is no longer the head is refused (409 `revision_superseded`, naming
-//! the head). A rule verdict is never replaced (400 `not_replaceable`). The
+//! the head). A rule verdict is never replaced (400 `not_replaceable`), and a
+//! person's met or not_met needs a head that may yield one (400
+//! `verdict_not_decidable`). An exact replay is answered only after the
+//! session, role and assignment are checked again. The
 //! history route lists a chain's revisions in order with an exact count; a
 //! fact's value is withheld from a viewer who cannot read its original now.
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
@@ -158,7 +161,8 @@ pub struct ChainResponse {
     pub effective_origin: String,
     /// `unreviewed`, `accepted`, `replaced` or `pending_reconsideration`.
     pub review: String,
-    /// An earlier revision of this chain was accepted (this one is not yet).
+    /// An earlier revision of this chain was accepted (independent of this
+    /// revision's own review state).
     pub earlier_accepted: bool,
     #[schema(required = true)]
     pub disposition: Option<DispositionResponse>,
@@ -515,9 +519,9 @@ pub struct DispositionErrorResponse {
 
 fn refusal(error: DispositionError) -> Response {
     let (status, head_id, index) = match &error {
-        DispositionError::Invalid | DispositionError::NotReplaceable => {
-            (StatusCode::BAD_REQUEST, None, None)
-        }
+        DispositionError::Invalid
+        | DispositionError::NotReplaceable
+        | DispositionError::NotDecidable => (StatusCode::BAD_REQUEST, None, None),
         DispositionError::ReferenceUnverified(i) => (StatusCode::CONFLICT, None, Some(*i as u32)),
         DispositionError::RevisionSuperseded(head) => {
             (StatusCode::CONFLICT, Some(head.clone()), None)
@@ -573,7 +577,7 @@ fn command(revision_id: String, body: DispositionCommandRequest) -> Option<Dispo
 #[utoipa::path(post,path="/engagements/{engagement_id}/tasks/{task_id}/assessment/revisions/{revision_id}/dispositions",operation_id="save_disposition",security(("server_session"=[])),
     params(("engagement_id"=String,Path),("task_id"=String,Path),("revision_id"=String,Path,description="The exact revision: a 24.1 evaluation or a revision ID"),("organisation_id"=String,Query),("client_id"=String,Query),("Origin"=String,Header,description="Exact configured HTTPS application origin"),("X-CSRF-Token"=String,Header,description="Current session-bound token"),("X-Expected-Actor"=String,Header,description="Required refusal fence for the current session actor; never supplies author authority",min_length=1,max_length=128,pattern="^[A-Za-z0-9_-]+$")),
     request_body=DispositionCommandRequest,
-    responses((status=200,description="The saved disposition (an exact retry returns the original); the revision is unchanged",body=DispositionResponse),(status=400,description="disposition_invalid or not_replaceable",body=DispositionErrorResponse),(status=401,body=crate::auth::ErrorResponse),(status=403,body=crate::auth::ErrorResponse),(status=404,body=DispositionErrorResponse),(status=409,description="reference_unverified (index), revision_superseded (head_id), disposition_conflict or disposition_capacity",body=DispositionErrorResponse),(status=429,body=crate::auth::ErrorResponse),(status=503,body=DispositionErrorResponse)))]
+    responses((status=200,description="The saved disposition (an exact retry returns the original); the revision is unchanged",body=DispositionResponse),(status=400,description="disposition_invalid, not_replaceable, or verdict_not_decidable (a person's met or not_met on a head that is not applicable, failed or under an unverified authority)",body=DispositionErrorResponse),(status=401,body=crate::auth::ErrorResponse),(status=403,body=crate::auth::ErrorResponse),(status=404,body=DispositionErrorResponse),(status=409,description="reference_unverified (index), revision_superseded (head_id), disposition_conflict or disposition_capacity",body=DispositionErrorResponse),(status=429,body=crate::auth::ErrorResponse),(status=503,body=DispositionErrorResponse)))]
 pub(crate) async fn dispose(
     State(state): State<RevisionState>,
     headers: HeaderMap,

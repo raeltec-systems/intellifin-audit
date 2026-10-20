@@ -14,14 +14,21 @@ struct Store {
     target: Option<RevisionTarget>,
     saved: Mutex<Vec<DispositionRecord>>,
     verified: Vec<(String, String)>,
+    /// The actor may no longer dispose (the fence refuses, replays included).
+    revoked: std::sync::atomic::AtomicBool,
 }
 impl DispositionStore for Store {
     async fn disposition_by_key(
         &self,
         actor: &str,
         _: &Scope,
+        session: &str,
         key: &str,
     ) -> Result<Option<DispositionRecord>, DispositionError> {
+        assert_eq!(session, "session-hash", "a replay is bound to the session");
+        if self.revoked.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(DispositionError::Denied);
+        }
         Ok(self
             .saved
             .lock()
@@ -98,6 +105,19 @@ impl CitationReader for Reader<'_> {
             .get(start as usize..end as usize)
             .map_or(Located::Missing, |t| Located::Found(vec![t.into()])))
     }
+    async fn byte_context(
+        &self,
+        _: &ClaimBasis,
+        _: &CitedOriginal,
+        start: u64,
+        end: u64,
+    ) -> Result<Option<String>, ReadingError> {
+        Ok(crate::citation::widened(
+            TEXT.as_bytes(),
+            start as usize,
+            end as usize,
+        ))
+    }
     async fn locate(
         &self,
         basis: &ClaimBasis,
@@ -157,6 +177,7 @@ fn store(origin: Origin, revision: u32, head_revision: u32) -> Store {
             origin,
             head_id: if head_revision == 1 { chain() } else { head() },
             head_revision,
+            decidable: true,
         }),
         verified: vec![("ap-invoices".into(), "J. Smith".into())],
         ..Store::default()
@@ -328,4 +349,65 @@ fn a_malformed_request_is_invalid_before_anything_is_read() {
     let mut r = request(DispositionKind::Accepted);
     r.revision_id = "crit-1".into();
     assert_eq!(save(&store, &r), Err(DispositionError::Invalid));
+}
+
+#[test]
+fn an_exact_replay_is_answered_only_after_authority_is_rechecked() {
+    let store = store(Origin::ModelProposal, 1, 1);
+    let first = save(&store, &request(DispositionKind::Accepted)).unwrap();
+    store
+        .revoked
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    // The stored original is never returned to an actor who may not dispose.
+    assert_eq!(
+        save(&store, &request(DispositionKind::Accepted)),
+        Err(DispositionError::Denied)
+    );
+    store
+        .revoked
+        .store(false, std::sync::atomic::Ordering::SeqCst);
+    assert_eq!(save(&store, &request(DispositionKind::Accepted)), Ok(first));
+}
+
+#[test]
+fn a_reference_is_a_whole_value_at_its_location() {
+    let store = store(Origin::ModelProposal, 1, 1);
+    // "nvoices" is verified at its bytes but is part of the word "Invoices":
+    // the 24.1 whole-value rule refuses it, like `2,500.00` inside
+    // `12,500.00`.
+    let mut r = request(DispositionKind::Accepted);
+    r.references = vec![CitationSource {
+        original_id: "ap-policy".into(),
+        locator: Locator::parse("bytes:1-8"),
+        quote: "nvoices".into(),
+    }];
+    assert_eq!(
+        save(&store, &r),
+        Err(DispositionError::ReferenceUnverified(0))
+    );
+    // The whole value at the same kind of location is accepted.
+    let mut r = request(DispositionKind::Accepted);
+    r.key = "key-2".into();
+    r.references = vec![CitationSource {
+        original_id: "ap-policy".into(),
+        locator: Locator::parse("bytes:0-8"),
+        quote: "Invoices".into(),
+    }];
+    assert!(save(&store, &r).is_ok());
+    assert_eq!(store.saved.lock().unwrap().len(), 1);
+}
+
+#[test]
+fn a_persons_met_or_not_met_needs_a_decidable_head() {
+    for verdict in [Verdict::Met, Verdict::NotMet] {
+        let mut store = store(Origin::ModelProposal, 1, 1);
+        store.target.as_mut().unwrap().decidable = false;
+        let mut r = request(DispositionKind::Replaced);
+        r.verdict = Some(verdict);
+        assert_eq!(save(&store, &r), Err(DispositionError::NotDecidable));
+        assert!(store.saved.lock().unwrap().is_empty());
+        // Undetermined stays possible, and so does accepting.
+        r.verdict = Some(Verdict::Undetermined);
+        assert!(save(&store, &r).is_ok());
+    }
 }

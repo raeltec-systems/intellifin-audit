@@ -366,16 +366,39 @@ fn a_revision_id_is_an_evaluation_or_a_revision() {
 fn a_deterministic_revision_cannot_be_replaced() {
     let r = request(DispositionKind::Replaced);
     assert_eq!(
-        r.check(Origin::Deterministic),
+        r.check(Origin::Deterministic, true),
         Err(DispositionRefusal::NotReplaceable)
     );
-    assert_eq!(r.check(Origin::ModelProposal), Ok(()));
+    assert_eq!(r.check(Origin::ModelProposal, true), Ok(()));
     assert_eq!(
-        request(DispositionKind::Accepted).check(Origin::Deterministic),
+        request(DispositionKind::Accepted).check(Origin::Deterministic, true),
         Ok(())
     );
     assert_eq!(
-        request(DispositionKind::NeedsReconsideration).check(Origin::Deterministic),
+        request(DispositionKind::NeedsReconsideration).check(Origin::Deterministic, false),
+        Ok(())
+    );
+}
+
+#[test]
+fn a_person_decides_met_or_not_met_only_where_a_verdict_is_decidable() {
+    // A head that is not applicable, failed, or reads an unverified
+    // authority cannot yield met or not_met: neither can a person's verdict.
+    for verdict in [Verdict::Met, Verdict::NotMet] {
+        let mut r = request(DispositionKind::Replaced);
+        r.verdict = Some(verdict);
+        assert_eq!(
+            r.check(Origin::ModelProposal, false),
+            Err(DispositionRefusal::NotDecidable),
+            "{verdict:?}"
+        );
+        assert_eq!(r.check(Origin::ModelProposal, true), Ok(()));
+    }
+    let mut r = request(DispositionKind::Replaced);
+    r.verdict = Some(Verdict::Undetermined);
+    assert_eq!(r.check(Origin::ModelProposal, false), Ok(()));
+    assert_eq!(
+        request(DispositionKind::Accepted).check(Origin::ModelProposal, false),
         Ok(())
     );
 }

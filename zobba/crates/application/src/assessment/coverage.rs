@@ -1420,16 +1420,52 @@ where
                 continue;
             }
             let members = self.members_of(basis, coverage, &population).await?;
-            let judgments = if criterion.criterion.method.kind() == CriterionKind::Judgment {
-                let evaluations = self
-                    .store
-                    .evaluations_of(basis, &target.id, &criterion.id)
-                    .await?;
-                let facts = self.store.facts(basis, &target.id).await?;
-                judgments_at_unit(evaluations, &facts, &population.population.subject_unit)
-            } else {
-                BTreeMap::new()
-            };
+            // Story 24.3a: a judgment is the current head of its chain, read
+            // with the basis's effective facts (own and carried). A head that
+            // is a later revision, or reads another basis version, is not a
+            // 24.2 opportunity (an opportunity names a revision-1 judgment of
+            // the population's own basis): such a subject stays not
+            // evaluated here and is counted, never given its superseded
+            // first verdict.
+            let (judgments, revised) =
+                if criterion.criterion.method.kind() == CriterionKind::Judgment {
+                    let heads = self.store.heads(basis, &target.id, &criterion.id).await?;
+                    let facts = self.store.effective_facts(basis, &target.id).await?;
+                    let mut revised = BTreeSet::new();
+                    let current: Vec<EvaluationRecord> = heads
+                        .into_iter()
+                        .filter_map(|h| {
+                            if h.head.is_some() || h.first.basis_id != target.id {
+                                revised.insert(h.first.subject.clone());
+                                None
+                            } else {
+                                Some(h.first)
+                            }
+                        })
+                        .collect();
+                    (
+                        judgments_at_unit(current, &facts, &population.population.subject_unit),
+                        revised,
+                    )
+                } else {
+                    (BTreeMap::new(), BTreeSet::new())
+                };
+            let revised = members
+                .iter()
+                .filter(|m| m.member.disposition == Disposition::InScope)
+                .filter(|m| {
+                    m.member
+                        .subject
+                        .as_ref()
+                        .is_some_and(|s| revised.contains(s))
+                })
+                .count();
+            if revised > 0 {
+                feedback.push(format!(
+                    "{} over population {}: {revised} subjects' judgments were revised or read another basis version; they are counted here as not evaluated, never with a superseded verdict.",
+                    criterion.id, population.id
+                ));
+            }
             let mut records = Vec::new();
             for m in members
                 .iter()

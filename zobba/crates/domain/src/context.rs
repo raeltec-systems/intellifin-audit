@@ -79,6 +79,9 @@ vocabulary!(InputClass {
     EvidenceRegistry => "evidence-registry",
     Method => "method",
     Skill => "skill",
+    // Story 24.3a: a person's own words (a reconsideration request's
+    // rationale), attributed to the person, never model output.
+    PersonInput => "person-input",
 });
 
 // Current standing of a knowledge revision that an earlier turn used.

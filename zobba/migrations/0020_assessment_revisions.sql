@@ -162,11 +162,14 @@ CREATE TABLE public.assessment_dispositions (
 CREATE INDEX assessment_dispositions_revision ON public.assessment_dispositions(organisation_id,client_id,engagement_id,revision_id,created_us);
 
 -- Story 24.3a: the 24.1 guard, unchanged except that a basis's 1,024-fact
--- bound counts its carried facts too, and an evaluation input may be a fact
--- carried into its basis by reference (and not recorded by the basis itself).
+-- bound counts its carried facts too, an evaluation input may be a fact
+-- carried into its basis by reference (and not recorded by the basis itself),
+-- and a new basis or criterion version is the only successor of the version
+-- it supersedes and has at most 64 earlier versions, so every lineage walk
+-- (bounded at 64 steps) reaches its root and revision chains never fork.
 CREATE OR REPLACE FUNCTION public.assessment_guard() RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,public AS $body$
-DECLARE criterion public.assessment_criteria%ROWTYPE; input jsonb; outcome text;
+DECLARE criterion public.assessment_criteria%ROWTYPE; input jsonb; outcome text; walker text; hops integer;
 BEGIN
  IF TG_TABLE_NAME IN ('assessment_criteria','assessment_bases','assessment_facts','assessment_evaluations') THEN
   IF NOT EXISTS(SELECT 1 FROM public.model_invocations i WHERE (i.organisation_id,i.client_id,i.engagement_id,i.id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.invocation_id)
@@ -180,9 +183,39 @@ BEGIN
   IF NEW.supersedes IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.assessment_criteria c WHERE (c.organisation_id,c.client_id,c.engagement_id,c.id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.supersedes) AND c.task_id=NEW.task_id) THEN
    RAISE EXCEPTION 'a criterion version succeeds one of its own Task' USING ERRCODE='23514';
   END IF;
+  IF NEW.supersedes IS NOT NULL THEN
+   PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('successor:'||NEW.organisation_id||'/'||NEW.client_id||'/'||NEW.engagement_id||'/'||NEW.supersedes, 2402));
+   IF EXISTS(SELECT 1 FROM public.assessment_criteria c WHERE (c.organisation_id,c.client_id,c.engagement_id,c.supersedes)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.supersedes)) THEN
+    RAISE EXCEPTION 'a criterion version has at most one successor' USING ERRCODE='23514';
+   END IF;
+   walker := NEW.supersedes; hops := 0;
+   LOOP
+    SELECT c.supersedes INTO walker FROM public.assessment_criteria c WHERE (c.organisation_id,c.client_id,c.engagement_id,c.id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,walker);
+    EXIT WHEN walker IS NULL;
+    hops := hops + 1;
+    IF hops >= 64 THEN
+     RAISE EXCEPTION 'a criterion lineage holds at most 64 earlier versions' USING ERRCODE='23514';
+    END IF;
+   END LOOP;
+  END IF;
  ELSIF TG_TABLE_NAME='assessment_bases' THEN
   IF NEW.supersedes IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.assessment_bases b WHERE (b.organisation_id,b.client_id,b.engagement_id,b.id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.supersedes) AND b.task_id=NEW.task_id) THEN
    RAISE EXCEPTION 'a basis version succeeds one of its own Task' USING ERRCODE='23514';
+  END IF;
+  IF NEW.supersedes IS NOT NULL THEN
+   PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('successor:'||NEW.organisation_id||'/'||NEW.client_id||'/'||NEW.engagement_id||'/'||NEW.supersedes, 2402));
+   IF EXISTS(SELECT 1 FROM public.assessment_bases b WHERE (b.organisation_id,b.client_id,b.engagement_id,b.supersedes)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.supersedes)) THEN
+    RAISE EXCEPTION 'a basis version has at most one successor' USING ERRCODE='23514';
+   END IF;
+   walker := NEW.supersedes; hops := 0;
+   LOOP
+    SELECT b.supersedes INTO walker FROM public.assessment_bases b WHERE (b.organisation_id,b.client_id,b.engagement_id,b.id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,walker);
+    EXIT WHEN walker IS NULL;
+    hops := hops + 1;
+    IF hops >= 64 THEN
+     RAISE EXCEPTION 'a basis lineage holds at most 64 earlier versions' USING ERRCODE='23514';
+    END IF;
+   END LOOP;
   END IF;
  ELSIF TG_TABLE_NAME='assessment_basis_criteria' THEN
   IF NOT EXISTS(SELECT 1 FROM public.assessment_bases b JOIN public.assessment_criteria c ON (c.organisation_id,c.client_id,c.engagement_id)=(b.organisation_id,b.client_id,b.engagement_id) AND c.task_id=b.task_id
@@ -271,7 +304,8 @@ CREATE FUNCTION public.revision_guard() RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,public AS $body$
 DECLARE chain public.assessment_evaluations%ROWTYPE; criterion public.assessment_criteria%ROWTYPE;
  pred_basis text; pred_criterion text; pred_execution text; pred_inputs jsonb; origin_of text;
- input jsonb; walker text; hops integer; expected text[]; latest text; head integer; changes jsonb;
+ input jsonb; walker text; hops integer; expected text[]; latest text; latest_id text; head integer; changes jsonb;
+ head_applicability text; head_execution text; head_criterion text;
 BEGIN
  IF TG_TABLE_NAME IN ('assessment_basis_carries','assessment_evaluation_revisions') THEN
   IF NOT EXISTS(SELECT 1 FROM public.model_invocations i WHERE (i.organisation_id,i.client_id,i.engagement_id,i.id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.invocation_id)
@@ -355,14 +389,18 @@ BEGIN
   IF NEW.criterion_id IS DISTINCT FROM pred_criterion THEN expected := array_append(expected, 'criterion_revised'); END IF;
   IF NEW.basis_id IS DISTINCT FROM pred_basis THEN expected := array_append(expected, 'basis_revised'); END IF;
   IF pred_execution='failed' AND NEW.execution='completed' THEN expected := array_append(expected, 'prior_execution_failed'); END IF;
-  SELECT d.kind INTO latest FROM public.assessment_dispositions d WHERE (d.organisation_id,d.client_id,d.engagement_id,d.revision_id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.predecessor_id)
+  SELECT d.kind, d.id INTO latest, latest_id FROM public.assessment_dispositions d WHERE (d.organisation_id,d.client_id,d.engagement_id,d.revision_id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.predecessor_id)
     ORDER BY d.created_us DESC, d.id COLLATE "C" DESC LIMIT 1;
   -- A reconsideration causes a revision only when the request trusted code
-  -- sent for the answering turn showed it: a replayed earlier answer never
-  -- answers a request the model did not see.
+  -- sent for the answering turn showed that exact disposition: a line of the
+  -- request's own `assessment-reconsiderations` message (trusted structure;
+  -- the person's words are escaped there, so no text can start a line). A
+  -- replayed earlier answer never answers a request the model did not see.
   IF latest IS NOT DISTINCT FROM 'needs_reconsideration' AND EXISTS(SELECT 1 FROM public.model_invocations i
+     CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(i.request->'messages')='array' THEN i.request->'messages' ELSE '[]'::jsonb END) m(value)
      WHERE (i.organisation_id,i.client_id,i.engagement_id,i.id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.invocation_id)
-       AND pg_catalog.strpos(i.request::text, 'reconsideration requested of '||NEW.predecessor_id||' ') > 0) THEN
+       AND m.value->>'role'='user' AND m.value->>'source_id'='assessment-reconsiderations'
+       AND pg_catalog.strpos(m.value->>'text', E'\n- reconsideration '||latest_id||' of '||NEW.predecessor_id||' (') > 0) THEN
    expected := array_append(expected, 'reconsideration_requested');
   END IF;
   IF NEW.causes IS DISTINCT FROM expected THEN
@@ -382,8 +420,13 @@ BEGIN
  ELSIF TG_TABLE_NAME='assessment_dispositions' THEN
   -- A person with a current auditor or audit manager role and a current
   -- assignment on this engagement (Admin alone is not one).
-  IF NOT public.knowledge_audit(NEW.actor_id, NEW.organisation_id, NEW.client_id, NEW.engagement_id) THEN
-   RAISE EXCEPTION 'a disposition is saved by a currently assigned auditor or audit manager' USING ERRCODE='23514';
+  -- A person in their own live session: the API sets the session hash for
+  -- the write transaction only, so a worker connection (which holds no
+  -- person's session) cannot save one. An unset scope or session is a
+  -- refusal, never a pass.
+  IF NOT coalesce(public.knowledge_audit(NEW.actor_id, NEW.organisation_id, NEW.client_id, NEW.engagement_id), false)
+     OR NOT coalesce(public.evidence_session_locked(NEW.actor_id, nullif(pg_catalog.current_setting('zobba.session_hash',true),'')), false) THEN
+   RAISE EXCEPTION 'a disposition is saved by a currently assigned auditor or audit manager in their own session' USING ERRCODE='23514';
   END IF;
   PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('revision:'||NEW.organisation_id||'/'||NEW.client_id||'/'||NEW.engagement_id||'/'||NEW.chain_id, 0));
   SELECT e.* INTO chain FROM public.assessment_evaluations e WHERE (e.organisation_id,e.client_id,e.engagement_id,e.id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.chain_id) AND e.task_id=NEW.task_id;
@@ -395,9 +438,10 @@ BEGIN
    RAISE EXCEPTION 'a disposition names the current head of its chain' USING ERRCODE='23514';
   END IF;
   IF NEW.revision = 1 THEN
-   origin_of := chain.origin;
+   origin_of := chain.origin; head_applicability := chain.applicability; head_execution := chain.execution; head_criterion := chain.criterion_id;
   ELSE
-   SELECT r.origin INTO origin_of FROM public.assessment_evaluation_revisions r WHERE (r.organisation_id,r.client_id,r.engagement_id,r.id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.revision_id)
+   SELECT r.origin, r.applicability, r.execution, r.criterion_id INTO origin_of, head_applicability, head_execution, head_criterion
+     FROM public.assessment_evaluation_revisions r WHERE (r.organisation_id,r.client_id,r.engagement_id,r.id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.revision_id)
      AND r.chain_id=NEW.chain_id AND r.revision=NEW.revision;
    IF NOT FOUND THEN
     RAISE EXCEPTION 'a disposition names the current head of its chain' USING ERRCODE='23514';
@@ -405,6 +449,12 @@ BEGIN
   END IF;
   IF NEW.kind='replaced' AND origin_of IS DISTINCT FROM 'model_proposal' THEN
    RAISE EXCEPTION 'a deterministic verdict cannot be replaced' USING ERRCODE='23514';
+  END IF;
+  -- The 24.1 outcome rules hold for a person's verdict too: met or not_met
+  -- only on an applicable, completed judgment under a verified authority.
+  IF NEW.kind='replaced' AND NEW.verdict IN ('met','not_met') AND (head_applicability IS DISTINCT FROM 'applicable' OR head_execution IS DISTINCT FROM 'completed'
+     OR NOT coalesce((SELECT c.authority_verified FROM public.assessment_criteria c WHERE (c.organisation_id,c.client_id,c.engagement_id,c.id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,head_criterion)), false)) THEN
+   RAISE EXCEPTION 'a person''s met or not_met replaces only an applicable, completed judgment under a verified authority' USING ERRCODE='23514';
   END IF;
   IF (SELECT count(*) FROM public.assessment_dispositions d WHERE (d.organisation_id,d.client_id,d.engagement_id,d.revision_id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.revision_id)) >= 16 THEN
    RAISE EXCEPTION 'a revision holds at most 16 dispositions' USING ERRCODE='23514';

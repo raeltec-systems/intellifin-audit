@@ -18,7 +18,7 @@ use crate::{
     model::ModelCancellation,
 };
 use zobba_domain::{
-    assessment::Origin,
+    assessment::{Origin, whole_value},
     citation::{CitationSource, Located, Locator, LocatorFamily, Verification},
     identity::Scope,
     revision::{DispositionRefusal, DispositionRequest},
@@ -33,6 +33,10 @@ pub enum DispositionError {
     Invalid,
     /// `replaced` on a deterministic revision (400 `not_replaceable`).
     NotReplaceable,
+    /// `replaced` with met or not_met on a head that cannot yield one: not
+    /// applicable, failed, or its authority unverified (400
+    /// `verdict_not_decidable`).
+    NotDecidable,
     /// The reference at this 0-based index is not verified (409).
     ReferenceUnverified(usize),
     /// The revision is not the head of its chain (409); names the head.
@@ -52,6 +56,7 @@ impl DispositionError {
         match self {
             Self::Invalid => "disposition_invalid",
             Self::NotReplaceable => "not_replaceable",
+            Self::NotDecidable => "verdict_not_decidable",
             Self::ReferenceUnverified(_) => "reference_unverified",
             Self::RevisionSuperseded(_) => "revision_superseded",
             Self::NotFound => "revision_not_found",
@@ -81,15 +86,21 @@ pub struct RevisionTarget {
     pub origin: Origin,
     pub head_id: String,
     pub head_revision: u32,
+    /// The revision may yield met or not_met: applicable, completed and its
+    /// criterion's authority verified.
+    pub decidable: bool,
 }
 
 /// Durable dispositions under the person's current authority.
 pub trait DispositionStore: Send + Sync {
-    /// The disposition this actor saved under this key, if any.
+    /// The disposition this actor saved under this key, if any, after the
+    /// exact session, role and assignment are checked again (a replay is
+    /// never answered for an actor who may not dispose now).
     fn disposition_by_key(
         &self,
         actor: &str,
         scope: &Scope,
+        session_hash: &str,
         key: &str,
     ) -> impl Future<Output = Result<Option<DispositionRecord>, DispositionError>> + Send;
     /// The revision of this Task with this exact ID and its chain's head.
@@ -257,7 +268,10 @@ pub async fn save_disposition<D: DispositionStore, C: CitationReader>(
     if !request.is_valid() || !zobba_domain::identity::valid_scope_id(task_id) {
         return Err(DispositionError::Invalid);
     }
-    if let Some(found) = store.disposition_by_key(actor, scope, &request.key).await? {
+    if let Some(found) = store
+        .disposition_by_key(actor, scope, session_hash, &request.key)
+        .await?
+    {
         return if found.request == *request && found.task_id == task_id {
             Ok(found)
         } else {
@@ -272,14 +286,16 @@ pub async fn save_disposition<D: DispositionStore, C: CitationReader>(
         return Err(DispositionError::RevisionSuperseded(target.head_id));
     }
     request
-        .check(target.origin)
+        .check(target.origin, target.decidable)
         .map_err(|refusal| match refusal {
             DispositionRefusal::Invalid => DispositionError::Invalid,
             DispositionRefusal::NotReplaceable => DispositionError::NotReplaceable,
+            DispositionRefusal::NotDecidable => DispositionError::NotDecidable,
         })?;
     // Each reference is verified at write time. A page alone, an original
-    // the person cannot read now, or a quote not at its location refuses
-    // the whole request.
+    // the person cannot read now, a quote not at its location, or a quote
+    // that is only part of the value there (`2,500.00` inside `12,500.00`:
+    // the 24.1 whole-value rule) refuses the whole request.
     let mut references: Vec<(CitationSource, String)> = Vec::new();
     if !request.references.is_empty() {
         let basis = ClaimBasis {
@@ -298,14 +314,26 @@ pub async fn save_disposition<D: DispositionStore, C: CitationReader>(
         let verified = verify_sources(reader, &basis, &request.references, &cancellation)
             .await
             .map_err(DispositionError::from)?;
-        for (index, (source, _)) in verified.into_iter().enumerate() {
+        for (index, (source, texts)) in verified.into_iter().enumerate() {
             let page_only = source
                 .source
                 .locator
                 .as_ref()
                 .is_some_and(|l| l.family() == LocatorFamily::Page);
-            match (source.verification, source.original_sha256, page_only) {
-                (Verification::Verified, Some(sha), false) => references.push((source.source, sha)),
+            let whole = source
+                .source
+                .locator
+                .as_ref()
+                .is_some_and(|l| whole_value(l, &texts, &source.source.quote));
+            match (
+                source.verification,
+                source.original_sha256,
+                page_only,
+                whole,
+            ) {
+                (Verification::Verified, Some(sha), false, true) => {
+                    references.push((source.source, sha))
+                }
                 _ => return Err(DispositionError::ReferenceUnverified(index)),
             }
         }

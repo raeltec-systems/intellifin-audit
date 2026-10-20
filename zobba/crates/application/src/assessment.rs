@@ -307,6 +307,9 @@ pub trait AssessmentStore: Send + Sync {
 pub struct AssessmentContext {
     pub outline: Option<String>,
     pub feedback: Option<String>,
+    /// Story 24.3a: the pending reconsiderations, in their own message with
+    /// its own fixed bound (never dropped by the outline's byte budget).
+    pub reconsiderations: Option<String>,
 }
 
 /// The trusted assessment tools: a store under claim custody and the 22.5
@@ -1454,6 +1457,19 @@ impl<S: AssessmentStore + coverage::CoverageStore + revision::RevisionStore, C: 
                 ));
                 continue;
             }
+            if let Some(previous) = &proposed.supersedes
+                && let Some(line) = self
+                    .version_refusal(
+                        basis,
+                        revision::VersionKind::Criterion,
+                        &proposed.key,
+                        previous,
+                    )
+                    .await?
+            {
+                feedback.push(line);
+                continue;
+            }
             let authority = match &proposed.authority {
                 Authority::Method {
                     requirement_id,
@@ -1519,7 +1535,20 @@ impl<S: AssessmentStore + coverage::CoverageStore + revision::RevisionStore, C: 
                 recorded_us: None,
             };
             record.digest = document_digest(&record.document());
-            let stored = self.store.record_criterion(basis, &record).await?;
+            let stored = match self.store.record_criterion(basis, &record).await {
+                Ok(stored) => stored,
+                // The database refused it (for example another successor of
+                // the same version was recorded meanwhile): feedback, never
+                // a failed cycle.
+                Err(ReadingError::Invalid) => {
+                    feedback.push(format!(
+                        "Criterion {} was not recorded: the platform refused it as proposed (the version it supersedes may have a successor now).",
+                        proposed.key
+                    ));
+                    continue;
+                }
+                Err(error) => return Err(error),
+            };
             progress = true;
             feedback.push(criterion_line(&stored));
             keys.insert(proposed.key.clone(), stored);
@@ -1545,6 +1574,18 @@ impl<S: AssessmentStore + coverage::CoverageStore + revision::RevisionStore, C: 
                     None => true,
                 };
                 let distinct: BTreeSet<&String> = criteria.iter().collect();
+                let version_refusal = match (&proposed.supersedes, supersedes_ok) {
+                    (Some(previous), true) => {
+                        self.version_refusal(
+                            basis,
+                            revision::VersionKind::Basis,
+                            &proposed.key,
+                            previous,
+                        )
+                        .await?
+                    }
+                    _ => None,
+                };
                 if !unknown.is_empty() {
                     feedback.push(format!(
                         "Basis {} was not recorded: {} {} not criteria of this Task.",
@@ -1557,6 +1598,8 @@ impl<S: AssessmentStore + coverage::CoverageStore + revision::RevisionStore, C: 
                         "Basis {} was not recorded: it supersedes a basis that is not one of this Task.",
                         proposed.key
                     ));
+                } else if let Some(line) = version_refusal {
+                    feedback.push(line);
                 } else if distinct.len() != criteria.len() {
                     feedback.push(format!(
                         "Basis {} was not recorded: it lists one criterion twice.",
@@ -1589,10 +1632,18 @@ impl<S: AssessmentStore + coverage::CoverageStore + revision::RevisionStore, C: 
                         recorded_us: None,
                     };
                     record.digest = document_digest(&record.document());
-                    let stored = self.store.record_basis(basis, &record).await?;
-                    progress = true;
-                    feedback.push(basis_line(&stored));
-                    answer_basis = Some(stored);
+                    match self.store.record_basis(basis, &record).await {
+                        Ok(stored) => {
+                            progress = true;
+                            feedback.push(basis_line(&stored));
+                            answer_basis = Some(stored);
+                        }
+                        Err(ReadingError::Invalid) => feedback.push(format!(
+                            "Basis {} was not recorded: the platform refused it as proposed (the version it supersedes may have a successor now).",
+                            proposed.key
+                        )),
+                        Err(error) => return Err(error),
+                    }
                 }
             }
         }
@@ -1605,7 +1656,7 @@ impl<S: AssessmentStore + coverage::CoverageStore + revision::RevisionStore, C: 
 
         // 2b. Story 24.3a: a successor basis carries its predecessor's
         // effective facts by reference, except the listed ones.
-        progress |= self
+        let (carried_now, carry_refused) = self
             .carry_step(
                 basis,
                 invocation,
@@ -1615,6 +1666,12 @@ impl<S: AssessmentStore + coverage::CoverageStore + revision::RevisionStore, C: 
                 &mut feedback,
             )
             .await?;
+        progress |= carried_now;
+        let carry_line = |criterion: &str, basis_id: &str| {
+            format!(
+                "{criterion} was not evaluated under basis {basis_id}: its carry_facts in this answer was not recorded, so it would read only its own facts. Ask again once its carry is recorded."
+            )
+        };
 
         // 3. Fact observations: sources verified, values re-parsed. Facts of
         // a basis are read once (an exact read) and the per-basis bound is
@@ -1871,6 +1928,10 @@ impl<S: AssessmentStore + coverage::CoverageStore + revision::RevisionStore, C: 
                 ));
                 continue;
             };
+            if carry_refused.as_deref() == Some(target.id.as_str()) {
+                feedback.push(carry_line(&criterion.id, &target.id));
+                continue;
+            }
             if !effective.contains_key(&target.id) {
                 let facts = self.store.effective_facts(basis, &target.id).await?;
                 effective.insert(target.id.clone(), facts);
@@ -1940,7 +2001,7 @@ impl<S: AssessmentStore + coverage::CoverageStore + revision::RevisionStore, C: 
                         &outcome,
                         &digest,
                         &facts,
-                        revision::shown_reconsideration(invocation, head.head_id()),
+                        head.reconsideration_shown(invocation),
                     )
                     .await?
                 {
@@ -2059,6 +2120,10 @@ impl<S: AssessmentStore + coverage::CoverageStore + revision::RevisionStore, C: 
                 ));
                 continue;
             };
+            if carry_refused.as_deref() == Some(target.id.as_str()) {
+                feedback.push(carry_line(&criterion.id, &target.id));
+                continue;
+            }
             if deferred.contains(&(target.id.clone(), proposed.subject.clone())) {
                 feedback.push(format!(
                     "The judgment of {} for {} was not recorded: some of its facts in your last answer were not recorded yet. Propose it again once they are.",
@@ -2135,17 +2200,17 @@ impl<S: AssessmentStore + coverage::CoverageStore + revision::RevisionStore, C: 
                         &outcome,
                         &digest,
                         &facts,
-                        revision::shown_reconsideration(invocation, head.head_id()),
+                        head.reconsideration_shown(invocation),
                     )
                     .await?
                 {
                     Ok(planned) => planned,
-                    Err(_) => {
+                    // The reason trusted code did not revise it, in its own
+                    // words (an older or sibling version is not "unchanged").
+                    Err(line) => {
                         feedback.push(format!(
-                            "The judgment of {} for {} was not recorded: {} is already recorded and nothing it reads has changed. A new judgment is recorded only after new facts, a new criterion or basis version, or a person's request to reconsider it.",
-                            criterion.id,
-                            proposed.subject,
-                            head.head_id()
+                            "The judgment of {} for {} was not recorded: {line} A new judgment is recorded only after new facts, a new criterion or basis version, or a person's request to reconsider it.",
+                            criterion.id, proposed.subject
                         ));
                         continue;
                     }
@@ -2220,16 +2285,21 @@ impl<S: AssessmentStore + coverage::CoverageStore + revision::RevisionStore, C: 
             && existing_coverage.populations.is_empty()
             && existing_coverage.samples.is_empty()
             && existing_coverage.summaries.is_empty());
-        // Story 24.3a: a person's request to reconsider that this turn's
-        // request did not show (it arrived during or after the turn, or the
-        // turn is replayed on a reclaim) is due a further turn that shows it.
+        // Story 24.3a: a person's request to reconsider that the next request
+        // will list (every listed one is always rendered, in its own message)
+        // but this turn's request did not (it arrived during or after the
+        // turn, the turn is replayed on a reclaim, or an earlier one was
+        // answered and a further one moved into the list) is due a further
+        // turn that shows it. One the model was already shown is not: a
+        // model that does not act on it never turns into an endless loop.
         let unseen = self
             .store
             .revision_snapshot(basis)
             .await?
             .reconsiderations
             .iter()
-            .any(|r| !revision::shown_reconsideration(invocation, &r.head_id));
+            .take(revision::MAX_OUTLINE_RECONSIDERATIONS)
+            .any(|r| !revision::shown_reconsideration(invocation, &r.disposition_id, &r.head_id));
         Ok(progress || recorded_before || unseen)
     }
 
@@ -2283,6 +2353,7 @@ impl<S: AssessmentStore + coverage::CoverageStore + revision::RevisionStore, C: 
         Ok(AssessmentContext {
             outline: outline_full(&snapshot, &covered, &revisions),
             feedback,
+            reconsiderations: revision::reconsiderations_text(&revisions),
         })
     }
 }
@@ -2505,8 +2576,9 @@ pub fn outline_full(
     for line in coverage::coverage_lines(covered) {
         push(&mut lines, line);
     }
-    // Revision lines are counted as records too, so "further records" stays
-    // exact; pending reconsiderations not listed are counted on their own line.
+    // Revision count lines are counted as records too, so "further records"
+    // stays exact. Pending reconsiderations are not here: they travel in
+    // their own message, which this budget can never drop.
     let revision_lines = revision::revision_lines(revisions);
     let revision_records = revision_lines.len() as u64;
     for line in revision_lines {
