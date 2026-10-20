@@ -21,10 +21,12 @@ export type PopulationCounts = components['schemas']['PopulationCountsResponse']
 export type CriterionCounts = components['schemas']['CriterionCountsResponse'];
 export type PopulationMembers = components['schemas']['PopulationMembersResponse'];
 export type Member = components['schemas']['MemberResponse'];
+export type Limitation = components['schemas']['LimitationResponse'];
 
 export const dispositions = ['in_scope', 'excluded', 'scope_unknown', 'duplicate_row', 'unkeyed'] as const;
 export type Disposition = typeof dispositions[number];
 const dispositionReasons = ['out_of_period', 'period_unparsed', 'period_missing', 'conflicting_duplicate'] as const;
+export const cellKinds = ['text', 'excel_date', 'excel_datetime'] as const;
 const incompleteReasons = ['not_exhaustive', 'row_bound', 'count_mismatch'] as const;
 export const conclusions = ['no_eligible_items', 'exceptions_found', 'exceptions_found_inconclusive', 'no_exception_found', 'inconclusive', 'no_items_found_absence_not_proven'] as const;
 const evaluationReasons = ['missing_fact', 'fact_unavailable', 'fact_ambiguous', 'fact_unsupported', 'unit_mismatch', 'unknown_applicability', 'authority_unverified', 'analysis_failed', 'subject_unverified', 'unit_unverified', 'not_evaluated'] as const;
@@ -44,11 +46,14 @@ function parseCounts(value: unknown): PopulationCounts {
     scope_unknown_period_unparsed: cursor(v.scope_unknown_period_unparsed), scope_unknown_period_missing: cursor(v.scope_unknown_period_missing),
     scope_unknown_conflicting_duplicate: cursor(v.scope_unknown_conflicting_duplicate), in_scope: cursor(v.in_scope),
   };
-  // Every received row is exactly one disposition; distinct subjects are the
-  // keyed rows less the collapsed duplicates (one grain, never mixed).
-  if (n(c.received_rows) !== n(c.unkeyed) + n(c.duplicate_rows) + n(c.excluded_out_of_period) + n(c.scope_unknown_period_unparsed)
-    + n(c.scope_unknown_period_missing) + n(c.scope_unknown_conflicting_duplicate) + n(c.in_scope)
-    || n(c.distinct_subjects) > n(c.received_rows) - n(c.unkeyed) - n(c.duplicate_rows)) invalid();
+  // The database's own population CHECKs: every distinct subject is in
+  // scope, excluded or scope unknown; and the rows these dispositions cover
+  // (a conflicting key holds at least two rows, every one scope unknown) fit
+  // within the rows received, beside the unkeyed and collapsed rows.
+  if (n(c.distinct_subjects) !== n(c.in_scope) + n(c.excluded_out_of_period) + n(c.scope_unknown_period_unparsed)
+      + n(c.scope_unknown_period_missing) + n(c.scope_unknown_conflicting_duplicate)
+    || n(c.unkeyed) + n(c.duplicate_rows) + n(c.in_scope) + n(c.excluded_out_of_period) + n(c.scope_unknown_period_unparsed)
+      + n(c.scope_unknown_period_missing) + 2n * n(c.scope_unknown_conflicting_duplicate) > n(c.received_rows)) invalid();
   return exact(v, c);
 }
 
@@ -84,6 +89,7 @@ export function parsePopulation(value: unknown): CoveragePopulation {
     last_row: count(v.last_row, 1_048_576),
     rows_read: count(v.rows_read, 20_000),
     truncated: boolean(v.truncated),
+    naive_date_times: cursor(v.naive_date_times),
     completeness: oneOf(v.completeness, ['complete', 'incomplete'] as const),
     incomplete_reason: nullable(v.incomplete_reason, value => oneOf(value, incompleteReasons)),
     reconciliation: oneOf(v.reconciliation, ['matched', 'mismatch', 'not_declared'] as const),
@@ -145,11 +151,41 @@ function parseCriterionCounts(value: unknown): CriterionCounts {
       return exact(r, { reason: oneOf(r.reason, evaluationReasons), count: cursor(r.count) });
     }),
     execution_failed: cursor(v.execution_failed), not_evaluated: cursor(v.not_evaluated),
+    met_unreviewed: cursor(v.met_unreviewed),
   };
   const byReason = c.undetermined_by_reason.reduce((sum, r) => sum + BigInt(r.count), 0n);
   if (n(c.applicable) !== n(c.met) + n(c.not_met) + n(c.undetermined) + n(c.execution_failed) + n(c.not_evaluated)
-    || byReason !== n(c.undetermined)) invalid();
+    || byReason !== n(c.undetermined)
+    // Unreviewed model proposals are a part of met, never more.
+    || n(c.met_unreviewed) > n(c.met)) invalid();
   return exact(v, c);
+}
+
+export const limitationCodes = ['not_evaluated', 'judgment_not_recorded', 'unreviewed_model_judgments', 'sample_selected_only', 'scope_unknown', 'unkeyed_rows', 'period_not_checked', 'naive_date_times'] as const;
+/** Codes that name one criterion, and the one code with no count. */
+const perCriterion = new Set<string>(['not_evaluated', 'judgment_not_recorded', 'unreviewed_model_judgments']);
+
+function parseLimitation(value: unknown): Limitation {
+  const v = record(value);
+  const l: Limitation = {
+    code: oneOf(v.code, limitationCodes),
+    criterion_id: nullable(v.criterion_id, identifier),
+    count: nullable(v.count, cursor),
+    text: text(v.text, 500),
+  };
+  if (perCriterion.has(l.code) !== (l.criterion_id !== null)
+    || (l.code === 'period_not_checked') !== (l.count === null)) invalid();
+  return exact(v, l);
+}
+
+function expectedConclusion(s: CoverageSummary, uncovered: bigint, unreviewed: bigint): typeof conclusions[number] {
+  const complete = s.completeness === 'complete';
+  const unresolved = n(s.unresolved_subjects) + uncovered;
+  if (!complete && n(s.counts.received_rows) === 0n) return 'no_items_found_absence_not_proven';
+  if (n(s.failing_subjects) > 0n) return unresolved > 0n || !complete ? 'exceptions_found_inconclusive' : 'exceptions_found';
+  if (complete && unresolved === 0n && n(s.meets_every_applicable) === 0n) return 'no_eligible_items';
+  if (complete && s.sample_id === null && unresolved === 0n && unreviewed === 0n) return 'no_exception_found';
+  return 'inconclusive';
 }
 
 export function parseSummary(value: unknown): CoverageSummary {
@@ -175,27 +211,32 @@ export function parseSummary(value: unknown): CoverageSummary {
     not_applicable_to_any: cursor(v.not_applicable_to_any),
     failing_opportunities: cursor(v.failing_opportunities),
     statistical_inference: boolean(v.statistical_inference),
-    limitations: array(v.limitations, 16).map(item => text(item, 500)),
+    limitations: array(v.limitations, 16).map(parseLimitation),
     summary_sha256: digest(v.summary_sha256),
     methodology_binding_id: identifier(v.methodology_binding_id),
     execution_epoch: cursor(v.execution_epoch),
   };
   const domain = summary.selected === null ? n(summary.counts.in_scope) : BigInt(summary.selected);
   const notMet = summary.criteria.reduce((sum, c) => sum + BigInt(c.not_met), 0n);
+  const unreviewed = summary.criteria.reduce((sum, c) => sum + BigInt(c.met_unreviewed), 0n);
+  // A population summary's scope-unknown subjects and unkeyed rows are
+  // unresolved too: nothing covers them.
+  const c = summary.counts;
+  const uncovered = summary.sample_id !== null ? 0n : n(c.unkeyed) + n(c.scope_unknown_period_unparsed) + n(c.scope_unknown_period_missing) + n(c.scope_unknown_conflicting_duplicate);
   // The same arithmetic the database recounts: the partition covers every
   // in-scope (or selected) subject once, and failing opportunities are the
   // not-met counts, never failing records.
   if (summary.statistical_inference
     || (summary.sample_id === null) !== (summary.selected === null)
     || (summary.completeness === 'complete') !== (summary.incomplete_reason === null)
+    || (summary.reconciliation === 'not_declared') !== (summary.declared_count === null)
     || n(summary.failing_subjects) + n(summary.meets_every_applicable) + n(summary.unresolved_subjects) + n(summary.not_applicable_to_any) !== domain
     || notMet !== n(summary.failing_opportunities)
     || n(summary.failing_subjects) > n(summary.failing_opportunities)
-    // Never a pass on an incomplete population, a sample or zero applicable.
-    || (summary.conclusion === 'no_exception_found' && (summary.completeness !== 'complete' || summary.sample_id !== null
-      || n(summary.failing_subjects) + n(summary.unresolved_subjects) > 0n || n(summary.meets_every_applicable) === 0n))
-    || ((summary.conclusion === 'exceptions_found' || summary.conclusion === 'exceptions_found_inconclusive') && n(summary.failing_subjects) === 0n)
-    || (summary.conclusion === 'no_eligible_items' && (summary.completeness !== 'complete' || n(summary.meets_every_applicable) + n(summary.failing_subjects) + n(summary.unresolved_subjects) > 0n))) invalid();
+    // The closed conclusion its counts allow, the database's own rule: never
+    // a pass on an incomplete population, a sample, zero applicable items,
+    // unresolved or uncovered items, or an unreviewed model proposal.
+    || summary.conclusion !== expectedConclusion(summary, uncovered, unreviewed)) invalid();
   return exact(v, summary);
 }
 
@@ -211,7 +252,10 @@ function parseMember(value: unknown, withheld: boolean): Member {
     duplicate_of: nullable(v.duplicate_of, value => count(value, 20_000)),
     cells: array(v.cells, 12).map(item => {
       const c = record(item);
-      return exact(c, { column: header(c.column), text: nullable(c.text, value => { if (typeof value !== 'string' || new TextEncoder().encode(value).length > 256) invalid(); return value; }), location: nullable(c.location, value => text(value, 80)) });
+      return exact(c, {
+        column: header(c.column), text: nullable(c.text, value => { if (typeof value !== 'string' || new TextEncoder().encode(value).length > 256) invalid(); return value; }),
+        location: nullable(c.location, value => text(value, 80)), kind: oneOf(c.kind, cellKinds),
+      });
     }),
     values: array(v.values, 8).map(item => {
       const x = record(item);
@@ -224,7 +268,8 @@ function parseMember(value: unknown, withheld: boolean): Member {
   if ((disposition === 'excluded' || disposition === 'scope_unknown') !== (member.reason !== null)
     || (disposition === 'excluded' && member.reason !== 'out_of_period')
     || (disposition === 'duplicate_row') !== (member.duplicate_of !== null)
-    || (withheld && (member.subject !== null || member.cells.some(c => c.text !== null) || member.values.some(x => x.value !== null)))
+    // Withheld means every cell text, value and measure read from the original.
+    || (withheld && (member.subject !== null || member.cells.some(c => c.text !== null) || member.values.some(x => x.value !== null || x.measure !== null)))
     || (!withheld && (disposition === 'unkeyed') === (member.subject !== null))) invalid();
   return exact(v, member);
 }

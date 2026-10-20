@@ -1590,6 +1590,8 @@ export interface components {
             /** Format: int32 */
             last_row: number;
             methodology_binding_id: string;
+            /** @description Excel date or date-time cells (no time zone) read as UTC. */
+            naive_date_times: string;
             original_id: string;
             original_sha256: string;
             period_column: string | null;
@@ -1653,7 +1655,7 @@ export interface components {
             id: string;
             incomplete_reason: string | null;
             invocation_id: string;
-            limitations: string[];
+            limitations: components["schemas"]["LimitationResponse"][];
             meets_every_applicable: string;
             methodology_binding_id: string;
             not_applicable_to_any: string;
@@ -1676,6 +1678,11 @@ export interface components {
             criterion_id: string;
             execution_failed: string;
             met: string;
+            /**
+             * @description Among `met`: unreviewed model proposals (24.1 judgments). They never
+             *     show that no exception exists.
+             */
+            met_unreviewed: string;
             not_applicable: string;
             not_evaluated: string;
             not_met: string;
@@ -2182,9 +2189,26 @@ export interface components {
             status: components["schemas"]["KnowledgeRecordStatus"];
             status_reason?: string | null;
         };
+        /** @description One closed limitation of a summary, in words beside its exact count. */
+        LimitationResponse: {
+            /**
+             * @description `not_evaluated`, `judgment_not_recorded`, `unreviewed_model_judgments`,
+             *     `sample_selected_only`, `scope_unknown`, `unkeyed_rows`,
+             *     `period_not_checked` or `naive_date_times`.
+             */
+            code: string;
+            count: string | null;
+            criterion_id: string | null;
+            text: string;
+        };
         /** @description One named cell of a member row. */
         MemberCellResponse: {
             column: string;
+            /**
+             * @description How the original stored it: `text`, `excel_date` or `excel_datetime`
+             *     (an Excel date-time has no time zone).
+             */
+            kind: string;
             location: string | null;
             /** @description Display text; null when blank, over its bound, or withheld. */
             text: string | null;
@@ -2684,7 +2708,10 @@ export interface components {
             /** @description The disposition filter, or null for every member. */
             disposition: string | null;
             members: components["schemas"]["MemberResponse"][];
-            /** @description Opaque cursor of the next page in receipt order, when there is one. */
+            /**
+             * @description Opaque cursor of the next page (members are C-ordered by key, then
+             *     receipt order), when there is one.
+             */
             next_cursor: string | null;
             population: components["schemas"]["CoveragePopulationResponse"];
             /** @description The exact count of members matching the filter. */
@@ -6078,7 +6105,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The exact count of a population's members of one disposition and one page of them, in receipt order */
+            /** @description The exact count of a population's members of one disposition and one page of them, C-ordered by key (a row with no key first), then receipt order */
             200: {
                 headers: {
                     [name: string]: unknown;

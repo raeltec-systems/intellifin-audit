@@ -443,3 +443,64 @@ fn csv_enumeration_refuses_what_it_cannot_read_exactly() {
     };
     assert_eq!(&bom[*start as usize..*end as usize], b"INV-1");
 }
+
+/// RFC 4180: every record is as wide as its header. An unquoted grouped
+/// number (`1,250.00`) would shift the columns and be read as `1`; it is
+/// refused, with words that name it. Trailing blank lines are not records,
+/// and an empty file says so.
+#[test]
+fn csv_enumeration_refuses_a_ragged_record_and_an_empty_file() {
+    let columns = ["Invoice".to_string(), "Amount".into()];
+    assert_eq!(
+        enumerate_text(
+            b"Invoice,Paid,Amount\r\nINV-7,2026-03-05,1,250.00\r\n",
+            &columns,
+            10
+        )
+        .unwrap_err(),
+        EnumerationFailure::RaggedRecord {
+            record: 2,
+            fields: 4,
+            header: 3
+        }
+    );
+    assert_eq!(
+        enumerate_text(
+            b"Invoice,Paid,Amount\nINV-7,2026-03-05,\"1,250.00\"\nINV-8,2026-03-06\n",
+            &columns,
+            10
+        )
+        .unwrap_err(),
+        EnumerationFailure::RaggedRecord {
+            record: 3,
+            fields: 2,
+            header: 3
+        }
+    );
+    // Quoted, the same value is one field and is read whole.
+    let read = enumerate_text(
+        b"Invoice,Paid,Amount\r\nINV-7,2026-03-05,\"1,250.00\"\r\n\r\n\r\n",
+        &columns,
+        10,
+    )
+    .unwrap();
+    assert_eq!((read.rows_read, read.rows.len()), (1, 1));
+    assert_eq!(
+        read.rows[0].cells[1].texts.as_deref(),
+        Some(&["1,250.00".to_string()][..])
+    );
+    for empty in [&b""[..], b"\r\n", b"\n\n"] {
+        assert_eq!(
+            enumerate_text(empty, &columns, 10).unwrap_err(),
+            EnumerationFailure::Empty
+        );
+    }
+    // A single-column text file is not ragged, whatever its lines hold.
+    let one = ["Invoice".to_string()];
+    assert_eq!(
+        enumerate_text(b"Invoice\nINV-1\nINV-2\n", &one, 10)
+            .unwrap()
+            .rows_read,
+        2
+    );
+}

@@ -4929,7 +4929,7 @@
         ],
         "responses": {
           "200": {
-            "description": "The exact count of a population's members of one disposition and one page of them, in receipt order",
+            "description": "The exact count of a population's members of one disposition and one page of them, C-ordered by key (a row with no key first), then receipt order",
             "content": {
               "application/json": {
                 "schema": {
@@ -11855,6 +11855,7 @@
           "last_row",
           "rows_read",
           "truncated",
+          "naive_date_times",
           "completeness",
           "incomplete_reason",
           "reconciliation",
@@ -11947,6 +11948,11 @@
           },
           "methodology_binding_id": {
             "type": "string"
+          },
+          "naive_date_times": {
+            "type": "string",
+            "description": "Excel date or date-time cells (no time zone) read as UTC.",
+            "pattern": "^[0-9]+$"
           },
           "original_id": {
             "type": "string"
@@ -12192,8 +12198,9 @@
           "limitations": {
             "type": "array",
             "items": {
-              "type": "string"
-            }
+              "$ref": "#/components/schemas/LimitationResponse"
+            },
+            "maxItems": 16
           },
           "meets_every_applicable": {
             "type": "string",
@@ -12252,7 +12259,8 @@
           "undetermined",
           "undetermined_by_reason",
           "execution_failed",
-          "not_evaluated"
+          "not_evaluated",
+          "met_unreviewed"
         ],
         "properties": {
           "applicability_unknown": {
@@ -12272,6 +12280,11 @@
           },
           "met": {
             "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "met_unreviewed": {
+            "type": "string",
+            "description": "Among `met`: unreviewed model proposals (24.1 judgments). They never\nshow that no exception exists.",
             "pattern": "^[0-9]+$"
           },
           "not_applicable": {
@@ -14338,17 +14351,54 @@
           }
         }
       },
+      "LimitationResponse": {
+        "type": "object",
+        "description": "One closed limitation of a summary, in words beside its exact count.",
+        "required": [
+          "code",
+          "criterion_id",
+          "count",
+          "text"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "`not_evaluated`, `judgment_not_recorded`, `unreviewed_model_judgments`,\n`sample_selected_only`, `scope_unknown`, `unkeyed_rows`,\n`period_not_checked` or `naive_date_times`."
+          },
+          "count": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9]+$"
+          },
+          "criterion_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      },
       "MemberCellResponse": {
         "type": "object",
         "description": "One named cell of a member row.",
         "required": [
           "column",
           "text",
-          "location"
+          "location",
+          "kind"
         ],
         "properties": {
           "column": {
             "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "description": "How the original stored it: `text`, `excel_date` or `excel_datetime`\n(an Excel date-time has no time zone)."
           },
           "location": {
             "type": [
@@ -16488,7 +16538,7 @@
               "string",
               "null"
             ],
-            "description": "Opaque cursor of the next page in receipt order, when there is one.",
+            "description": "Opaque cursor of the next page (members are C-ordered by key, then\nreceipt order), when there is one.",
             "pattern": "^[0-9]{1,10}$"
           },
           "population": {

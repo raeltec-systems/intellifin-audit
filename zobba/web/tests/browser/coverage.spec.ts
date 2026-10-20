@@ -80,11 +80,11 @@ test('coverage shows exact counts in words, exclusions by reason and no pass the
   const full = summaries.nth(0);
   await expect(full.locator('.coverage-conclusion')).toHaveText('Exceptions found; overall assessment inconclusive.');
   await expect(full).toContainText('1,200 invoices in scope.');
-  await expect(full).toContainText('Invoices with at least one exception: 20');
-  await expect(full).toContainText('Meeting every criterion that applies: 960');
-  await expect(full).toContainText('Unresolved (no exception, but at least one result unknown): 20');
-  await expect(full).toContainText('No criterion applies: 200');
-  await expect(full).toContainText('Failing criterion opportunities (not invoices): 27');
+  await expect(full).toContainText('Invoices with at least one exception: 20 invoices');
+  await expect(full).toContainText('Meeting every criterion that applies: 960 invoices');
+  await expect(full).toContainText('Unresolved (no exception, but at least one result unknown): 20 invoices');
+  await expect(full).toContainText('No criterion applies: 200 invoices');
+  await expect(full).toContainText('Failing criterion opportunities (not invoices): 27 opportunities');
   const table = full.getByRole('table', { name: /Criterion opportunities/ });
   await expect(table.getByRole('row', { name: /approver/ })).toContainText('1,000');
   await expect(table.getByRole('row', { name: /approver/ }).getByRole('cell').nth(4)).toHaveText('15');
@@ -96,6 +96,8 @@ test('coverage shows exact counts in words, exclusions by reason and no pass the
   await expect(filtered.locator('.coverage-conclusion')).toHaveText('No items found; absence is not proven.');
   await expect(filtered).toContainText('The total is not known.');
   await expect(filtered).toContainText('at least 0 invoices found in scope.');
+  await expect(filtered).toContainText('The total is not known: the population is incomplete.');
+  await expect(filtered.getByRole('table', { name: /Criterion opportunities/ })).toContainText('at least 0');
   // A sample names its selected items only.
   await expect(summaries.nth(3).locator('.coverage-conclusion')).toContainText('Among the selected items only');
   await expect(summaries.nth(3)).toContainText('25 selected invoices; nothing is inferred about the rest.');
@@ -104,6 +106,12 @@ test('coverage shows exact counts in words, exclusions by reason and no pass the
   const populations = region.locator('.coverage-populations > li');
   await expect(populations.filter({ hasText: 'Population cover' })).toContainText('the cited control count is 1,251; 1,250 distinct items were found');
   await expect(populations.filter({ hasText: 'Population ap' })).toContainText('Reconciled: the cited control count matches 1,250 distinct items.');
+  // A non-empty incomplete population: every count is a lower bound, and its
+  // total is said to be not known.
+  const cover = populations.filter({ hasText: 'Population cover' });
+  await expect(cover).toContainText('Rows received: at least 1,256 rows found; the total is not known');
+  await expect(cover).toContainText('In scope: at least 1,200 invoices found');
+  await expect(cover).toContainText('Duplicate rows collapsed: at least 6 rows found');
   // Exclusions are inspectable by reason, with an exact count, by keyboard.
   const ap = populations.filter({ hasText: 'Population ap' });
   const show = ap.getByRole('button', { name: 'Show excluded rows', exact: true });

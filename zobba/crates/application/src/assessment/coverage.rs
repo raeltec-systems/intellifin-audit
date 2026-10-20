@@ -1316,6 +1316,9 @@ where
                         SampleRefusal::SizeMismatch { size, in_scope } => format!(
                             "an all-in-scope sample has size {in_scope}, not {size}"
                         ),
+                        SampleRefusal::SizeTooLarge { size, in_scope } => format!(
+                            "a sample of {size} is larger than the {in_scope} in-scope subjects"
+                        ),
                         SampleRefusal::Substitution(k) => format!(
                             "the substitution of {} does not replace a selected key with an in-scope one",
                             bounded(&k, 128)
@@ -1409,7 +1412,7 @@ where
                 .await?;
             if !recorded.is_empty() {
                 feedback.push(format!(
-                    "{} over population {} was already evaluated: {} opportunities are recorded.",
+                    "{} over population {} was already evaluated: {} opportunities are recorded; a judgment recorded later is counted only in a new population version.",
                     criterion.id,
                     population.id,
                     recorded.len()

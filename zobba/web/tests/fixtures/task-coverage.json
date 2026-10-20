@@ -76,31 +76,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A4",
             "text": "INV-00001"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B4",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C4",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D4",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E4",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F4",
             "text": "USD"
           }
@@ -139,31 +145,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A5",
             "text": "INV-00002"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B5",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C5",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D5",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E5",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F5",
             "text": "USD"
           }
@@ -202,31 +214,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A6",
             "text": "INV-00003"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B6",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C6",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D6",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E6",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F6",
             "text": "USD"
           }
@@ -265,31 +283,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A7",
             "text": "INV-00004"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B7",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C7",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D7",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E7",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F7",
             "text": "USD"
           }
@@ -328,31 +352,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A8",
             "text": "INV-00005"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B8",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C8",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D8",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E8",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F8",
             "text": "USD"
           }
@@ -391,31 +421,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A9",
             "text": "INV-00006"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B9",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C9",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D9",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E9",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F9",
             "text": "USD"
           }
@@ -454,31 +490,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A10",
             "text": "INV-00007"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B10",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C10",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D10",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E10",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F10",
             "text": "USD"
           }
@@ -517,31 +559,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A11",
             "text": "INV-00008"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B11",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C11",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D11",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E11",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F11",
             "text": "USD"
           }
@@ -580,31 +628,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A12",
             "text": "INV-00009"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B12",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C12",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D12",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E12",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F12",
             "text": "USD"
           }
@@ -643,31 +697,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A13",
             "text": "INV-00010"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B13",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C13",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D13",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E13",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F13",
             "text": "USD"
           }
@@ -706,31 +766,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A14",
             "text": "INV-00011"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B14",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C14",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D14",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E14",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F14",
             "text": "USD"
           }
@@ -769,31 +835,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A15",
             "text": "INV-00012"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B15",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C15",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D15",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E15",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F15",
             "text": "USD"
           }
@@ -832,31 +904,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A16",
             "text": "INV-00013"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B16",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C16",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D16",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E16",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F16",
             "text": "USD"
           }
@@ -895,31 +973,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A17",
             "text": "INV-00014"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B17",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C17",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D17",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E17",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F17",
             "text": "USD"
           }
@@ -958,31 +1042,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A18",
             "text": "INV-00015"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B18",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C18",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D18",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E18",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F18",
             "text": "USD"
           }
@@ -1021,31 +1111,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A19",
             "text": "INV-00016"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B19",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C19",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D19",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E19",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F19",
             "text": "USD"
           }
@@ -1084,31 +1180,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A20",
             "text": "INV-00017"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B20",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C20",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D20",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E20",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F20",
             "text": "USD"
           }
@@ -1147,31 +1249,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A21",
             "text": "INV-00018"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B21",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C21",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D21",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E21",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F21",
             "text": "USD"
           }
@@ -1210,31 +1318,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A22",
             "text": "INV-00019"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B22",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C22",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D22",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E22",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F22",
             "text": "USD"
           }
@@ -1273,31 +1387,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A23",
             "text": "INV-00020"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B23",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C23",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D23",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E23",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F23",
             "text": "USD"
           }
@@ -1336,31 +1456,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A24",
             "text": "INV-00021"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B24",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C24",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D24",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E24",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F24",
             "text": "USD"
           }
@@ -1399,31 +1525,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A25",
             "text": "INV-00022"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B25",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C25",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D25",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E25",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F25",
             "text": "USD"
           }
@@ -1462,31 +1594,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A26",
             "text": "INV-00023"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B26",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C26",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D26",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E26",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F26",
             "text": "USD"
           }
@@ -1525,31 +1663,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A27",
             "text": "INV-00024"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B27",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C27",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D27",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E27",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F27",
             "text": "USD"
           }
@@ -1588,31 +1732,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A28",
             "text": "INV-00025"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B28",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C28",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D28",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E28",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F28",
             "text": "USD"
           }
@@ -1651,31 +1801,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A29",
             "text": "INV-00026"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B29",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C29",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D29",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E29",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F29",
             "text": "USD"
           }
@@ -1714,31 +1870,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A30",
             "text": "INV-00027"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B30",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C30",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D30",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E30",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F30",
             "text": "USD"
           }
@@ -1777,31 +1939,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A31",
             "text": "INV-00028"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B31",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C31",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D31",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E31",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F31",
             "text": "USD"
           }
@@ -1840,31 +2008,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A32",
             "text": "INV-00029"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B32",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C32",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D32",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E32",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F32",
             "text": "USD"
           }
@@ -1903,31 +2077,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A33",
             "text": "INV-00030"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B33",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C33",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D33",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E33",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F33",
             "text": "USD"
           }
@@ -1966,31 +2146,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A34",
             "text": "INV-00031"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B34",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C34",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D34",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E34",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F34",
             "text": "USD"
           }
@@ -2029,31 +2215,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A35",
             "text": "INV-00032"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B35",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C35",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D35",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E35",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F35",
             "text": "USD"
           }
@@ -2092,31 +2284,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A36",
             "text": "INV-00033"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B36",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C36",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D36",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E36",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F36",
             "text": "USD"
           }
@@ -2155,31 +2353,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A37",
             "text": "INV-00034"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B37",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C37",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D37",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E37",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F37",
             "text": "USD"
           }
@@ -2218,31 +2422,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A38",
             "text": "INV-00035"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B38",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C38",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D38",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E38",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F38",
             "text": "USD"
           }
@@ -2281,31 +2491,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A39",
             "text": "INV-00036"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B39",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C39",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D39",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E39",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F39",
             "text": "USD"
           }
@@ -2344,31 +2560,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A40",
             "text": "INV-00037"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B40",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C40",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D40",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E40",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F40",
             "text": "USD"
           }
@@ -2407,31 +2629,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A41",
             "text": "INV-00038"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B41",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C41",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D41",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E41",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F41",
             "text": "USD"
           }
@@ -2470,31 +2698,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A42",
             "text": "INV-00039"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B42",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C42",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D42",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E42",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F42",
             "text": "USD"
           }
@@ -2533,31 +2767,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A43",
             "text": "INV-00040"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B43",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C43",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D43",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E43",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F43",
             "text": "USD"
           }
@@ -2596,31 +2836,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A44",
             "text": "INV-00041"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B44",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C44",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D44",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E44",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F44",
             "text": "USD"
           }
@@ -2659,31 +2905,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A45",
             "text": "INV-00042"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B45",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C45",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D45",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E45",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F45",
             "text": "USD"
           }
@@ -2722,31 +2974,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A46",
             "text": "INV-00043"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B46",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C46",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D46",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E46",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F46",
             "text": "USD"
           }
@@ -2785,31 +3043,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A47",
             "text": "INV-00044"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B47",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C47",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D47",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E47",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F47",
             "text": "USD"
           }
@@ -2848,31 +3112,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A48",
             "text": "INV-00045"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B48",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C48",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D48",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E48",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F48",
             "text": "USD"
           }
@@ -2911,31 +3181,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A49",
             "text": "INV-00046"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B49",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C49",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D49",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E49",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F49",
             "text": "USD"
           }
@@ -2974,31 +3250,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A50",
             "text": "INV-00047"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B50",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C50",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D50",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E50",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F50",
             "text": "USD"
           }
@@ -3037,31 +3319,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A51",
             "text": "INV-00048"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B51",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C51",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D51",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E51",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F51",
             "text": "USD"
           }
@@ -3100,31 +3388,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A52",
             "text": "INV-00049"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B52",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C52",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D52",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E52",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F52",
             "text": "USD"
           }
@@ -3163,31 +3457,37 @@
         "cells": [
           {
             "column": "Invoice",
+            "kind": "text",
             "location": "Invoices!A53",
             "text": "INV-00050"
           },
           {
             "column": "Invoice date",
+            "kind": "text",
             "location": "Invoices!B53",
             "text": "2025-12-15"
           },
           {
             "column": "Amount",
+            "kind": "text",
             "location": "Invoices!C53",
             "text": "500"
           },
           {
             "column": "Approved",
+            "kind": "text",
             "location": "Invoices!D53",
             "text": "Yes"
           },
           {
             "column": "Approved before payment",
+            "kind": "text",
             "location": "Invoices!E53",
             "text": "Yes"
           },
           {
             "column": "Currency",
+            "kind": "text",
             "location": "Invoices!F53",
             "text": "USD"
           }
@@ -3267,6 +3567,7 @@
       "key": "ap",
       "last_row": 1259,
       "methodology_binding_id": "id-4",
+      "naive_date_times": "0",
       "original_id": "ap-population",
       "original_sha256": "0000000000000000000000000000000000000000000000000000000000000007",
       "period_column": "Invoice date",
@@ -3352,6 +3653,7 @@
       "key": "ap",
       "last_row": 1259,
       "methodology_binding_id": "id-4",
+      "naive_date_times": "0",
       "original_id": "ap-population",
       "original_sha256": "0000000000000000000000000000000000000000000000000000000000000007",
       "period_column": "Invoice date",
@@ -3420,6 +3722,7 @@
       "key": "low",
       "last_row": 21,
       "methodology_binding_id": "id-4",
+      "naive_date_times": "0",
       "original_id": "ap-population",
       "original_sha256": "0000000000000000000000000000000000000000000000000000000000000007",
       "period_column": "Invoice date",
@@ -3488,6 +3791,7 @@
       "key": "filtered",
       "last_row": 1,
       "methodology_binding_id": "id-4",
+      "naive_date_times": "0",
       "original_id": "ap-population",
       "original_sha256": "0000000000000000000000000000000000000000000000000000000000000007",
       "period_column": "Invoice date",
@@ -3565,10 +3869,11 @@
       "id": "id-17",
       "incomplete_reason": "count_mismatch",
       "invocation_id": "0000000000000000000000000000000000000000000000000000000000000012",
-      "job_id": "id-19",
+      "job_id": "id-10",
       "key": "cover",
       "last_row": 1259,
       "methodology_binding_id": "id-4",
+      "naive_date_times": "0",
       "original_id": "ap-population",
       "original_sha256": "0000000000000000000000000000000000000000000000000000000000000007",
       "period_column": "Invoice date",
@@ -3612,8 +3917,8 @@
     {
       "algorithm": "splitmix64-fisher-yates-v1",
       "execution_epoch": "1",
-      "id": "id-20",
-      "invocation_id": "0000000000000000000000000000000000000000000000000000000000000015",
+      "id": "id-19",
+      "invocation_id": "0000000000000000000000000000000000000000000000000000000000000014",
       "justification": "A seeded random selection of 25 in-scope invoices",
       "key": "s1",
       "keys": [
@@ -3679,6 +3984,7 @@
           "criterion_id": "id-2",
           "execution_failed": "0",
           "met": "975",
+          "met_unreviewed": "0",
           "not_applicable": "200",
           "not_evaluated": "0",
           "not_met": "15",
@@ -3696,6 +4002,7 @@
           "criterion_id": "id-5",
           "execution_failed": "0",
           "met": "978",
+          "met_unreviewed": "0",
           "not_applicable": "200",
           "not_evaluated": "0",
           "not_met": "12",
@@ -3712,7 +4019,7 @@
       "execution_epoch": "1",
       "failing_opportunities": "27",
       "failing_subjects": "20",
-      "id": "id-22",
+      "id": "id-21",
       "incomplete_reason": null,
       "invocation_id": "0000000000000000000000000000000000000000000000000000000000000003",
       "limitations": [],
@@ -3724,7 +4031,7 @@
       "sample_id": null,
       "selected": null,
       "statistical_inference": false,
-      "summary_sha256": "0000000000000000000000000000000000000000000000000000000000000017",
+      "summary_sha256": "0000000000000000000000000000000000000000000000000000000000000016",
       "unresolved_subjects": "20"
     },
     {
@@ -3750,6 +4057,7 @@
           "criterion_id": "id-2",
           "execution_failed": "0",
           "met": "0",
+          "met_unreviewed": "0",
           "not_applicable": "20",
           "not_evaluated": "0",
           "not_met": "0",
@@ -3762,6 +4070,7 @@
           "criterion_id": "id-5",
           "execution_failed": "0",
           "met": "0",
+          "met_unreviewed": "0",
           "not_applicable": "20",
           "not_evaluated": "0",
           "not_met": "0",
@@ -3773,7 +4082,7 @@
       "execution_epoch": "1",
       "failing_opportunities": "0",
       "failing_subjects": "0",
-      "id": "id-24",
+      "id": "id-23",
       "incomplete_reason": null,
       "invocation_id": "000000000000000000000000000000000000000000000000000000000000000c",
       "limitations": [],
@@ -3785,7 +4094,7 @@
       "sample_id": null,
       "selected": null,
       "statistical_inference": false,
-      "summary_sha256": "0000000000000000000000000000000000000000000000000000000000000019",
+      "summary_sha256": "0000000000000000000000000000000000000000000000000000000000000018",
       "unresolved_subjects": "0"
     },
     {
@@ -3811,6 +4120,7 @@
           "criterion_id": "id-2",
           "execution_failed": "0",
           "met": "0",
+          "met_unreviewed": "0",
           "not_applicable": "0",
           "not_evaluated": "0",
           "not_met": "0",
@@ -3823,6 +4133,7 @@
           "criterion_id": "id-5",
           "execution_failed": "0",
           "met": "0",
+          "met_unreviewed": "0",
           "not_applicable": "0",
           "not_evaluated": "0",
           "not_met": "0",
@@ -3834,7 +4145,7 @@
       "execution_epoch": "1",
       "failing_opportunities": "0",
       "failing_subjects": "0",
-      "id": "id-26",
+      "id": "id-25",
       "incomplete_reason": "not_exhaustive",
       "invocation_id": "000000000000000000000000000000000000000000000000000000000000000f",
       "limitations": [],
@@ -3846,7 +4157,7 @@
       "sample_id": null,
       "selected": null,
       "statistical_inference": false,
-      "summary_sha256": "000000000000000000000000000000000000000000000000000000000000001b",
+      "summary_sha256": "000000000000000000000000000000000000000000000000000000000000001a",
       "unresolved_subjects": "0"
     },
     {
@@ -3872,6 +4183,7 @@
           "criterion_id": "id-2",
           "execution_failed": "0",
           "met": "21",
+          "met_unreviewed": "0",
           "not_applicable": "3",
           "not_evaluated": "0",
           "not_met": "1",
@@ -3884,6 +4196,7 @@
           "criterion_id": "id-5",
           "execution_failed": "0",
           "met": "22",
+          "met_unreviewed": "0",
           "not_applicable": "3",
           "not_evaluated": "0",
           "not_met": "0",
@@ -3895,21 +4208,26 @@
       "execution_epoch": "1",
       "failing_opportunities": "1",
       "failing_subjects": "1",
-      "id": "id-28",
+      "id": "id-27",
       "incomplete_reason": null,
-      "invocation_id": "0000000000000000000000000000000000000000000000000000000000000015",
+      "invocation_id": "0000000000000000000000000000000000000000000000000000000000000014",
       "limitations": [
-        "A sample of 25 selected items: the counts describe the selected items only, never the population."
+        {
+          "code": "sample_selected_only",
+          "count": "25",
+          "criterion_id": null,
+          "text": "A sample of 25 selected items: the counts describe the selected items only, never the population."
+        }
       ],
       "meets_every_applicable": "21",
       "methodology_binding_id": "id-4",
       "not_applicable_to_any": "3",
       "population_id": "id-9",
       "reconciliation": "matched",
-      "sample_id": "id-20",
+      "sample_id": "id-19",
       "selected": "25",
       "statistical_inference": false,
-      "summary_sha256": "000000000000000000000000000000000000000000000000000000000000001d",
+      "summary_sha256": "000000000000000000000000000000000000000000000000000000000000001c",
       "unresolved_subjects": "0"
     }
   ]

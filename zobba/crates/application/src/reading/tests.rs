@@ -1590,3 +1590,87 @@ fn enumeration_manifests_are_accepted_only_in_their_exact_shape() {
     let read = enumeration_manifest(&head(2, 9, true), &[chunk], "Invoices", &request).unwrap();
     assert!(read.truncated);
 }
+
+/// Story 24.2 review (G): a reclaimed answer reads its population again. A
+/// collected read of the exact program is reused (no second job), however
+/// many times the answer is reclaimed; only a read whose program failed is
+/// followed by a fresh one, under a key naming how many came before it, so
+/// repeated reclaims never run out of keys and never wedge.
+#[test]
+fn repeated_population_reads_reuse_the_collected_job_and_never_run_out_of_keys() {
+    let h = Harness::new(vec![regular("population.json", b"{}")], vec![]);
+    let store = Store {
+        facts: Facts::default(),
+        world: &h.world,
+    };
+    let reading = h.reading(&store);
+    let cancel = ModelCancellation::new();
+    let original = run(store.original("", &crate::analysis::tests::scope(), ORIGINAL))
+        .unwrap()
+        .unwrap();
+    let request = enumerate_request(ORIGINAL, "Invoices", 1, &["Invoice".to_string()]);
+    let program = digest(document_program(&request).as_bytes());
+    let jobs = || h.world.jobs.with_program(&basis("p1").task_id, &program);
+    let first = run(reading.document_job_with(
+        &basis("p1"),
+        &original,
+        &request,
+        ENUMERATE_LIMITS,
+        true,
+        &cancel,
+    ))
+    .unwrap();
+    assert_eq!(jobs(), (1, Some(first.job_id.clone())));
+    for _ in 0..12 {
+        let again = run(reading.document_job_with(
+            &basis("p1"),
+            &original,
+            &request,
+            ENUMERATE_LIMITS,
+            true,
+            &cancel,
+        ))
+        .unwrap();
+        assert_eq!(again.job_id, first.job_id, "a collected read is read again");
+    }
+    assert_eq!(jobs().0, 1, "no second read of the same rows");
+    // A read whose program failed is followed by a fresh one each time, under
+    // a new key: twelve more reclaims admit twelve more jobs, none refused.
+    *store.facts.failure.lock().unwrap() = Some("failed".into());
+    let mut seen = vec![first.job_id.clone()];
+    for n in 0..12u64 {
+        let fresh = run(reading.document_job_with(
+            &basis("p1"),
+            &original,
+            &request,
+            ENUMERATE_LIMITS,
+            true,
+            &cancel,
+        ))
+        .unwrap();
+        assert!(!seen.contains(&fresh.job_id), "a fresh job");
+        seen.push(fresh.job_id);
+        assert_eq!(jobs().0, n + 2);
+    }
+    // A non-population document job keeps its one fixed key.
+    let render = render_request(ORIGINAL, 0);
+    let once = run(reading.document_job_with(
+        &basis("p1"),
+        &original,
+        &render,
+        ENUMERATE_LIMITS,
+        false,
+        &cancel,
+    ))
+    .unwrap();
+    let twice = run(reading.document_job_with(
+        &basis("p1"),
+        &original,
+        &render,
+        ENUMERATE_LIMITS,
+        false,
+        &cancel,
+    ))
+    .unwrap();
+    assert_eq!(once.job_id, twice.job_id);
+}

@@ -693,7 +693,17 @@ impl coverage::CoverageStore for Store {
         let mut state = self.state.lock().unwrap();
         for r in records {
             assert!(r.outcome.is_valid());
-            assert_eq!(r.output_digest, r.computed_digest());
+            // A judgment opportunity carries its 24.1 judgment's own digest.
+            if r.evaluation_id.is_none() {
+                assert_eq!(r.output_digest, r.computed_digest());
+            } else {
+                let judged = state
+                    .evaluations
+                    .iter()
+                    .find(|e| Some(&e.id) == r.evaluation_id.as_ref())
+                    .expect("its judgment");
+                assert_eq!(r.output_digest, judged.output_digest);
+            }
             insert(
                 &mut state.opportunities,
                 r,
@@ -2806,4 +2816,389 @@ fn a_seeded_sample_is_recomputed_and_a_wrong_selection_refused() {
         summary.summary.conclusion,
         zobba_domain::coverage::Conclusion::NoExceptionFound
     );
+}
+
+/// A judgment criterion over a population takes the recorded 24.1 judgment of
+/// each subject whose facts are at the population's subject unit; a subject
+/// with none, or a population at another unit, is not evaluated. A met that
+/// is a model proposal is counted, said in words, and never proves that no
+/// exception exists.
+#[test]
+fn a_judgment_criterion_takes_the_recorded_judgment_at_the_population_unit() {
+    use zobba_domain::coverage::{
+        Conclusion, LimitationCode, PopulationEvaluation, SummaryRequest,
+    };
+    let (store, mut reader) = (Store::default(), Reader::new());
+    for (row, subject) in [(20u32, "INV-1"), (21, "INV-2")] {
+        reader
+            .cells
+            .insert(format!("cell:Sheet1!A{row}"), vec![subject.into()]);
+        reader
+            .cells
+            .insert(format!("cell:Sheet1!D{row}"), vec!["J. Smith".into()]);
+    }
+    let assessment = Assessment::new(&store, &reader);
+    let b = binding("binding-1");
+    let cancel = ModelCancellation::new();
+    let seg = ProposedCriterion {
+        key: "seg".into(),
+        assertion: "Segregation of duties is adequate given the organisation chart".into(),
+        applicability: None,
+        required_facts: vec![required("approver", FactType::Identifier)],
+        method: CriterionMethod::Judgment {
+            rubric: "Approver and requester report to different managers".into(),
+        },
+        ..approval("seg")
+    };
+    let judgment = |subject: &str, verdict: Verdict| ProposedJudgment {
+        criterion: "seg".into(),
+        basis: "b1".into(),
+        subject: subject.into(),
+        verdict,
+        supporting: vec!["approver".into()],
+        contrary: vec![],
+        rationale: "Read from the organisation chart.".into(),
+        uncertainty: String::new(),
+    };
+    let first = CitedAnswer {
+        propose_criteria: vec![approval("c1"), seg],
+        propose_basis: vec![ap_basis(vec!["c1", "seg"])],
+        record_facts: vec![approver_fact("INV-1", 20), approver_fact("INV-2", 21)],
+        judgments: vec![
+            judgment("INV-1", Verdict::Met),
+            judgment("INV-2", Verdict::NotMet),
+        ],
+        ..CitedAnswer::default()
+    };
+    run(assessment.after_answer(
+        &basis("p1"),
+        &b,
+        &invocation("turn-1", "binding-1"),
+        &first,
+        &cancel,
+    ))
+    .unwrap();
+    let (basis_id, criteria) = {
+        let state = store.state.lock().unwrap();
+        assert_eq!(state.evaluations.len(), 2, "{:?}", state.evaluations);
+        let key = |k: &str| {
+            state
+                .criteria
+                .iter()
+                .find(|c| c.criterion.key == k)
+                .unwrap()
+                .id
+                .clone()
+        };
+        (state.bases[0].id.clone(), (key("c1"), key("seg")))
+    };
+    // One judgment per criterion and subject under a basis: a second one is
+    // refused, so the population reads exactly the recorded one.
+    let second = CitedAnswer {
+        judgments: vec![ProposedJudgment {
+            basis: basis_id.clone(),
+            criterion: criteria.1.clone(),
+            ..judgment("INV-2", Verdict::Met)
+        }],
+        ..CitedAnswer::default()
+    };
+    run(assessment.after_answer(
+        &basis("p1"),
+        &b,
+        &invocation("turn-2", "binding-1"),
+        &second,
+        &cancel,
+    ))
+    .unwrap();
+    assert_eq!(
+        store.state.lock().unwrap().evaluations.len(),
+        2,
+        "{}",
+        feedback_of(&assessment)
+    );
+    let over = |key: &str, unit: &str| CitedAnswer {
+        propose_population: vec![zobba_domain::coverage::ProposedPopulation {
+            key: key.into(),
+            basis: basis_id.clone(),
+            subject_unit: unit.into(),
+            ..population_spec("Invoices", None)
+        }],
+        evaluate_population: vec![
+            PopulationEvaluation {
+                criterion: criteria.0.clone(),
+                population: key.into(),
+            },
+            PopulationEvaluation {
+                criterion: criteria.1.clone(),
+                population: key.into(),
+            },
+        ],
+        summarise: vec![SummaryRequest {
+            basis: basis_id.clone(),
+            population: key.into(),
+            sample: None,
+        }],
+        ..CitedAnswer::default()
+    };
+    run(assessment.after_answer(
+        &basis("p1"),
+        &b,
+        &invocation("turn-3", "binding-1"),
+        &over("inv", "invoice"),
+        &cancel,
+    ))
+    .unwrap();
+    run(assessment.after_answer(
+        &basis("p1"),
+        &b,
+        &invocation("turn-4", "binding-1"),
+        &over("lines", "invoice_line"),
+        &cancel,
+    ))
+    .unwrap();
+    let state = store.state.lock().unwrap();
+    assert_eq!(state.populations.len(), 2, "{:?}", feedback_of(&assessment));
+    let judged = |population: &str| -> Vec<(String, Option<Verdict>, Option<String>, Origin)> {
+        let mut found: Vec<_> = state
+            .opportunities
+            .iter()
+            .filter(|o| o.population_id == population && o.criterion_id == criteria.1)
+            .map(|o| {
+                (
+                    o.subject.clone(),
+                    o.outcome.verdict,
+                    o.evaluation_id.clone(),
+                    o.outcome.origin,
+                )
+            })
+            .collect();
+        found.sort();
+        found
+    };
+    let at_invoice = judged(&state.populations[0].id);
+    let original = |subject: &str| {
+        state
+            .evaluations
+            .iter()
+            .find(|e| e.subject == subject)
+            .unwrap()
+            .id
+            .clone()
+    };
+    assert_eq!(
+        at_invoice,
+        [
+            // No approver fact: a missing required fact, said by trusted code.
+            (
+                "000123".into(),
+                Some(Verdict::Undetermined),
+                None,
+                Origin::Deterministic
+            ),
+            (
+                "INV-1".into(),
+                Some(Verdict::Met),
+                Some(original("INV-1")),
+                Origin::ModelProposal
+            ),
+            (
+                "INV-2".into(),
+                Some(Verdict::NotMet),
+                Some(original("INV-2")),
+                Origin::ModelProposal
+            ),
+            ("INV-4".into(), None, None, Origin::Deterministic),
+        ]
+    );
+    // The changed grain: facts at unit invoice never answer an invoice_line.
+    assert!(
+        judged(&state.populations[1].id)
+            .iter()
+            .all(|o| o.2.is_none()
+                && o.3 == Origin::Deterministic
+                && o.1 != Some(Verdict::Met)
+                && o.1 != Some(Verdict::NotMet))
+    );
+    let summary = &state
+        .summaries
+        .iter()
+        .find(|s| s.population_id == state.populations[0].id)
+        .unwrap()
+        .summary;
+    let seg = summary
+        .criteria
+        .iter()
+        .find(|c| c.criterion_id == criteria.1)
+        .unwrap();
+    assert_eq!(
+        (
+            seg.met,
+            seg.not_met,
+            seg.undetermined,
+            seg.met_unreviewed,
+            seg.not_evaluated
+        ),
+        (1, 1, 1, 1, 1)
+    );
+    let codes: Vec<(LimitationCode, Option<u64>)> = summary
+        .limitations
+        .iter()
+        .map(|l| (l.code, l.count))
+        .collect();
+    assert!(
+        codes.contains(&(LimitationCode::UnreviewedModelJudgments, Some(1))),
+        "{codes:?}"
+    );
+    assert!(
+        codes.contains(&(LimitationCode::JudgmentNotRecorded, Some(1))),
+        "{codes:?}"
+    );
+    assert_ne!(summary.conclusion, Conclusion::NoExceptionFound);
+    let lines = &state
+        .summaries
+        .iter()
+        .find(|s| s.population_id == state.populations[1].id)
+        .unwrap()
+        .summary;
+    let seg = lines
+        .criteria
+        .iter()
+        .find(|c| c.criterion_id == criteria.1)
+        .unwrap();
+    assert_eq!((seg.met, seg.met_unreviewed), (0, 0));
+    assert!(lines.limitations.iter().any(
+        |l| l.code == LimitationCode::JudgmentNotRecorded && l.count == Some(seg.not_evaluated)
+    ));
+}
+
+/// Every sample refusal, each said in words, records nothing.
+#[test]
+fn each_sample_refusal_records_nothing_and_says_why() {
+    use zobba_domain::coverage::{ProposedSample, SampleMethod, Substitution, seeded_selection};
+    let (store, reader) = (Store::default(), Reader::new());
+    let assessment = Assessment::new(&store, &reader);
+    run(assessment.after_answer(
+        &basis("p1"),
+        &binding("binding-1"),
+        &invocation("turn-1", "binding-1"),
+        &coverage_answer("Invoices", None),
+        &ModelCancellation::new(),
+    ))
+    .unwrap();
+    let population = store.state.lock().unwrap().populations[0].id.clone();
+    let in_scope: Vec<String> = ["000123", "INV-1", "INV-2", "INV-4"]
+        .map(String::from)
+        .to_vec();
+    let seeded = seeded_selection(&in_scope, 42, 2);
+    let unselected: Vec<String> = in_scope
+        .iter()
+        .filter(|k| !seeded.contains(k))
+        .cloned()
+        .collect();
+    let base = ProposedSample {
+        key: "s1".into(),
+        population: population.clone(),
+        method: SampleMethod::Judgmental,
+        size: 2,
+        strata: String::new(),
+        justification: "Two invoices".into(),
+        keys: vec!["INV-1".into(), "INV-2".into()],
+        substitutions: vec![],
+    };
+    let sub = |replaced: &str, substitute: &str| Substitution {
+        replaced: replaced.into(),
+        substitute: substitute.into(),
+        reason: "Voided invoice".into(),
+    };
+    let cases: Vec<(&str, ProposedSample)> = vec![
+        (
+            "an all-in-scope sample has size 4, not 3",
+            ProposedSample {
+                method: SampleMethod::AllInScope,
+                size: 3,
+                keys: vec![],
+                ..base.clone()
+            },
+        ),
+        (
+            "a sample of 5 is larger than the 4 in-scope subjects",
+            ProposedSample {
+                method: SampleMethod::SeededRandom { seed: 42 },
+                size: 5,
+                keys: vec![
+                    "000123".into(),
+                    "INV-1".into(),
+                    "INV-2".into(),
+                    "INV-4".into(),
+                    "INV-3".into(),
+                ],
+                ..base.clone()
+            },
+        ),
+        (
+            "INV-3 is not an in-scope subject",
+            ProposedSample {
+                keys: vec!["INV-1".into(), "INV-3".into()],
+                ..base.clone()
+            },
+        ),
+        (
+            "the substitution of INV-9 does not",
+            ProposedSample {
+                substitutions: vec![sub("INV-9", "INV-2")],
+                ..base.clone()
+            },
+        ),
+        (
+            "the substitution of INV-4 does not",
+            ProposedSample {
+                substitutions: vec![sub("INV-4", "000123")],
+                ..base.clone()
+            },
+        ),
+        (
+            "the substitution of INV-1 does not",
+            ProposedSample {
+                substitutions: vec![sub("INV-1", "INV-2")],
+                ..base.clone()
+            },
+        ),
+        (
+            "recomputing",
+            ProposedSample {
+                method: SampleMethod::SeededRandom { seed: 42 },
+                keys: vec![seeded[0].clone(), unselected[0].clone()],
+                ..base.clone()
+            },
+        ),
+    ];
+    let seeded_substitution = ProposedSample {
+        method: SampleMethod::SeededRandom { seed: 42 },
+        keys: vec![seeded[0].clone(), unselected[1].clone()],
+        substitutions: vec![sub(&unselected[0], &unselected[1])],
+        ..base.clone()
+    };
+    let expected = format!("the substitution of {} does not", unselected[0]);
+    let mut cases = cases;
+    cases.push((expected.as_str(), seeded_substitution));
+    for (index, (words, sample)) in cases.into_iter().enumerate() {
+        let answer = CitedAnswer {
+            propose_sample: vec![sample],
+            ..CitedAnswer::default()
+        };
+        run(assessment.after_answer(
+            &basis("p1"),
+            &binding("binding-1"),
+            &invocation(&format!("turn-s{index}"), "binding-1"),
+            &answer,
+            &ModelCancellation::new(),
+        ))
+        .unwrap();
+        assert!(store.state.lock().unwrap().samples.is_empty(), "{words}");
+        let feedback = feedback_of(&assessment);
+        assert!(
+            feedback.contains("Sample s1 was not recorded") && feedback.contains(words),
+            "{words}: {feedback}"
+        );
+    }
 }

@@ -538,7 +538,7 @@ BEGIN
   -- guard takes the same lock): once a population is summarised its
   -- opportunities are complete, and a stored summary always recounts true.
   PERFORM pg_advisory_xact_lock(hashtextextended('coverage:'||x.population_id,0))
-   FROM (SELECT DISTINCT population_id FROM added ORDER BY population_id COLLATE "C") x;
+   FROM (SELECT population_id FROM added GROUP BY population_id ORDER BY population_id COLLATE "C") x;
   IF EXISTS(SELECT 1 FROM public.assessment_summaries s
      WHERE (s.organisation_id,s.client_id,s.engagement_id) IN (SELECT DISTINCT organisation_id,client_id,engagement_id FROM added)
        AND s.population_id IN (SELECT DISTINCT population_id FROM added)) THEN

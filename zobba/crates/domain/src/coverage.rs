@@ -1026,6 +1026,8 @@ pub enum SampleRefusal {
     SelectionMismatch,
     /// The stated size is not the number of in-scope subjects.
     SizeMismatch { size: u32, in_scope: u64 },
+    /// A selected sample larger than the in-scope subjects.
+    SizeTooLarge { size: u32, in_scope: u64 },
     /// A substitution does not replace a selected key with an in-scope one.
     Substitution(String),
 }
@@ -1046,6 +1048,12 @@ pub fn check_sample(
             });
         }
         return Ok(in_scope.iter().cloned().collect());
+    }
+    if u64::from(sample.size) > in_scope.len() as u64 {
+        return Err(SampleRefusal::SizeTooLarge {
+            size: sample.size,
+            in_scope: in_scope.len() as u64,
+        });
     }
     if let Some(key) = sample.keys.iter().find(|k| !in_scope.contains(*k)) {
         return Err(SampleRefusal::NotInScope(key.clone()));

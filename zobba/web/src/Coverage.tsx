@@ -5,7 +5,7 @@ import type { Assessment } from './assessment';
 import {
   completenessSentence, conclusionSentence, dispositionLabel, dispositionReasonLabel, found, readMembers, reconciliationSentence,
 } from './coverage';
-import type { CoveragePopulation, CoverageSummary, Disposition, PopulationMembers } from './coverage';
+import type { CoveragePopulation, CoverageSummary, Disposition, Limitation, PopulationMembers } from './coverage';
 import { reasonLabel } from './assessment';
 
 interface Props {
@@ -19,6 +19,15 @@ interface Props {
 
 const short = (value: string) => <abbr title={value}>{value.slice(0, 13)}</abbr>;
 const number = (value: string) => BigInt(value).toLocaleString('en-GB');
+/// A count in a table cell: on an incomplete population, a lower bound.
+const bound = (value: string, complete: boolean) => complete ? number(value) : `at least ${number(value)}`;
+const plural = (value: string, unit: string) => value === '1' ? unit : `${unit}s`;
+
+const ordinalWord = (n: number) => {
+  const tens = n % 100;
+  const suffix = tens >= 11 && tens <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] ?? 'th';
+  return `${n.toLocaleString('en-GB')}${suffix}`;
+};
 
 /// The member list of one population and one disposition: an exact count and
 /// pages of 50 in receipt order, read on request.
@@ -57,17 +66,35 @@ function Members({ scope, session, taskId, population, disposition, label }: { s
       {last ? <p className="context-note">{number(last.total)} {last.total === '1' ? 'row' : 'rows'} · showing {members.length}{last.values_withheld ? ' · cell values withheld: you cannot open this source' : ''}</p> : null}
       {members.length ? <table className="coverage-table">
         <caption className="visually-hidden">{label} rows of {population.key}</caption>
-        <thead><tr><th scope="col">Row</th><th scope="col">Key</th><th scope="col">Decision</th></tr></thead>
+        <thead><tr><th scope="col">Sheet row</th><th scope="col">Key</th><th scope="col">Decision</th></tr></thead>
         <tbody>{members.map(m => <tr key={m.ordinal}>
           <td>{m.row}</td>
           <td>{m.subject ?? (m.disposition === 'unkeyed' ? 'No key' : 'Withheld')}</td>
-          <td>{dispositionLabel[m.disposition]}{m.reason ? ` · ${dispositionReasonLabel[m.reason]}` : ''}{m.duplicate_of !== null ? ` · repeats received row ${m.duplicate_of + 1}` : ''}</td>
+          <td>{dispositionLabel[m.disposition]}{m.reason ? ` · ${dispositionReasonLabel[m.reason]}` : ''}{m.duplicate_of !== null ? ` · repeats the ${ordinalWord(m.duplicate_of + 1)} row received, with the same key` : ''}</td>
         </tr>)}</tbody>
       </table> : null}
       {loading ? <p className="context-note">Reading rows…</p> : null}
-      {last?.next_cursor && !loading ? <button type="button" className="text-button" onClick={() => load(last.next_cursor)}>Show more rows</button> : null}
+      {last?.next_cursor ? <button type="button" className="text-button" aria-disabled={loading} onClick={() => { if (!loading) load(last.next_cursor); }}>Show more rows</button> : null}
     </div> : null}
   </div>;
+}
+
+/// A closed limitation in words beside its exact count, naming the
+/// criterion by its key.
+function limitationWords(l: Limitation, criterion: string, unit: string): string {
+  const n = l.count ?? '0';
+  const items = `${number(n)} ${plural(n, unit)}`;
+  switch (l.code) {
+    case 'not_evaluated': return `Criterion ${criterion} was not evaluated for ${items}.`;
+    case 'judgment_not_recorded': return `Judgment criterion ${criterion} has no recorded judgment for ${items} at this population's unit; judgments recorded at another unit or basis are not counted.`;
+    case 'unreviewed_model_judgments': return `Judgment criterion ${criterion}: ${number(n)} met ${plural(n, 'verdict')} ${n === '1' ? 'is a model proposal' : 'are model proposals'} nobody has reviewed; they cannot show that no exception exists.`;
+    case 'sample_selected_only': return `A sample of ${items}: the counts describe the selected items only, never the population.`;
+    case 'scope_unknown': return `${items} ${n === '1' ? 'has' : 'have'} an unknown scope; they are unresolved.`;
+    case 'unkeyed_rows': return `${number(n)} received ${plural(n, 'row')} ${n === '1' ? 'has' : 'have'} no usable key; ${n === '1' ? 'it was' : 'they were'} not assessed, so no conclusion covers ${n === '1' ? 'it' : 'them'}.`;
+    case 'period_not_checked': return 'No period column was named: whether each item falls in the basis period was not checked.';
+    case 'naive_date_times': return `${number(n)} Excel date or date-time ${plural(n, 'cell')} carry no time zone; they were read as UTC.`;
+    default: return l.text;
+  }
 }
 
 /// Story 24.2: exact population, sample and coverage counts. Every number is
@@ -94,11 +121,12 @@ export function Coverage({ assessment, taskId, scope, session }: Props) {
       <ul aria-label={`Rows of ${p.key}`}>
         <li>Rows received: {found(c.received_rows, 'row', complete)}{complete ? '' : '; the total is not known'}</li>
         <li>Distinct {p.subject_unit}s: {found(c.distinct_subjects, p.subject_unit, complete)}</li>
-        <li>Duplicate rows collapsed: {found(c.duplicate_rows, 'row', complete)} · rows with no key: {found(c.unkeyed, 'row', complete)}</li>
+        <li>Duplicate rows collapsed: {found(c.duplicate_rows, 'row', complete)} · rows with no usable key: {found(c.unkeyed, 'row', complete)}</li>
         <li>Excluded outside the basis period: {found(c.excluded_out_of_period, p.subject_unit, complete)}</li>
-        <li>Scope unknown: date does not parse {found(c.scope_unknown_period_unparsed, 'row', complete)} · date blank {found(c.scope_unknown_period_missing, 'row', complete)} · same key, different values {found(c.scope_unknown_conflicting_duplicate, 'row', complete)}</li>
+        <li>Scope unknown: date does not parse {found(c.scope_unknown_period_unparsed, p.subject_unit, complete)} · date blank {found(c.scope_unknown_period_missing, p.subject_unit, complete)} · same key, different values {found(c.scope_unknown_conflicting_duplicate, p.subject_unit, complete)} (each on two or more rows)</li>
         <li>In scope: {found(c.in_scope, p.subject_unit, complete)}</li>
       </ul>
+      {p.naive_date_times !== '0' ? <p className="context-note">{number(p.naive_date_times)} Excel date or date-time {plural(p.naive_date_times, 'cell')} carry no time zone; they were read as UTC.</p> : null}
       {scope && session ? <div className="coverage-inspect">
         {c.excluded_out_of_period !== '0' ? <Members scope={scope} session={session} taskId={taskId} population={p} disposition="excluded" label="Excluded" /> : null}
         {(BigInt(c.scope_unknown_period_unparsed) + BigInt(c.scope_unknown_period_missing) + BigInt(c.scope_unknown_conflicting_duplicate)) > 0n ? <Members scope={scope} session={session} taskId={taskId} population={p} disposition="scope_unknown" label="Scope unknown" /> : null}
@@ -111,29 +139,34 @@ export function Coverage({ assessment, taskId, scope, session }: Props) {
     const sample = s.sample_id !== null;
     const unit = populationById.get(s.population_id)?.subject_unit ?? 'item';
     const scopeWord = sample ? 'selected' : 'in scope';
+    // A sample's counts are exact over its selected items; a population's
+    // are lower bounds when the population is incomplete.
+    const complete = sample || s.completeness === 'complete';
+    const key = (id: string | null) => id === null ? '' : criterionKey.get(id) ?? id.slice(0, 13);
     return <li key={s.id}>
       <p className="coverage-conclusion"><strong>{conclusionSentence(s)}</strong></p>
       <p>{completenessSentence(s)} {reconciliationSentence(s)}</p>
       <p>{sample ? `Sample ${s.sample_id?.slice(0, 13)}: ${number(s.selected ?? '0')} selected ${unit}s; nothing is inferred about the rest.` : `${found(s.counts.in_scope, unit, s.completeness === 'complete')} in scope.`}</p>
       {s.criteria.length ? <div className="coverage-scroll" role="group" aria-label="Criterion opportunities" tabIndex={0}><table className="coverage-table">
-        <caption>Criterion opportunities over the {scopeWord} {unit}s</caption>
+        <caption>Criterion opportunities over the {scopeWord} {unit}s{complete ? '' : ' (each count is at least the number shown; the total is not known)'}</caption>
         <thead><tr><th scope="col">Criterion</th><th scope="col">Applies</th><th scope="col">Does not apply</th><th scope="col">Applicability unknown</th><th scope="col">Met</th><th scope="col">Not met</th><th scope="col">Undetermined</th><th scope="col">Failed</th><th scope="col">Not evaluated</th></tr></thead>
         <tbody>{s.criteria.map(c => <tr key={c.criterion_id}>
           <th scope="row">{criterionKey.get(c.criterion_id) ?? c.criterion_id.slice(0, 13)}</th>
-          <td>{number(c.applicable)}</td><td>{number(c.not_applicable)}</td><td>{number(c.applicability_unknown)}</td>
-          <td>{number(c.met)}</td><td>{number(c.not_met)}</td>
-          <td>{number(c.undetermined)}{c.undetermined_by_reason.length ? <span className="context-note"> ({c.undetermined_by_reason.map(r => `${number(r.count)} ${reasonLabel(r.reason)}`).join('; ')})</span> : null}</td>
-          <td>{number(c.execution_failed)}</td><td>{number(c.not_evaluated)}</td>
+          <td>{bound(c.applicable, complete)}</td><td>{bound(c.not_applicable, complete)}</td><td>{bound(c.applicability_unknown, complete)}</td>
+          <td>{bound(c.met, complete)}{c.met_unreviewed !== '0' ? <span className="context-note"> (of which {number(c.met_unreviewed)} unreviewed model {c.met_unreviewed === '1' ? 'proposal' : 'proposals'})</span> : null}</td><td>{bound(c.not_met, complete)}</td>
+          <td>{bound(c.undetermined, complete)}{c.undetermined_by_reason.length ? <span className="context-note"> ({c.undetermined_by_reason.map(r => `${number(r.count)} ${reasonLabel(r.reason)}`).join('; ')})</span> : null}</td>
+          <td>{bound(c.execution_failed, complete)}</td><td>{bound(c.not_evaluated, complete)}</td>
         </tr>)}</tbody>
       </table></div> : null}
       <ul aria-label={`${unit}s by outcome`}>
-        <li>{unit.charAt(0).toUpperCase() + unit.slice(1)}s with at least one exception: {number(s.failing_subjects)}</li>
-        <li>Meeting every criterion that applies: {number(s.meets_every_applicable)}</li>
-        <li>Unresolved (no exception, but at least one result unknown): {number(s.unresolved_subjects)}</li>
-        <li>No criterion applies: {number(s.not_applicable_to_any)}</li>
-        <li>Failing criterion opportunities (not {unit}s): {number(s.failing_opportunities)}</li>
+        <li>{unit.charAt(0).toUpperCase() + unit.slice(1)}s with at least one exception: {found(s.failing_subjects, unit, complete)}</li>
+        <li>Meeting every criterion that applies: {found(s.meets_every_applicable, unit, complete)}</li>
+        <li>Unresolved (no exception, but at least one result unknown): {found(s.unresolved_subjects, unit, complete)}</li>
+        <li>No criterion applies: {found(s.not_applicable_to_any, unit, complete)}</li>
+        <li>Failing criterion opportunities (not {unit}s): {found(s.failing_opportunities, 'opportunity', complete).replace('opportunitys', 'opportunities')}</li>
+        {complete ? null : <li>The total is not known: the population is incomplete.</li>}
       </ul>
-      {s.limitations.length ? <ul aria-label="Coverage limitations">{s.limitations.map((l, i) => <li key={i} className="retained-text">{l}</li>)}</ul> : null}
+      {s.limitations.length ? <ul aria-label="Coverage limitations">{s.limitations.map((l, i) => <li key={i}>{limitationWords(l, key(l.criterion_id), unit)}</li>)}</ul> : null}
       <p className="context-note">Counted with {s.aggregation.replaceAll('_', ' ')} · summary digest {short(s.summary_sha256)}</p>
     </li>;
   };
