@@ -1915,6 +1915,14 @@ async fn database_guards_refuse_altered_coverage_records(
         ),
         "a summary reads a sample of its population",
     ));
+    cases.push((
+        forged_from(
+            &format!("{dated} AND s.sample_id IS NULL"),
+            Some(free),
+            &[("basis_id", "", "\"basis-ffffffffffffffffffffffffffffffffffffffff\"")],
+        ),
+        "a summary reads a population of its own Task and basis",
+    ));
     for (statement, expected) in &cases {
         assert_refused(&refused(admin, statement).await, expected, statement);
     }

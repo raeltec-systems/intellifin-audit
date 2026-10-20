@@ -106,17 +106,21 @@ AP population.xlsx  rows 1,256 → subjects 1,250 (6 duplicate rows collapsed)
   conclusion: Exceptions found; overall assessment inconclusive
 ```
 
+Unreviewed model judgments (review C). A judgment criterion's opportunity is the 24.1 judgment recorded for that subject at the population's subject unit, origin `model_proposal`: nobody has reviewed it. It is counted as it is (a proposed `met` is `met`), but each criterion also counts `met_unreviewed`, the closed limitation `unreviewed_model_judgments` says "N met verdicts are model proposals nobody has reviewed; they cannot show that no exception exists", and any unreviewed `met` blocks `no_exception_found` (the conclusion is `inconclusive` instead), in the Rust `conclusion`, the SQL recount and the web parser alike. A proposed `not_met` still makes the subject failing: an exception is never hidden because it was proposed. Story 24.3 (dispositions) is where a reviewed judgment would lift this. A 24.1 basis holds one judgment per criterion and subject, so there is no "newest" to choose; a judgment recorded after a population was evaluated is counted only in a new population version (the feedback says so).
+
+Unkeyed rows and scope-unknown subjects (review D). For a population summary they are unresolved as well: nothing covers them, so they block `no_exception_found` and are said as the limitations `unkeyed_rows` and `scope_unknown`. A sample summary covers its selected subjects only.
+
 The model never counts. It names *where* and *how* (sheet, grain, columns, exhaustive or not); trusted code reads every row and counts; PostgreSQL counts again. The enumeration read is itself the trusted read of the exact original digest, so member cells need no separate 22.5 verification per cell. `exhaustive` is the agent's statement and can only *lower* the conclusion: `true` still needs end-of-sheet and reconciliation proof; `false` always means absence not proven.
 
 ## Suggested Review Order
 
-1. `zobba/crates/domain/src/coverage.rs` — dispositions, completeness, SplitMix64 selection, the pure `summarise` and its conclusion rule (tests in `coverage/tests.rs`).
-2. `zobba/migrations/0019_assessment_coverage.sql` — the six immutable tables, the row guard (populations, samples, summaries), the statement-level `coverage_batch` guard, the summary recount and the `reading_guard` replacement that admits the new document program.
-3. `zobba/crates/application/src/reading/document.py` (`enumerate` mode) and `reading.rs` (`enumeration_manifest`, `enumerate`, population read keys); `citation.rs` (`enumerate_text`).
-4. `zobba/crates/application/src/assessment/coverage.rs` and the call order in `assessment.rs` `after_answer`.
-5. `zobba/crates/infrastructure/src/assessment.rs` (CoverageStore, batch inserts, member page) and `lib.rs` (inventory, grants, schema 19).
-6. `zobba/crates/worker/tests/coverage.rs` — the end-to-end proof and the forged-summary guard checks.
-7. `zobba/crates/api/src/coverage.rs` (work-view parts, members route, withholding) and `zobba/web/src/coverage.ts`, `Coverage.tsx`, `tests/browser/coverage.spec.ts`.
+1. `zobba/crates/domain/src/coverage.rs` — dispositions, completeness, SplitMix64 selection, `check_sample` (now with `SizeTooLarge`), the pure `summarise`, `conclusion` (unkeyed and scope-unknown rows unresolved, unreviewed model proposals never a pass) and the closed `Limitation` codes (tests in `coverage/tests.rs`).
+2. `zobba/migrations/0019_assessment_coverage.sql` — the six immutable tables and their NULL-safe document CHECKs; the row guard (job request decoded and bound to sheet, header row and columns); the per-population lock shared by opportunities and summaries (`GROUP BY`, not `DISTINCT … ORDER BY`); the summary recount (`IS DISTINCT FROM`, every opportunity present, `met_unreviewed`); the statement-level batch guard; the deferred counts; the `reading_guard` replacement.
+3. `zobba/crates/application/src/reading/document.py` (`enumerate_cell`, `data_end`) and `reading.rs` (`enumeration_manifest`, `enumerate`, `document_job_with`: the population read reuses the newest job of the exact program); `citation.rs` (`enumerate_text`, ragged records refused).
+4. `zobba/crates/application/src/assessment/coverage.rs` (`judgments_at_unit`, feedback words with "at least") and the call order in `assessment.rs` `after_answer`.
+5. `zobba/crates/infrastructure/src/assessment.rs` (CoverageStore, batch inserts, C-ordered member page, `document_jobs`, referenced populations) and `lib.rs` (inventory, grants, schema 19).
+6. `zobba/crates/worker/tests/coverage.rs` — the end-to-end proof (AP, Low, Filtered, the seeded sample, Cover, Edge, Dated with its sample, Lines), route-level authority and withholding, `database_guards_refuse_altered_coverage_records` (every forged count, field and conclusion; the document program) and `batch_and_row_guards_refuse_one_bad_row` (one bad row per rule, as administrator and owner; deferred counts at COMMIT).
+7. `zobba/crates/api/src/coverage.rs` (work-view parts, members route, withheld measure) and `zobba/web/src/coverage.ts` (the database's counts and conclusion rules), `Coverage.tsx` ("at least", units, limitations in words), `tests/coverage.test.mjs`, `tests/browser/coverage.spec.ts`.
 
 ## Verification
 
@@ -139,24 +143,57 @@ Size: about 5,400 tokens (21.7 KB), over the 1,600 target (24.1 was larger and w
 6. **Duplicate keys with different values.** (a) Recommended: every row of that key is `scope_unknown conflicting_duplicate`; byte-identical rows collapse and are counted. (b) Treat any repeated key as unknown, even identical rows.
 7. **Summary guard.** (a) Recommended: the insert guard recomputes counts with exact SQL aggregates. (b) Store only the Rust digest and recompute in a test, not in the database.
 
-## Review round 1 — progress (WIP checkpoint, 2026-10-15)
+## Review round 1
 
-Checkpointed before rate limits; `cargo fmt` and `cargo check --workspace --all-targets` are clean. The long suites were NOT run at this checkpoint. Domain, application and api unit tests passed before the checkpoint, and so did the Python `test_document.py` (8 tests).
+Three reviews: `review-24-2-blind-hunter.md`, `review-24-2-edge-case-hunter.md`, `review-24-2-verification-gap.md`. Lead triage items A–K. Each finding is **fixed** (with its test) or **deferred** (with the reason). One more defect was found while fixing: the opportunity batch guard's advisory lock used `SELECT DISTINCT … ORDER BY … COLLATE "C"`, which PostgreSQL refuses. Every opportunity batch failed and the worker retried for ever (the end-to-end suite hung). It is `GROUP BY` now; v19 is regenerated.
 
-Done in code (tests named where they exist):
-- **A** The summary recount uses `IS DISTINCT FROM` and `jsonb_typeof(...)='number'` for every count, including the new `met_unreviewed`. Every document CHECK is wrapped in `coalesce(..., false)`, and the nullable keys must be present (`?&`). No DB test yet.
-- **B** Opportunities and summaries of one population share the advisory lock `coverage:<population>`. A summary is refused unless every basis criterion has exactly `in_scope` opportunities. An opportunity batch for a summarised population is refused. No DB test yet. Because of the first rule, the second one is reachable only after the primary key refuses the row.
-- **C** `met_unreviewed` is counted per criterion. A `model_proposal` met blocks `no_exception_found` in Rust (`Unproven.unreviewed_met`) and in SQL. Closed limitation code `unreviewed_model_judgments` with its exact count. Domain tests are in. Spec Design Notes are NOT yet updated.
-- **D** Unkeyed rows count as unresolved for a population summary, in Rust and SQL. Closed limitation `unkeyed_rows`. Domain test is in.
-- **E** `enumerate_cell` reads typed Excel dates and date-times (`kind` excel_date/excel_datetime, with ISO, day-first and UTC instant forms). A zero-padded number format keeps its leading zeros. `data_end` ignores formatted empty rows. New fixture sheet `Dated` in `AP population.xlsx`, covered by Python tests. Rust parses the new cell shape: `CellKind`, `MemberCell.kind`, a `naive_date_times` count and the limitation `naive_date_times`. Document program re-pinned in 0019 (25140 bytes, 235ceba4…).
-- **F** A ragged CSV record is refused (`EnumerationFailure::RaggedRecord`), with words that name the unquoted `1,250.00`. Trailing blank lines are ignored. An empty file says so. The unit test is NOT yet written.
-- **G** The `-p1..-p8` ladder is removed. A population read reuses the newest document job of the Task with the exact program: a collected job's result is read again, an unfinished job is run on, and otherwise a fresh key `-p<count>` is used, so the reads never run out. New `ReadingStore::document_jobs`. The repeated-reclaim test is NOT yet written.
-- **H** The application feedback (population line, summary line, opportunities line) says "at least … ; the total is not known" when incomplete. Rows and subjects are labelled by their unit. The web is NOT yet done.
-- **I** CHECK `(job_id IS NULL) = (sheet is null)`. The population guard decodes the job's request literal and requires the same mode, original, sheet, header row and `columns` (the new population document key). The job must have no failure. The `reading_guard` DB test is NOT yet written.
-- **K** L1: the measure is withheld with the values (api test). L2: the snapshot carries `referenced` populations for the samples and summaries (api test). L3: exact outline count. L4: the member page is C-ordered by key, then by ordinal (the cursor is still an ordinal). L6: the enumeration header row must equal the proposal's. L10: limitation `period_not_checked`.
+**Blind Hunter**
+- M1 NULL bypass in the recount and the document CHECKs — fixed (A): `IS DISTINCT FROM`, `jsonb_typeof(...)='number'`, every document CHECK in `coalesce(…, false)`, nullable keys required (`?&`). DB tests forge every count column and every per-criterion field, a missing key and a count written as a string.
+- M2 opportunities after a summary — fixed (B): one advisory lock per population for opportunities and summaries. A summary needs exactly `in_scope` opportunities per basis criterion (DB test: with one missing it is refused; with all, accepted). A summarised population refuses more opportunities; this is reachable only past the primary key, so it is a second lock.
+- M3 unreviewed model judgments — fixed (C), see Design Notes; application test over a judgment criterion.
+- M4 the reclaim key ladder — fixed (G): the newest job of the exact program is reused, or run on; a fresh `-p<count>` key comes only after a failed read. Application test: thirteen reads reuse one job; twelve failed reads admit twelve jobs, none refused.
+- M5 a ragged CSV record — fixed (F): refused, with words that name the unquoted `1,250.00`; trailing blank lines are ignored; an empty file says so. Unit test.
+- L1 measure shown when withheld — fixed: withheld (API unit, route-level and web parser tests).
+- L2 sample keys of an unlisted population — fixed: the snapshot carries `referenced` populations (API test).
+- L3 outline omission count — fixed: the exact sum.
+- L4 member page order — fixed: C-ordered by key (unkeyed first), then receipt order; the cursor names the last row shown.
+- L5 job not bound to sheet, header row and columns — fixed (I): CHECK `(job_id IS NULL) = (sheet is null)`; the guard decodes the job's request literal and compares mode, original, sheet, header row and columns; the job must not have failed. DB tests: another sheet's job and a workbook with no job are refused.
+- L6 header row — fixed: the enumeration's header row must equal the proposal's.
 
-Remaining:
-- J: every DB negative test (batch rules with multi-row inserts as owner and superuser, each summary count, row guards, deferred counts, completeness CHECKs, conclusion branches including `no_exception_found`/`inconclusive`/scope-unknown/sample in the DB, viewer-withholding routes, judgment criteria and changed grain through `judgments_at_unit`, Edge/Lines/Dated sheets end to end, web parser cases, the axe scan).
-- Web: regenerate `openapi.json` and the generated client (`cargo run -p zobba-cli --locked -- openapi`, `pnpm api:generate`), update the `coverage.ts` parser (structured limitations, `met_unreviewed`, `naive_date_times`, member cell `kind`, the counts rule now that a conflicting key holds ≥2 rows, the measure withheld) and `Coverage.tsx` ("at least" on every count when incomplete, the conflicting-duplicate unit). Regenerate `web/tests/fixtures/task-coverage.json` with `ZOBBA_UPDATE_COVERAGE_FIXTURE=1`.
-- The worker e2e expectations need re-running after these changes. The schema-v19.catalog is regenerated.
-- Spec Design Notes for C, the full "Review round 1" section and the refreshed Suggested Review Order.
+**Edge Case Hunter**
+- H1 typed Excel dates — fixed (E): `enumerate_cell` reads dates and date-times (`excel_date`, `excel_datetime`). A date-time with no time zone is read as UTC, counted (`naive_date_times`) and said. End to end on the Dated sheet.
+- H2 unkeyed rows did not block a pass — fixed (D), see Design Notes; end to end on the Edge sheet; a forged DB conclusion is refused.
+- M1 zero-padded numeric key — fixed (E): the Dated sheet keeps `000123`.
+- M2 styled trailing rows — fixed (E): `data_end` ignores formatted empty rows (the Dated sheet's 36 formatted rows are not rows).
+- M3 conflicting-duplicate unit — fixed: labelled by subject unit, "each on two or more rows". The web counts rule is now the database's (a conflicting key holds two or more rows).
+- M4 bare numbers on an incomplete summary — fixed (H): "at least" in every criterion cell, the subject partition and the feedback, with "the total is not known".
+- M5 wedge after reclaims — fixed (G), as Blind Hunter M4.
+- L1 an offset instant period compares the UTC calendar day — deferred: which calendar day an offset instant belongs to is an owner decision. Naive date-times are said in words; offset instants are not.
+- L2 a formula with no cached value, L3 merged grain cells — deferred: both need a second, non-`data_only` workbook read in the trusted program (a new program pin). Today such a cell reads blank, so the row is `unkeyed` or `period_missing`: counted, unresolved and said, never met.
+- L4 ragged CSV — fixed (F). L8 empty CSV — fixed.
+- L5 CSV parsed whole before the row bound — deferred: it is bounded by the 10 MiB original; a field cap is a worker memory policy.
+- L6 plain text parsed as CSV — deferred: the spec reads both as RFC 4180; a line that cannot be read exactly is refused, never misread.
+- L7 encrypted or legacy workbook says "unsupported" — deferred: it fails closed; only the words differ.
+- L9 an over-bound key has no reason — deferred: a new closed reason is a vocabulary change; the row is counted `unkeyed` and blocks a pass.
+- L10 no period column — fixed: limitation `period_not_checked`.
+- L11 measure — fixed (as Blind Hunter L1). L12 — fixed (I).
+- L13 members filter by reason — deferred: exact counts per reason are in every summary; the list filters by disposition.
+- L14 a later judgment — fixed: the feedback says it is counted only in a new population version.
+- L15 wording — fixed: every population count says "at least"; a seeded sample larger than the in-scope set is refused as `SizeTooLarge`; a duplicate row says "repeats the Nth row received" beside a "Sheet row" column; "Show more rows" stays mounted (aria-disabled while it loads).
+- L16 member document bound — fixed: 65,536 bytes of JSON text (twelve 256-byte cells of control characters escape to six bytes each).
+
+**Verification gap**
+- H1 batch guards — fixed: multi-row `INSERT … SELECT` copies with exactly one bad row per rule (a member past the received rows, a member of another Task, a duplicate into another subject, a selected item not in scope and one past the size, an opportunity of an excluded member, of another Task, reading another member's cells, and a decided verdict with no facts). They run as the administrator and as the migration owner under the runtime's scope; the unaltered copy is accepted. Deferred: the unverified-authority, judgment-decided-by-rule and judgment-opportunity rules. The fixture's criteria are verified rule criteria, and a forgery needs a new criterion row.
+- H2 summary recount — fixed: every count column, every per-criterion field, a sample's selected count, and the conclusion branches (`no_exception_found` for the complete Dated population; `inconclusive` for its sample and for the Edge sheet). `not_applicable_to_any` cannot move alone (the partition CHECK), so its own message is implied.
+- H3 row guards, deferred counts, completeness CHECKs — fixed: a population (not exhaustive yet complete, last row, declared count, job, digest, basis, successor, binding), a sample (a population of another Task), a summary (completeness, a sample of another population, another basis), and a population one member short and a sample one item short, refused at COMMIT.
+- H4 route-level withholding and authority — fixed: when the original is unreadable, the work view withholds sample keys, substitutions and filenames, and the members route every subject, cell text, value and measure (counts and locations stay). Another Task's population is 403, a changed session 412, a revoked assignment 403.
+- H5 judgment criteria and the changed grain — fixed in the application suite (the recorded judgment at unit `invoice`, none at `invoice_line`, the limitations counted); the Lines sheet runs end to end. Deferred: a judgment criterion end to end through the database's judgment-opportunity rule (the worker suite records no 24.1 judgments).
+- M1 reclaim retries — fixed (G test). M2 the Edge and Lines sheets — fixed end to end. M3 a workbook without a job — fixed.
+- M4 document program admission — fixed: an appended line and a literal with a character outside the encoder's set are refused; the exact program reaches only its operation's uniqueness. Deferred: a DB test that the Story 22.5 program is still admitted (its pin is tested; its text is not in the tree).
+- M5 sample refusals — fixed: each refusal, with its words.
+- M6 web parser cases — fixed: one rule per case, plus the rules that had none (the conclusion is recomputed as the database does it).
+- M7 accessibility — fixed: "at least N found" for the non-empty incomplete `cover` population. Deferred: an axe scan. The workspace has no axe dependency, and adding one is a dependency decision; the contrast check stays.
+- L1 exact sample conclusion — fixed (recounted from its selected subjects). L2 positive control — fixed (the unique violation is asserted). L6 per-criterion fields — fixed (all compared).
+- L3 owner immutability through RLS and the reset outside `*_test`, L4 catalogue overflow bound, L5 citation bound discards, L6 a Task above the outline bound, L7 a committed Python generator for the SplitMix64 vector — deferred: they would strengthen tests, but no behaviour depends on them that is otherwise unproven.
+
+__VERIFICATION__

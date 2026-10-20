@@ -2298,7 +2298,7 @@ pub fn outline_with(
     // exact: every record of the Task minus those actually listed.
     let mut listed = 0u64;
     let mut push = |lines: &mut Vec<String>, line: String| {
-        if bytes + line.len() + 1 <= MAX_ASSESSMENT_OUTLINE_BYTES - 128 {
+        if bytes + line.len() < MAX_ASSESSMENT_OUTLINE_BYTES - 128 {
             bytes += line.len() + 1;
             lines.push(line);
             listed += 1;

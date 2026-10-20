@@ -2048,7 +2048,11 @@ answer fields name *where* and *how*, and trusted code does the counting:
   evaluated), the subject partition (failing, meets every applicable,
   unresolved, not applicable to any) and failing *opportunities* — two
   separately named numbers — and one closed conclusion. Never "no exception
-  found" on an incomplete population, a sample or zero applicable subjects.
+  found" on an incomplete population, a sample, zero applicable subjects,
+  scope-unknown subjects, rows with no usable key, or a met that is an
+  unreviewed model proposal (a 24.1 judgment nobody has reviewed: counted as
+  `met_unreviewed` and said as the limitation `unreviewed_model_judgments`).
+  Limitations are closed codes with exact counts, said in words.
 
 The six tables (`assessment_populations`, `_population_members`, `_samples`,
 `_sample_members`, `_opportunities`, `_summaries`) refuse UPDATE, DELETE and
@@ -2060,8 +2064,14 @@ disagreement by name. Members, selected items and opportunities are guarded
 once per statement over its new rows. The work read adds bounded
 `populations`, `samples` and `summaries` with exact totals; a members route
 (`/tasks/{task}/assessment/populations/{id}/members?disposition=&cursor=`)
-gives an exact count and 50-row pages in receipt order, withholding cell
-values from a viewer who cannot open the original now. The Coverage panel
+gives an exact count and 50-row pages C-ordered by key (a row with no key
+first), then receipt order, withholding cell values and measures from a
+viewer who cannot open the original now. A CSV record wider or narrower than
+its header (for example an unquoted `1,250.00`) is refused, typed Excel dates
+and date-times are read as dates (a date-time with no time zone is read as
+UTC and counted), a zero-padded number keeps its leading zeros, and formatted
+empty rows after the data are not rows. A reclaimed answer reuses its
+collected population read. The Coverage panel
 says every count in words with its unit, "at least N found" and "the total
 is not known" when incomplete, and shows no percentages.
 
@@ -2070,10 +2080,20 @@ loopback model over `fixtures/documents/AP population.xlsx` (1,256 rows, 6
 duplicate rows, 50 outside the period; criteria A and B: 15 and 12 not met, 7
 failing both): the AC1/AC2 numbers in `AP population expected.json`
 (independently computed by `generate.py`), a zero-applicable sheet, a
-filtered export, a seeded sample of 25, a count mismatch (1,251 cited, 1,250
-found) and a header mismatch. It forges summaries to check the recount guard
-by its message, and checks immutability for each table. No live provider is
-called.
+filtered export, a seeded sample of 25 (its conclusion recounted from its
+selected subjects), a count mismatch (1,251 cited, 1,250 found), a header
+mismatch, the Edge sheet (a conflicting duplicate, an unparsed and a blank
+date, an unkeyed row: inconclusive), the Dated sheet of typed Excel cells
+(the one complete "no exception found", and an all-in-scope sample that
+concludes nothing about the population) and the Lines sheet (an invoice-line
+grain). It forges every summary count, every per-criterion field and each
+conclusion branch to check the recount guard by its message; refuses one bad
+row in multi-row copies for every batch guard, as the administrator and as
+the migration owner under the runtime's scope, and the deferred member and
+selected-item counts at commit; refuses an altered document program; checks
+route-level withholding, another Task's population (403), a changed session
+(412) and a revoked assignment; and checks immutability for each table. No
+live provider is called.
 
 ```sh
 cargo test -p zobba-domain coverage
