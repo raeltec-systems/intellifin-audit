@@ -560,6 +560,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/engagements/{engagement_id}/tasks/{task_id}/assessment/chains/{chain_id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_evaluation_history"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/engagements/{engagement_id}/tasks/{task_id}/assessment/populations/{population_id}/members": {
         parameters: {
             query?: never;
@@ -570,6 +586,22 @@ export interface paths {
         get: operations["get_population_members"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagements/{engagement_id}/tasks/{task_id}/assessment/revisions/{revision_id}/dispositions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["save_disposition"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1239,6 +1271,7 @@ export interface components {
             /** @description `applicable`, `not_applicable` or `unknown`. */
             applicability: string;
             basis_id: string;
+            chain: null | components["schemas"]["ChainResponse"];
             criterion_id: string;
             /** @description `completed` or `failed`. */
             execution: string;
@@ -1394,12 +1427,55 @@ export interface components {
         Certainty: "user_directed" | "source_states" | "asserted" | "learned" | "explicit_preference";
         /** @enum {string} */
         CessationResponse: "none" | "pending" | "confirmed" | "reconciliation_required";
+        /**
+         * @description One page of a chain's history in revision order, with the exact number
+         *     of its revisions and the facts the listed revisions read.
+         */
+        ChainHistoryResponse: {
+            chain_id: string;
+            entries: components["schemas"]["HistoryEntryResponse"][];
+            facts: components["schemas"]["AssessmentFactResponse"][];
+            head_id: string;
+            /** @description The revision number after which the next page starts. */
+            next_cursor: string | null;
+            subject: string;
+            total: string;
+        };
+        /** @description The current head of one evaluation chain and its review state. */
+        ChainResponse: {
+            applicability: string;
+            basis_id: string;
+            /** @description The head's closed causes (none for revision 1). */
+            causes: string[];
+            chain_id: string;
+            criterion_id: string;
+            disposition: null | components["schemas"]["DispositionResponse"];
+            /** @description An earlier revision of this chain was accepted (this one is not yet). */
+            earlier_accepted: boolean;
+            /** @description `deterministic`, `model_proposal` or `human`. */
+            effective_origin: string;
+            /** @description The verdict after the head's newest disposition. */
+            effective_verdict: string | null;
+            execution: string;
+            head_id: string;
+            origin: string;
+            reason: string | null;
+            /** @description `unreviewed`, `accepted`, `replaced` or `pending_reconsideration`. */
+            review: string;
+            revision: string;
+            verdict: string | null;
+        };
         ChangeSkillStatusRequest: {
             expected_revision: string;
             key: string;
             reason: string;
             status: components["schemas"]["SkillStatus"];
             version_id: string;
+        };
+        ChangesResponse: {
+            added: string[];
+            removed: string[];
+            replaced: components["schemas"]["ReplacedFactResponse"][];
         };
         CitationSourceResponse: {
             /** Format: int64 */
@@ -1709,6 +1785,64 @@ export interface components {
             question: null | components["schemas"]["RoutingQuestionResponse"];
             receipt: null | components["schemas"]["CommandReceiptResponse"];
         };
+        DispositionCommandRequest: {
+            /** @description `facts`, `rule`, `authority` or `scope`: exactly for needs_reconsideration. */
+            concern?: string | null;
+            /** @description Request key, idempotent per actor. */
+            key: string;
+            /** @description `accepted`, `replaced` or `needs_reconsideration`. */
+            kind: string;
+            /** @description 1–2,000 UTF-8 bytes. */
+            rationale: string;
+            references: components["schemas"]["DispositionReferenceRequest"][];
+            /** @description `met`, `not_met` or `undetermined`: exactly for replaced. */
+            verdict?: string | null;
+        };
+        /**
+         * @description A refusal of a disposition. `head_id` names the current head of a
+         *     superseded revision's chain; `index` names an unverified reference.
+         */
+        DispositionErrorResponse: {
+            error: string;
+            head_id: string | null;
+            /** Format: int32 */
+            index: number | null;
+        };
+        DispositionReferenceRequest: {
+            /** @description An exact canonical locator (`cell:Sheet1!D7`, `bytes:16-24`, ...). */
+            locator: string;
+            original_id: string;
+            /** @description The exact quoted text at that location. */
+            quote: string;
+        };
+        /**
+         * @description A person's disposition of one exact revision. It never changes the
+         *     revision: `replaced` is a separate human verdict.
+         */
+        DispositionResponse: {
+            actor_id: string;
+            /** @description The person's public label, when known. */
+            actor_label: string | null;
+            chain_id: string;
+            /** @description `facts`, `rule`, `authority` or `scope` (needs_reconsideration only). */
+            concern: string | null;
+            id: string;
+            /** @description `accepted`, `replaced` or `needs_reconsideration`. */
+            kind: string;
+            /** @description The person's words (attributed data), at most 2,000 UTF-8 bytes. */
+            rationale: string;
+            recorded_us: string | null;
+            /**
+             * @description Verified evidence references; a quote is withheld from a viewer who
+             *     cannot read its original now.
+             */
+            references: components["schemas"]["CitationSourceResponse"][];
+            revision: string;
+            /** @description The exact revision: the 24.1 evaluation (revision 1) or a revision. */
+            revision_id: string;
+            /** @description The person's verdict (replaced only). */
+            verdict: string | null;
+        };
         EngagementResponse: {
             client_id: string;
             /** @description 1–200 Unicode scalars; no C0/C1 controls or leading/trailing Unicode White_Space. */
@@ -1815,6 +1949,27 @@ export interface components {
         };
         /** @enum {string} */
         HealthStatus: "live" | "ready" | "unavailable";
+        /** @description One revision of a chain, unchanged since it was recorded. */
+        HistoryEntryResponse: {
+            applicability: string;
+            basis_id: string;
+            causes: string[];
+            changes: components["schemas"]["ChangesResponse"];
+            criterion_id: string;
+            dispositions: components["schemas"]["DispositionResponse"][];
+            execution: string;
+            id: string;
+            inputs: components["schemas"]["EvaluationInputResponse"][];
+            invocation_id: string;
+            judgment: null | components["schemas"]["JudgmentResponse"];
+            origin: string;
+            output_digest: string;
+            predecessor_id: string | null;
+            reason: string | null;
+            recorded_us: string | null;
+            revision: string;
+            verdict: string | null;
+        };
         IdentityResponse: {
             display_name: string;
             id: string;
@@ -2792,6 +2947,10 @@ export interface components {
         };
         /** @enum {string} */
         ReceiptStatusResponse: "received";
+        ReplacedFactResponse: {
+            from: string;
+            to: string;
+        };
         /** @description A fact the criterion needs, with its type and (for a decimal) measure. */
         RequiredFactResponse: {
             /** @description `identifier`, `text`, `boolean`, `enum`, `decimal`, `date` or `instant`. */
@@ -6082,6 +6241,88 @@ export interface operations {
             };
         };
     };
+    get_evaluation_history: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+                /** @description next_cursor of the previous page */
+                cursor?: string;
+            };
+            header?: {
+                /** @description Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie */
+                "X-Expected-Session"?: string | null;
+            };
+            path: {
+                engagement_id: string;
+                task_id: string;
+                /** @description The chain's revision 1: a 24.1 evaluation ID */
+                chain_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The exact number of a chain's revisions and one page of them in revision order, each with its causes, changed facts and dispositions; earlier revisions are never changed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChainHistoryResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Session changed */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     get_population_members: {
         parameters: {
             query: {
@@ -6161,6 +6402,103 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    save_disposition: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+            };
+            header: {
+                /** @description Exact configured HTTPS application origin */
+                Origin: string;
+                /** @description Current session-bound token */
+                "X-CSRF-Token": string;
+                /** @description Required refusal fence for the current session actor; never supplies author authority */
+                "X-Expected-Actor": string;
+            };
+            path: {
+                engagement_id: string;
+                task_id: string;
+                /** @description The exact revision: a 24.1 evaluation or a revision ID */
+                revision_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DispositionCommandRequest"];
+            };
+        };
+        responses: {
+            /** @description The saved disposition (an exact retry returns the original); the revision is unchanged */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DispositionResponse"];
+                };
+            };
+            /** @description disposition_invalid or not_replaceable */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DispositionErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DispositionErrorResponse"];
+                };
+            };
+            /** @description reference_unverified (index), revision_superseded (head_id), disposition_conflict or disposition_capacity */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DispositionErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DispositionErrorResponse"];
                 };
             };
         };

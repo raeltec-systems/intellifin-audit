@@ -430,6 +430,10 @@ pub struct AssessmentEvaluationResponse {
     pub methodology_binding_id: String,
     #[schema(pattern = "^[0-9]+$")]
     pub execution_epoch: String,
+    /// Story 24.3a: this evaluation is revision 1 of its chain; the chain's
+    /// current head and review state (never a change to this record).
+    #[schema(required = true)]
+    pub chain: Option<crate::revisions::ChainResponse>,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -723,9 +727,21 @@ fn measure(m: Option<&Measure>) -> Option<String> {
     m.map(Measure::label)
 }
 
+/// Each listed chain's current head with its newest disposition's actor
+/// label and whether an earlier revision was accepted.
+pub(crate) type Chains = std::collections::BTreeMap<
+    String,
+    (
+        zobba_application::assessment::revision::ChainHead,
+        Option<String>,
+        bool,
+    ),
+>;
+
 fn assessment(
     view: AssessmentSnapshot,
     coverage: &zobba_application::assessment::coverage::CoverageSnapshot,
+    chains: &Chains,
     originals: &Originals,
 ) -> AssessmentResponse {
     let parts = crate::coverage::parts(coverage, originals);
@@ -857,117 +873,7 @@ fn assessment(
         facts: view
             .facts
             .iter()
-            .map(|f| {
-                let (
-                    value_kind,
-                    value,
-                    measure_label,
-                    mantissa,
-                    scale,
-                    utc,
-                    offset,
-                    reason,
-                    candidates,
-                ) = match &f.fact.state {
-                    FactState::Value(v) => {
-                        let (mantissa, scale) = match v {
-                            FactValue::Decimal { value, .. } => (
-                                Some(value.mantissa.to_string()),
-                                Some(u32::from(value.scale)),
-                            ),
-                            _ => (None, None),
-                        };
-                        let (utc, offset) = match v {
-                            FactValue::Instant(i) => {
-                                (Some(i.render_utc()), Some(i32::from(i.offset_minutes)))
-                            }
-                            _ => (None, None),
-                        };
-                        (
-                            v.kind().as_str().to_string(),
-                            Some(v.text()),
-                            measure(v.measure()),
-                            mantissa,
-                            scale,
-                            utc,
-                            offset,
-                            None,
-                            None,
-                        )
-                    }
-                    FactState::Unavailable(r) => (
-                        "unavailable".into(),
-                        None,
-                        None,
-                        None,
-                        None,
-                        None,
-                        None,
-                        Some(r.as_str().to_string()),
-                        None,
-                    ),
-                    FactState::Ambiguous { candidates } => (
-                        "ambiguous".into(),
-                        None,
-                        None,
-                        None,
-                        None,
-                        None,
-                        None,
-                        None,
-                        Some(*candidates),
-                    ),
-                };
-                // The value is read from the source quote: it is shown only
-                // when one of its sources is an exact original the viewer
-                // may read now (21.6: knowledge never grants the original).
-                let valued = value.is_some();
-                let readable = f.sources.iter().any(|s| {
-                    crate::answers::exact_original(
-                        originals,
-                        &s.source.original_id,
-                        s.original_sha256.as_deref(),
-                    )
-                    .is_some()
-                });
-                let withheld = valued && !readable;
-                let (value, mantissa, scale, utc, offset) = if withheld {
-                    (None, None, None, None, None)
-                } else {
-                    (value, mantissa, scale, utc, offset)
-                };
-                AssessmentFactResponse {
-                    id: f.id.clone(),
-                    invocation_id: f.invocation_id.clone(),
-                    basis_id: f.basis_id.clone(),
-                    subject: f.fact.subject.clone(),
-                    subject_unit: f.fact.subject_unit.clone(),
-                    name: f.fact.name.clone(),
-                    value_kind,
-                    value_withheld: withheld,
-                    value,
-                    measure: measure_label,
-                    mantissa,
-                    scale,
-                    utc,
-                    offset_minutes: offset,
-                    unavailable_reason: reason,
-                    candidates,
-                    rule: f.fact.rule.map(|r| r.as_str().into()),
-                    support: f.support.as_str().into(),
-                    support_reason: f.support.reason().map(|r| r.as_str().into()),
-                    subject_grounded: f.grounding.subject,
-                    measure_grounded: f.grounding.measure,
-                    job_id: f.fact.job_id.clone(),
-                    sources: f
-                        .sources
-                        .iter()
-                        .map(|s| verified_source(s, originals))
-                        .collect(),
-                    methodology_binding_id: f.methodology_binding_id.clone(),
-                    execution_epoch: f.execution_epoch.to_string(),
-                }
-            })
+            .map(|f| fact_response(f, originals))
             .collect(),
         evaluations: view
             .evaluations
@@ -1001,8 +907,119 @@ fn assessment(
                 }),
                 methodology_binding_id: e.methodology_binding_id.clone(),
                 execution_epoch: e.execution_epoch.to_string(),
+                chain: chains.get(&e.id).map(|(head, label, earlier)| {
+                    crate::revisions::chain_response(head, label.clone(), *earlier, originals)
+                }),
             })
             .collect(),
+    }
+}
+
+/// One fact as the work and history views show it: the value is shown only
+/// when one of its sources is an exact original the viewer may read now.
+pub(crate) fn fact_response(
+    f: &zobba_application::assessment::FactRecord,
+    originals: &Originals,
+) -> AssessmentFactResponse {
+    let (value_kind, value, measure_label, mantissa, scale, utc, offset, reason, candidates) =
+        match &f.fact.state {
+            FactState::Value(v) => {
+                let (mantissa, scale) = match v {
+                    FactValue::Decimal { value, .. } => (
+                        Some(value.mantissa.to_string()),
+                        Some(u32::from(value.scale)),
+                    ),
+                    _ => (None, None),
+                };
+                let (utc, offset) = match v {
+                    FactValue::Instant(i) => {
+                        (Some(i.render_utc()), Some(i32::from(i.offset_minutes)))
+                    }
+                    _ => (None, None),
+                };
+                (
+                    v.kind().as_str().to_string(),
+                    Some(v.text()),
+                    measure(v.measure()),
+                    mantissa,
+                    scale,
+                    utc,
+                    offset,
+                    None,
+                    None,
+                )
+            }
+            FactState::Unavailable(r) => (
+                "unavailable".into(),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(r.as_str().to_string()),
+                None,
+            ),
+            FactState::Ambiguous { candidates } => (
+                "ambiguous".into(),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(*candidates),
+            ),
+        };
+    // The value is read from the source quote: it is shown only
+    // when one of its sources is an exact original the viewer
+    // may read now (21.6: knowledge never grants the original).
+    let valued = value.is_some();
+    let readable = f.sources.iter().any(|s| {
+        crate::answers::exact_original(
+            originals,
+            &s.source.original_id,
+            s.original_sha256.as_deref(),
+        )
+        .is_some()
+    });
+    let withheld = valued && !readable;
+    let (value, mantissa, scale, utc, offset) = if withheld {
+        (None, None, None, None, None)
+    } else {
+        (value, mantissa, scale, utc, offset)
+    };
+    AssessmentFactResponse {
+        id: f.id.clone(),
+        invocation_id: f.invocation_id.clone(),
+        basis_id: f.basis_id.clone(),
+        subject: f.fact.subject.clone(),
+        subject_unit: f.fact.subject_unit.clone(),
+        name: f.fact.name.clone(),
+        value_kind,
+        value_withheld: withheld,
+        value,
+        measure: measure_label,
+        mantissa,
+        scale,
+        utc,
+        offset_minutes: offset,
+        unavailable_reason: reason,
+        candidates,
+        rule: f.fact.rule.map(|r| r.as_str().into()),
+        support: f.support.as_str().into(),
+        support_reason: f.support.reason().map(|r| r.as_str().into()),
+        subject_grounded: f.grounding.subject,
+        measure_grounded: f.grounding.measure,
+        job_id: f.fact.job_id.clone(),
+        sources: f
+            .sources
+            .iter()
+            .map(|s| verified_source(s, originals))
+            .collect(),
+        methodology_binding_id: f.methodology_binding_id.clone(),
+        execution_epoch: f.execution_epoch.to_string(),
     }
 }
 
@@ -1198,15 +1215,31 @@ pub(crate) async fn get_work(
                     .coverage_view(&current.identity.id, &scope, &task_id)
                     .await
                     .ok()?;
+                let chain_ids: Vec<String> =
+                    snapshot.evaluations.iter().map(|e| e.id.clone()).collect();
+                let chains: Chains = assessments
+                    .chains_view(&current.identity.id, &scope, &task_id, &chain_ids)
+                    .await
+                    .ok()?
+                    .into_iter()
+                    .map(|(head, label, earlier)| {
+                        (head.chain_id().to_string(), (head, label, earlier))
+                    })
+                    .collect();
                 let mut ids = assessment_originals(&snapshot);
                 ids.extend(crate::coverage::originals(&coverage));
+                ids.extend(crate::revisions::disposition_originals(
+                    chains
+                        .values()
+                        .filter_map(|(h, _, _)| h.disposition.as_ref()),
+                ));
                 ids.sort();
                 ids.dedup();
                 let originals = citations
                     .viewer_originals(&current.identity.id, &scope, &ids)
                     .await
                     .ok()?;
-                Some(assessment(snapshot, &coverage, &originals))
+                Some(assessment(snapshot, &coverage, &chains, &originals))
             };
             match read.await {
                 Some(response) => (Some(response), false),
@@ -1565,7 +1598,12 @@ mod tests {
         };
         // The viewer may not read the original: the value read from its
         // quote is withheld with the quote itself.
-        let hidden = assessment(view.clone(), &Default::default(), &Originals::new());
+        let hidden = assessment(
+            view.clone(),
+            &Default::default(),
+            &Chains::new(),
+            &Originals::new(),
+        );
         let f = &hidden.facts[0];
         assert!(f.value_withheld);
         assert!(f.value.is_none() && f.mantissa.is_none() && f.scale.is_none());
@@ -1584,7 +1622,10 @@ mod tests {
                 sha256: "b".repeat(64),
             },
         )]);
-        assert!(assessment(view.clone(), &Default::default(), &other).facts[0].value_withheld);
+        assert!(
+            assessment(view.clone(), &Default::default(), &Chains::new(), &other).facts[0]
+                .value_withheld
+        );
         // The exact original, readable now: the value is shown.
         let readable = Originals::from([(
             "ap-invoices".to_string(),
@@ -1594,7 +1635,7 @@ mod tests {
                 sha256: "a".repeat(64),
             },
         )]);
-        let shown = assessment(view, &Default::default(), &readable);
+        let shown = assessment(view, &Default::default(), &Chains::new(), &readable);
         let f = &shown.facts[0];
         assert!(!f.value_withheld);
         assert_eq!(f.value.as_deref(), Some("1250.00"));

@@ -95,7 +95,7 @@ fn positive_decimal(value: &str) -> Result<u64, OperationError> {
         .ok_or(OperationError::Invalid)
 }
 
-fn expected_actor_matches(headers: &HeaderMap, actor: &str) -> bool {
+pub(crate) fn expected_actor_matches(headers: &HeaderMap, actor: &str) -> bool {
     let mut expected = headers.get_all("x-expected-actor").iter();
     expected.next().is_some_and(|value| {
         expected.next().is_none()

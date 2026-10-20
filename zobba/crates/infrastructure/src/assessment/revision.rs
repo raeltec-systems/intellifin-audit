@@ -696,7 +696,7 @@ impl AssessmentRepository {
         s: &Scope,
         task_id: &str,
         chain_ids: &[String],
-    ) -> Result<Vec<(ChainHead, Option<String>)>, TaskError> {
+    ) -> Result<Vec<(ChainHead, Option<String>, bool)>, TaskError> {
         if !valid_scope_id(task_id) {
             return Err(TaskError::Denied);
         }
@@ -725,6 +725,15 @@ impl AssessmentRepository {
         .map_err(|_| TaskError::Unavailable)?
         .into_iter()
         .collect();
+        // Revisions of each chain an earlier version of which was accepted.
+        let chains: Vec<&str> = heads.iter().map(|h| h.chain_id()).collect();
+        let accepted: Vec<(String, i32)> = sqlx::query_as("SELECT chain_id, max(revision) FROM public.assessment_dispositions WHERE task_id=$1 AND chain_id = ANY($2) AND kind='accepted' GROUP BY chain_id")
+            .bind(task_id).bind(&chains)
+            .fetch_all(&mut *tx).await.map_err(|_| TaskError::Unavailable)?;
+        let accepted: BTreeMap<String, u32> = accepted
+            .into_iter()
+            .map(|(chain, revision)| (chain, revision as u32))
+            .collect();
         task::admission_fence(&mut tx, actor, s, None).await?;
         tx.commit().await.map_err(|_| TaskError::Unavailable)?;
         Ok(heads
@@ -734,7 +743,10 @@ impl AssessmentRepository {
                     .disposition
                     .as_ref()
                     .and_then(|d| labels.get(&d.actor_id).cloned());
-                (h, label)
+                let earlier = accepted
+                    .get(h.chain_id())
+                    .is_some_and(|revision| *revision < h.revision());
+                (h, label, earlier)
             })
             .collect())
     }

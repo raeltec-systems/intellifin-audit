@@ -4846,6 +4846,158 @@
         ]
       }
     },
+    "/engagements/{engagement_id}/tasks/{task_id}/assessment/chains/{chain_id}/history": {
+      "get": {
+        "tags": [
+          "revisions"
+        ],
+        "operationId": "get_evaluation_history",
+        "parameters": [
+          {
+            "name": "X-Expected-Session",
+            "in": "header",
+            "description": "Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 128,
+              "minLength": 1
+            }
+          },
+          {
+            "name": "engagement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "chain_id",
+            "in": "path",
+            "description": "The chain's revision 1: a 24.1 evaluation ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organisation_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "next_cursor of the previous page",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{1,7}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The exact number of a chain's revisions and one page of them in revision order, each with its causes, changed facts and dispositions; earlier revisions are never changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChainHistoryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Session changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
     "/engagements/{engagement_id}/tasks/{task_id}/assessment/populations/{population_id}/members": {
       "get": {
         "tags": [
@@ -4994,6 +5146,184 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
+    "/engagements/{engagement_id}/tasks/{task_id}/assessment/revisions/{revision_id}/dispositions": {
+      "post": {
+        "tags": [
+          "revisions"
+        ],
+        "operationId": "save_disposition",
+        "parameters": [
+          {
+            "name": "engagement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "revision_id",
+            "in": "path",
+            "description": "The exact revision: a 24.1 evaluation or a revision ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organisation_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "description": "Exact configured HTTPS application origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "description": "Current session-bound token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Expected-Actor",
+            "in": "header",
+            "description": "Required refusal fence for the current session actor; never supplies author authority",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DispositionCommandRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The saved disposition (an exact retry returns the original); the revision is unchanged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DispositionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "disposition_invalid or not_replaceable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DispositionErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DispositionErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "reference_unverified (index), revision_superseded (head_id), disposition_conflict or disposition_capacity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DispositionErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DispositionErrorResponse"
                 }
               }
             }
@@ -10638,7 +10968,8 @@
           "output_digest",
           "judgment",
           "methodology_binding_id",
-          "execution_epoch"
+          "execution_epoch",
+          "chain"
         ],
         "properties": {
           "applicability": {
@@ -10647,6 +10978,17 @@
           },
           "basis_id": {
             "type": "string"
+          },
+          "chain": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ChainResponse",
+                "description": "Story 24.3a: this evaluation is revision 1 of its chain; the chain's\ncurrent head and review state (never a change to this record)."
+              }
+            ]
           },
           "criterion_id": {
             "type": "string"
@@ -11246,6 +11588,154 @@
           "reconciliation_required"
         ]
       },
+      "ChainHistoryResponse": {
+        "type": "object",
+        "description": "One page of a chain's history in revision order, with the exact number\nof its revisions and the facts the listed revisions read.",
+        "required": [
+          "chain_id",
+          "subject",
+          "total",
+          "head_id",
+          "entries",
+          "facts",
+          "next_cursor"
+        ],
+        "properties": {
+          "chain_id": {
+            "type": "string"
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HistoryEntryResponse"
+            },
+            "maxItems": 50
+          },
+          "facts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssessmentFactResponse"
+            },
+            "maxItems": 1600
+          },
+          "head_id": {
+            "type": "string"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The revision number after which the next page starts.",
+            "pattern": "^[0-9]+$"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "total": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          }
+        }
+      },
+      "ChainResponse": {
+        "type": "object",
+        "description": "The current head of one evaluation chain and its review state.",
+        "required": [
+          "chain_id",
+          "head_id",
+          "revision",
+          "basis_id",
+          "criterion_id",
+          "applicability",
+          "execution",
+          "verdict",
+          "reason",
+          "origin",
+          "causes",
+          "effective_verdict",
+          "effective_origin",
+          "review",
+          "earlier_accepted",
+          "disposition"
+        ],
+        "properties": {
+          "applicability": {
+            "type": "string"
+          },
+          "basis_id": {
+            "type": "string"
+          },
+          "causes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The head's closed causes (none for revision 1).",
+            "maxItems": 5
+          },
+          "chain_id": {
+            "type": "string"
+          },
+          "criterion_id": {
+            "type": "string"
+          },
+          "disposition": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DispositionResponse"
+              }
+            ]
+          },
+          "earlier_accepted": {
+            "type": "boolean",
+            "description": "An earlier revision of this chain was accepted (this one is not yet)."
+          },
+          "effective_origin": {
+            "type": "string",
+            "description": "`deterministic`, `model_proposal` or `human`."
+          },
+          "effective_verdict": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The verdict after the head's newest disposition."
+          },
+          "execution": {
+            "type": "string"
+          },
+          "head_id": {
+            "type": "string"
+          },
+          "origin": {
+            "type": "string"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "review": {
+            "type": "string",
+            "description": "`unreviewed`, `accepted`, `replaced` or `pending_reconsideration`."
+          },
+          "revision": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "verdict": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "ChangeSkillStatusRequest": {
         "type": "object",
         "required": [
@@ -11282,6 +11772,37 @@
           }
         },
         "additionalProperties": false
+      },
+      "ChangesResponse": {
+        "type": "object",
+        "required": [
+          "added",
+          "removed",
+          "replaced"
+        ],
+        "properties": {
+          "added": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 32
+          },
+          "removed": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 32
+          },
+          "replaced": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReplacedFactResponse"
+            },
+            "maxItems": 32
+          }
+        }
       },
       "CitationSourceResponse": {
         "type": "object",
@@ -12399,6 +12920,192 @@
           }
         }
       },
+      "DispositionCommandRequest": {
+        "type": "object",
+        "required": [
+          "key",
+          "kind",
+          "rationale",
+          "references"
+        ],
+        "properties": {
+          "concern": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`facts`, `rule`, `authority` or `scope`: exactly for needs_reconsideration."
+          },
+          "key": {
+            "type": "string",
+            "description": "Request key, idempotent per actor.",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          },
+          "kind": {
+            "type": "string",
+            "description": "`accepted`, `replaced` or `needs_reconsideration`."
+          },
+          "rationale": {
+            "type": "string",
+            "description": "1–2,000 UTF-8 bytes.",
+            "maxLength": 2000
+          },
+          "references": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DispositionReferenceRequest"
+            },
+            "maxItems": 8
+          },
+          "verdict": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`met`, `not_met` or `undetermined`: exactly for replaced."
+          }
+        },
+        "additionalProperties": false
+      },
+      "DispositionErrorResponse": {
+        "type": "object",
+        "description": "A refusal of a disposition. `head_id` names the current head of a\nsuperseded revision's chain; `index` names an unverified reference.",
+        "required": [
+          "error",
+          "head_id",
+          "index"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "head_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "index": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "DispositionReferenceRequest": {
+        "type": "object",
+        "required": [
+          "original_id",
+          "locator",
+          "quote"
+        ],
+        "properties": {
+          "locator": {
+            "type": "string",
+            "description": "An exact canonical locator (`cell:Sheet1!D7`, `bytes:16-24`, ...).",
+            "maxLength": 300
+          },
+          "original_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          },
+          "quote": {
+            "type": "string",
+            "description": "The exact quoted text at that location.",
+            "maxLength": 1000
+          }
+        },
+        "additionalProperties": false
+      },
+      "DispositionResponse": {
+        "type": "object",
+        "description": "A person's disposition of one exact revision. It never changes the\nrevision: `replaced` is a separate human verdict.",
+        "required": [
+          "id",
+          "revision_id",
+          "chain_id",
+          "revision",
+          "actor_id",
+          "actor_label",
+          "kind",
+          "concern",
+          "verdict",
+          "rationale",
+          "references",
+          "recorded_us"
+        ],
+        "properties": {
+          "actor_id": {
+            "type": "string"
+          },
+          "actor_label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The person's public label, when known."
+          },
+          "chain_id": {
+            "type": "string"
+          },
+          "concern": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`facts`, `rule`, `authority` or `scope` (needs_reconsideration only)."
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "description": "`accepted`, `replaced` or `needs_reconsideration`."
+          },
+          "rationale": {
+            "type": "string",
+            "description": "The person's words (attributed data), at most 2,000 UTF-8 bytes.",
+            "maxLength": 2000
+          },
+          "recorded_us": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9]+$"
+          },
+          "references": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CitationSourceResponse"
+            },
+            "description": "Verified evidence references; a quote is withheld from a viewer who\ncannot read its original now.",
+            "maxItems": 8
+          },
+          "revision": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "revision_id": {
+            "type": "string",
+            "description": "The exact revision: the 24.1 evaluation (revision 1) or a revision."
+          },
+          "verdict": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The person's verdict (replaced only)."
+          }
+        }
+      },
       "EngagementResponse": {
         "type": "object",
         "required": [
@@ -12806,6 +13513,120 @@
           "ready",
           "unavailable"
         ]
+      },
+      "HistoryEntryResponse": {
+        "type": "object",
+        "description": "One revision of a chain, unchanged since it was recorded.",
+        "required": [
+          "revision",
+          "id",
+          "invocation_id",
+          "predecessor_id",
+          "basis_id",
+          "criterion_id",
+          "applicability",
+          "execution",
+          "verdict",
+          "reason",
+          "origin",
+          "inputs",
+          "output_digest",
+          "judgment",
+          "causes",
+          "changes",
+          "recorded_us",
+          "dispositions"
+        ],
+        "properties": {
+          "applicability": {
+            "type": "string"
+          },
+          "basis_id": {
+            "type": "string"
+          },
+          "causes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 5
+          },
+          "changes": {
+            "$ref": "#/components/schemas/ChangesResponse"
+          },
+          "criterion_id": {
+            "type": "string"
+          },
+          "dispositions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DispositionResponse"
+            },
+            "maxItems": 16
+          },
+          "execution": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "inputs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EvaluationInputResponse"
+            },
+            "maxItems": 32
+          },
+          "invocation_id": {
+            "type": "string"
+          },
+          "judgment": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JudgmentResponse"
+              }
+            ]
+          },
+          "origin": {
+            "type": "string"
+          },
+          "output_digest": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "predecessor_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "recorded_us": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9]+$"
+          },
+          "revision": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "verdict": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
       },
       "IdentityResponse": {
         "type": "object",
@@ -16810,6 +17631,21 @@
         "enum": [
           "received"
         ]
+      },
+      "ReplacedFactResponse": {
+        "type": "object",
+        "required": [
+          "from",
+          "to"
+        ],
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          }
+        }
       },
       "RequiredFactResponse": {
         "type": "object",
