@@ -194,3 +194,46 @@ test('a refused disposition says why, names the newest revision, and saves nothi
   await expect(form.getByRole('alert')).toContainText('Newest revision: rev-bbbbbbbbb');
   await expect(review.getByRole('status')).toHaveCount(0);
 });
+
+test('an uncertain save keeps its request key when the same body is sent again', async ({ page }) => {
+  await openTask(page);
+  const keys: string[] = [];
+  await page.route('**/api/engagements/engagement-a/tasks/*/assessment/revisions/*/dispositions?*', async route => {
+    const body = route.request().postDataJSON();
+    keys.push(body.key);
+    // The first delivery is lost: it may have been saved.
+    if (keys.length === 1) return route.abort('failed');
+    await route.fulfill({ json: {
+      id: `disp-${'c'.repeat(40)}`, actor_id: 'actor-a', actor_label: 'Alex Auditor', chain_id: segregation.id, revision: '1', revision_id: segregation.id,
+      kind: body.kind, concern: body.concern, verdict: body.verdict, rationale: body.rationale, recorded_us: '1', references: [],
+    } });
+  });
+  const review = page.getByRole('group', { name: 'Review of segregation for INV-0042', exact: true });
+  const form = review.getByRole('form', { name: 'Review revision 1', exact: true });
+  const reasons = form.getByRole('textbox', { name: 'Your reasons', exact: true });
+  await reasons.fill('Agreed.');
+  await form.getByRole('button', { name: 'Save review', exact: true }).click();
+  await expect(form.getByRole('alert')).toContainText('may not have been saved');
+  // The person edits the words and restores them: the same exact request
+  // keeps its key, so a first delivery that did commit is not saved twice.
+  await reasons.fill('Agreed, with a note.');
+  await reasons.fill('Agreed.');
+  await form.getByRole('button', { name: 'Save review', exact: true }).click();
+  await expect(review.getByRole('status')).toContainText('Saved: Accepted');
+  expect(keys).toHaveLength(2);
+  expect(keys[1]).toBe(keys[0]);
+});
+
+test('a re-read work panel shows the assessment basis and coverage once each', async ({ page }) => {
+  let reads = 0;
+  page.on('request', request => { if (/\/api\/engagements\/engagement-a\/tasks\/[^/]+\/work\?/.test(request.url())) reads += 1; });
+  await openTask(page);
+  await expect(page.getByRole('group', { name: 'Review of approval for INV-0042', exact: true })).toBeVisible();
+  // The Task is ready (no worker runs here), so its work is read again on
+  // every poll; each re-render keeps one section of each kind.
+  await expect.poll(() => reads, { timeout: 20_000 }).toBeGreaterThanOrEqual(3);
+  await expect(page.locator('section[aria-label="Assessment basis"]')).toHaveCount(1);
+  // This Task has no population, so Coverage renders nothing: never a copy.
+  expect(await page.locator('section[aria-label="Coverage"]').count()).toBeLessThanOrEqual(1);
+  await expect(page.getByRole('group', { name: 'Review of approval for INV-0042', exact: true })).toHaveCount(1);
+});

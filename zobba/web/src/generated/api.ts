@@ -1450,7 +1450,10 @@ export interface components {
             chain_id: string;
             criterion_id: string;
             disposition: null | components["schemas"]["DispositionResponse"];
-            /** @description An earlier revision of this chain was accepted (this one is not yet). */
+            /**
+             * @description An earlier revision of this chain was accepted (independent of this
+             *     revision's own review state).
+             */
             earlier_accepted: boolean;
             /** @description `deterministic`, `model_proposal` or `human`. */
             effective_origin: string;
@@ -6443,7 +6446,7 @@ export interface operations {
                     "application/json": components["schemas"]["DispositionResponse"];
                 };
             };
-            /** @description disposition_invalid or not_replaceable */
+            /** @description disposition_invalid, not_replaceable, or verdict_not_decidable (a person's met or not_met on a head that is not applicable, failed or under an unverified authority) */
             400: {
                 headers: {
                     [name: string]: unknown;
