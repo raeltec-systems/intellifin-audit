@@ -1223,8 +1223,9 @@ async fn criteria_facts_and_evaluations_are_checked_records_of_one_basis() {
         1,
         "missing, unavailable, unsupported, failed and unverified never become not_met"
     );
-    // Asking again gives the same output digest; nothing is rewritten.
-    assert!(bodies[3].contains("re-evaluating gives the same output digest"));
+    // A replayed answer reports the records it already wrote; asking again
+    // records nothing new (the count below) and nothing is rewritten.
+    assert!(bodies[3].contains("- Evaluation eval-"));
     // The feedback is attributed data inside the untrusted-content envelope.
     assert!(bodies[3].contains("[zobba-data class=model-output source=assessment-feedback]"));
     assert!(!bodies[3].contains("(platform facts)"));
