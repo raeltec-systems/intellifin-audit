@@ -5050,11 +5050,21 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "next_cursor of the previous page",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^exc-[0-9a-f]{40}$"
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "Every exception of the Task with its derived status, exact counts by status, and the newest effective summaries",
+            "description": "One page (50) of the Task's exceptions with their derived status, exact counts by status over all of them, and the newest effective summaries",
             "content": {
               "application/json": {
                 "schema": {
@@ -5064,7 +5074,7 @@
             }
           },
           "400": {
-            "description": "",
+            "description": "exception_cursor_invalid for a cursor that names no exception of this Task",
             "content": {
               "application/json": {
                 "schema": {
@@ -5195,7 +5205,7 @@
           {
             "name": "cursor",
             "in": "query",
-            "description": "next_cursor of the previous page",
+            "description": "next_cursor of the previous page (the last listed occurrence's place)",
             "required": false,
             "schema": {
               "type": "string",
@@ -5205,7 +5215,7 @@
         ],
         "responses": {
           "200": {
-            "description": "One exception, one page of its occurrences (oldest first, 50 a page) and every disposition; occurrences are never changed",
+            "description": "One exception, one page of its occurrences (in their order, 50 a page) and every disposition; occurrences are never changed",
             "content": {
               "application/json": {
                 "schema": {
@@ -5236,6 +5246,16 @@
           },
           "403": {
             "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "exception_not_found: no such exception of this Task",
             "content": {
               "application/json": {
                 "schema": {
@@ -13625,12 +13645,13 @@
       },
       "EffectiveSummaryResponse": {
         "type": "object",
-        "description": "An effective summary version: the 24.2 partition over current\nrevisions and dispositions (its denominators are the 24.2 ones), with\nthe exceptions of its basis's criterion lineages by derived status. The\ndatabase recounted every number.",
+        "description": "An effective summary version: the 24.2 partition over current\nrevisions and dispositions (its denominators are the 24.2 ones), with\nthe exceptions of its own subjects under its basis's criterion lineages\nby derived status. The database recounted every number.",
         "required": [
           "id",
           "supersedes",
           "aggregation",
           "exact",
+          "conclusion",
           "summary",
           "criteria",
           "exceptions",
@@ -13642,6 +13663,10 @@
           "aggregation": {
             "type": "string",
             "description": "`effective_partition_v1`."
+          },
+          "conclusion": {
+            "type": "string",
+            "description": "The effective conclusion: the summary's own conclusion, except that\nit is `inconclusive` instead of `no_exception_found` while an\nexception of its subjects is open."
           },
           "criteria": {
             "type": "array",
@@ -13655,7 +13680,7 @@
             "items": {
               "$ref": "#/components/schemas/EffectiveLimitationResponse"
             },
-            "maxItems": 6
+            "maxItems": 7
           },
           "exact": {
             "type": "boolean",
@@ -14268,6 +14293,7 @@
           "latest_observed",
           "status_words",
           "occurrences",
+          "dispositions",
           "first_source_kind",
           "first_source_id",
           "recorded_us",
@@ -14289,6 +14315,11 @@
               }
             ]
           },
+          "dispositions": {
+            "type": "string",
+            "description": "The exact number of its dispositions; at most 16 may be saved.",
+            "pattern": "^[0-9]+$"
+          },
           "first_source_id": {
             "type": "string"
           },
@@ -14301,7 +14332,7 @@
           },
           "latest_observed": {
             "type": "string",
-            "description": "`not_met` or `not_observed`: whether the latest observation of its\nlineage and subject still shows it failing."
+            "description": "`not_met` while any current observation of its lineage and subject\nfails; otherwise `proposed_met` (an unreviewed model proposal would\nresolve it once accepted), `person_undetermined` (a person replaced\nthe failing judgment with undetermined) or `not_observed`."
           },
           "occurrences": {
             "type": "string",
@@ -14330,10 +14361,11 @@
       },
       "ExceptionsResponse": {
         "type": "object",
-        "description": "Every exception of a Task (the first 200 listed), exact counts, whether\nthe viewer may close or reopen one, and the newest effective summaries.",
+        "description": "One page of a Task's exceptions (50, C-ordered by subject, criterion\nlineage and ID), the exact counts by status over all of them, whether the\nviewer may close or reopen one, and the newest effective summaries.",
         "required": [
           "exceptions",
           "counts",
+          "next_cursor",
           "may_close",
           "not_remediation",
           "effective_summaries",
@@ -14341,7 +14373,8 @@
         ],
         "properties": {
           "counts": {
-            "$ref": "#/components/schemas/ExceptionCountsResponse"
+            "$ref": "#/components/schemas/ExceptionCountsResponse",
+            "description": "Exact counts over every exception of the Task, never over the page."
           },
           "effective_summaries": {
             "type": "array",
@@ -14355,11 +14388,19 @@
             "items": {
               "$ref": "#/components/schemas/ExceptionResponse"
             },
-            "maxItems": 200
+            "maxItems": 50
           },
           "may_close": {
             "type": "boolean",
             "description": "The viewer is an Audit manager or the Task's accountable person."
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The `cursor` of the next page, when more exceptions follow.",
+            "pattern": "^exc-[0-9a-f]{40}$"
           },
           "not_remediation": {
             "type": "string",
@@ -17862,7 +17903,8 @@
           "basis_id",
           "origin",
           "evidence",
-          "source_us"
+          "source_us",
+          "seq"
         ],
         "properties": {
           "basis_id": {
@@ -17895,6 +17937,11 @@
               "string",
               "null"
             ]
+          },
+          "seq": {
+            "type": "string",
+            "description": "Its place in the exception's order (commit order, never clock time).",
+            "pattern": "^[0-9]+$"
           },
           "source_id": {
             "type": "string"

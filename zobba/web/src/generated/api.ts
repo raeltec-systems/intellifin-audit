@@ -1911,12 +1911,18 @@ export interface components {
         /**
          * @description An effective summary version: the 24.2 partition over current
          *     revisions and dispositions (its denominators are the 24.2 ones), with
-         *     the exceptions of its basis's criterion lineages by derived status. The
-         *     database recounted every number.
+         *     the exceptions of its own subjects under its basis's criterion lineages
+         *     by derived status. The database recounted every number.
          */
         EffectiveSummaryResponse: {
             /** @description `effective_partition_v1`. */
             aggregation: string;
+            /**
+             * @description The effective conclusion: the summary's own conclusion, except that
+             *     it is `inconclusive` instead of `no_exception_found` while an
+             *     exception of its subjects is open.
+             */
+            conclusion: string;
             criteria: components["schemas"]["EffectiveCriterionResponse"][];
             effective_limitations: components["schemas"]["EffectiveLimitationResponse"][];
             /** @description Counts are lower bounds when false; the total is then not known. */
@@ -2095,13 +2101,17 @@ export interface components {
             /** @description The criterion lineage (its first version's ID). */
             criterion_root: string;
             disposition: null | components["schemas"]["ExceptionDispositionResponse"];
+            /** @description The exact number of its dispositions; at most 16 may be saved. */
+            dispositions: string;
             first_source_id: string;
             /** @description The record its first occurrence names. */
             first_source_kind: string;
             id: string;
             /**
-             * @description `not_met` or `not_observed`: whether the latest observation of its
-             *     lineage and subject still shows it failing.
+             * @description `not_met` while any current observation of its lineage and subject
+             *     fails; otherwise `proposed_met` (an unreviewed model proposal would
+             *     resolve it once accepted), `person_undetermined` (a person replaced
+             *     the failing judgment with undetermined) or `not_observed`.
              */
             latest_observed: string;
             /** @description The exact number of its occurrences. */
@@ -2121,15 +2131,19 @@ export interface components {
             subject: string;
         };
         /**
-         * @description Every exception of a Task (the first 200 listed), exact counts, whether
-         *     the viewer may close or reopen one, and the newest effective summaries.
+         * @description One page of a Task's exceptions (50, C-ordered by subject, criterion
+         *     lineage and ID), the exact counts by status over all of them, whether the
+         *     viewer may close or reopen one, and the newest effective summaries.
          */
         ExceptionsResponse: {
+            /** @description Exact counts over every exception of the Task, never over the page. */
             counts: components["schemas"]["ExceptionCountsResponse"];
             effective_summaries: components["schemas"]["EffectiveSummaryResponse"][];
             exceptions: components["schemas"]["ExceptionResponse"][];
             /** @description The viewer is an Audit manager or the Task's accountable person. */
             may_close: boolean;
+            /** @description The `cursor` of the next page, when more exceptions follow. */
+            next_cursor: string | null;
             /**
              * @description The sentence an open exception the latest revision did not observe
              *     carries.
@@ -2974,6 +2988,8 @@ export interface components {
             /** @description `deterministic`, `model_proposal` or `human`. */
             origin: string;
             population_id: string | null;
+            /** @description Its place in the exception's order (commit order, never clock time). */
+            seq: string;
             source_id: string;
             /** @description `evaluation`, `revision`, `opportunity` or `disposition`. */
             source_kind: string;
@@ -6547,6 +6563,8 @@ export interface operations {
             query: {
                 organisation_id: string;
                 client_id: string;
+                /** @description next_cursor of the previous page */
+                cursor?: string;
             };
             header?: {
                 /** @description Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie */
@@ -6560,7 +6578,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Every exception of the Task with its derived status, exact counts by status, and the newest effective summaries */
+            /** @description One page (50) of the Task's exceptions with their derived status, exact counts by status over all of them, and the newest effective summaries */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6569,6 +6587,7 @@ export interface operations {
                     "application/json": components["schemas"]["ExceptionsResponse"];
                 };
             };
+            /** @description exception_cursor_invalid for a cursor that names no exception of this Task */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -6625,7 +6644,7 @@ export interface operations {
             query: {
                 organisation_id: string;
                 client_id: string;
-                /** @description next_cursor of the previous page */
+                /** @description next_cursor of the previous page (the last listed occurrence's place) */
                 cursor?: string;
             };
             header?: {
@@ -6641,7 +6660,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description One exception, one page of its occurrences (oldest first, 50 a page) and every disposition; occurrences are never changed */
+            /** @description One exception, one page of its occurrences (in their order, 50 a page) and every disposition; occurrences are never changed */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6667,6 +6686,15 @@ export interface operations {
                 };
             };
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description exception_not_found: no such exception of this Task */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

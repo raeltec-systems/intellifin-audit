@@ -33,14 +33,12 @@ test.afterEach(async ({ context }) => {
 });
 test.afterAll(async () => { if (runtime) { try { await runtime.sqlAsync(restore()); } finally { await runtime.close(); } } });
 
-/** The recorded list, with one open exception that the latest revision did
- * not observe (so its sentence says this is not remediation). */
+/** The recorded list (its INV-0054 rule exception is open and the latest
+ * revision did not observe it, so its sentence says this is not
+ * remediation). */
 const listed = (mayClose = true) => {
   const body = JSON.parse(JSON.stringify(recorded));
   body.may_close = mayClose;
-  const unobserved = body.exceptions.find((e: { subject: string; status: string; first_source_kind: string }) => e.subject === 'INV-0054' && e.first_source_kind === 'evaluation');
-  unobserved.latest_observed = 'not_observed';
-  unobserved.status_words = `Open: ${NOT_REMEDIATION}.`;
   return body;
 };
 const open = () => recorded.exceptions.find((e: { subject: string; first_source_kind: string }) => e.subject === 'INV-0054' && e.first_source_kind === 'opportunity');
@@ -76,7 +74,7 @@ async function openTask(page: Page, mayClose = true) {
     const exception = listed(mayClose).exceptions.find((e: { id: string }) => e.id === id);
     await route.fulfill({ json: {
       exception,
-      occurrences: [{ source_kind: exception.first_source_kind, source_id: exception.first_source_id, population_id: exception.first_source_kind === 'opportunity' ? 'pop-1' : null, member_ordinal: exception.first_source_kind === 'opportunity' ? '2' : null, criterion_id: exception.criterion_root, basis_id: 'basis-1', origin: exception.first_source_kind === 'opportunity' ? 'deterministic' : 'model_proposal', evidence: ['0'.repeat(64)], source_us: '1' }],
+      occurrences: [{ source_kind: exception.first_source_kind, source_id: exception.first_source_id, population_id: exception.first_source_kind === 'opportunity' ? 'pop-1' : null, member_ordinal: exception.first_source_kind === 'opportunity' ? '2' : null, criterion_id: exception.criterion_root, basis_id: 'basis-1', origin: exception.first_source_kind === 'opportunity' ? 'deterministic' : 'model_proposal', evidence: ['0'.repeat(64)], source_us: '1', seq: '1' }],
       dispositions: exception.disposition ? [exception.disposition] : [],
       next_cursor: null,
     } });
@@ -93,7 +91,10 @@ test('the exceptions show their derived status, exact counts and the effective s
   const rows = section.getByRole('group', { name: 'Exception list', exact: true }).locator('tbody tr');
   await expect(rows).toHaveCount(6);
   await expect(rows.nth(0)).toContainText('Replaced by human judgment');
-  await expect(rows.nth(2)).toContainText('Closed by disposition');
+  await expect(rows.nth(3)).toContainText('Closed by disposition');
+  // INV-0051 was closed; a judgment over evidence its closure never saw
+  // reopened it.
+  await expect(rows.nth(2)).toContainText('Open: a current observation does not meet the criterion.');
   // The open exception the latest revision did not observe says it is not
   // evidence of remediation.
   await expect(section).toContainText(`Open: ${NOT_REMEDIATION}.`);
@@ -102,8 +103,9 @@ test('the exceptions show their derived status, exact counts and the effective s
   const effective = section.locator('.coverage-summaries > li');
   await expect(effective).toHaveCount(2);
   await expect(effective.nth(1)).toContainText('supersedes');
-  await expect(effective.nth(1)).toContainText('Subjects with at least one exception: 2');
-  await expect(effective.nth(1)).toContainText('1 evaluations wait for a reconsideration a person asked for');
+  await expect(effective.nth(1)).toContainText('Subjects with at least one exception: 3');
+  await expect(effective.nth(1)).toContainText('Exceptions found; overall assessment inconclusive.');
+  await expect(effective.nth(1)).toContainText('3 exceptions of these subjects are open: while one is open, no summary concludes that no exception exists.');
   await expect(page.locator('body')).not.toContainText('confidence');
   await expect(page.locator('body')).not.toContainText('%');
   // WCAG 2.2 AA: the section's text keeps 4.5:1 contrast on its background.

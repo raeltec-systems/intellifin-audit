@@ -4,7 +4,7 @@ import type { Scope } from './engagements';
 import type { AssessmentFact } from './assessment';
 import { blank as blankText } from './assessment';
 import {
-  MAX_RATIONALE_BYTES, MAX_REFERENCES, errorLabel, rationaleBytes, readException, readExceptions, saveExceptionDisposition, sourceLabel, statusLabel,
+  EXCEPTION_PAGE, MAX_RATIONALE_BYTES, MAX_REFERENCES, conclusionLabel, errorLabel, rationaleBytes, readException, readExceptions, saveExceptionDisposition, sourceLabel, statusLabel,
 } from './exceptions';
 import type { EffectiveSummary, ExceptionDetail, ExceptionDispositionCommand, ExceptionDispositionResult, ExceptionView, ExceptionsList } from './exceptions';
 
@@ -33,15 +33,18 @@ export function Exceptions({ taskId, scope, session, facts, criterionKeys }: Pro
   const [list, setList] = useState<ExceptionsList | null>(null);
   const [error, setError] = useState('');
   const [generation, setGeneration] = useState(0);
+  // The cursors of the pages before this one (the first page has none).
+  const [pages, setPages] = useState<(string | null)[]>([null]);
+  const after = pages[pages.length - 1] ?? null;
   useEffect(() => {
     const controller = new AbortController();
-    readExceptions(scope, taskId, session, controller.signal).then(value => {
+    readExceptions(scope, taskId, after, session, controller.signal).then(value => {
       if (!controller.signal.aborted) { setList(value); setError(''); }
     }, () => {
       if (!controller.signal.aborted) setError('The exceptions could not be read now. Nothing is shown in their place.');
     });
     return () => controller.abort();
-  }, [scope, taskId, session, generation]);
+  }, [scope, taskId, session, generation, after]);
   if (error) return <section className="task-exceptions" aria-label="Exceptions"><h4>Exceptions</h4><p role="alert" className="form-error">{error}</p></section>;
   if (!list || (list.counts.total === '0' && !list.effective_summaries.length)) return null;
   const key = (root: string) => criterionKeys.get(root) ?? root.slice(0, 13);
@@ -56,7 +59,11 @@ export function Exceptions({ taskId, scope, session, facts, criterionKeys }: Pro
       <li>Replaced by human judgment: {number(c.replaced_by_human_judgment)}</li>
       <li>Closed by disposition: {number(c.closed_by_disposition)}</li>
     </ul>
-    {BigInt(list.exceptions.length) < BigInt(c.total) ? <p className="work-omitted">{number((BigInt(c.total) - BigInt(list.exceptions.length)).toString())} more exceptions are counted but not listed; the first {list.exceptions.length} are.</p> : null}
+    {BigInt(list.exceptions.length) < BigInt(c.total) ? <p className="work-omitted">Page {pages.length}: {plural(String(list.exceptions.length), 'exception')} of {number(c.total)} are listed; the counts above are over every one of them.</p> : null}
+    {pages.length > 1 || list.next_cursor ? <nav className="exception-pages" aria-label="Exception pages">
+      <button type="button" className="text-button" disabled={pages.length <= 1} onClick={() => setPages(p => p.slice(0, -1))}>Previous {EXCEPTION_PAGE}</button>
+      <button type="button" className="text-button" disabled={!list.next_cursor} onClick={() => { const next = list.next_cursor; if (next) setPages(p => [...p, next]); }}>Next {EXCEPTION_PAGE}</button>
+    </nav> : null}
     {list.exceptions.length ? <div className="coverage-scroll" role="group" aria-label="Exception list" tabIndex={0}><table className="coverage-table exception-table">
       <caption>Exceptions by subject and criterion</caption>
       <thead><tr><th scope="col">Subject</th><th scope="col">Criterion</th><th scope="col">Status</th><th scope="col">Occurrences</th><th scope="col">Review</th></tr></thead>
@@ -78,7 +85,8 @@ function EffectiveView({ summary }: { summary: EffectiveSummary }) {
   const at = (value: string) => summary.exact ? number(value) : `at least ${number(value)}`;
   const x = summary.exceptions;
   return <li>
-    <p className="coverage-conclusion"><strong>Effective summary {short(summary.id)}</strong>{summary.supersedes ? <> · supersedes {short(summary.supersedes)}</> : null}</p>
+    <p className="coverage-conclusion"><strong>Effective summary {short(summary.id)}</strong>{summary.supersedes ? <> · supersedes {short(summary.supersedes)}</> : null}: {conclusionLabel[summary.conclusion]}</p>
+    {summary.conclusion !== s.conclusion ? <p className="context-note">An exception of these subjects is open, so this summary does not conclude that no exception exists (the coverage count alone found none).</p> : null}
     <ul aria-label={`Effective counts of ${summary.id.slice(0, 18)}`}>
       <li>Subjects with at least one exception: {at(s.failing_subjects)}</li>
       <li>Meeting every criterion that applies: {at(s.meets_every_applicable)}</li>
@@ -100,13 +108,15 @@ function ExceptionRow({ exception, criterion, taskId, scope, session, facts, may
   const [error, setError] = useState('');
   const request = useRef<AbortController | null>(null);
   useEffect(() => () => request.current?.abort(), []);
-  const load = () => {
+  const load = (after: string | null = null) => {
     request.current?.abort();
     const controller = new AbortController();
     request.current = controller;
     setError('');
-    readException(scope, taskId, exception.id, null, session, controller.signal).then(value => {
-      if (!controller.signal.aborted) setDetail(value);
+    readException(scope, taskId, exception.id, after, session, controller.signal).then(value => {
+      if (controller.signal.aborted) return;
+      // A later page adds its occurrences after the ones already shown.
+      setDetail(previous => after && previous ? { ...value, occurrences: [...previous.occurrences, ...value.occurrences] } : value);
     }, () => {
       if (!controller.signal.aborted) setError('This exception could not be read now. Nothing is shown in its place.');
     });
@@ -127,10 +137,10 @@ function ExceptionRow({ exception, criterion, taskId, scope, session, facts, may
       {open ? <div role="region" aria-label={`Exception ${criterion} for ${exception.subject}`}>
         {error ? <p role="alert" className="form-error">{error}</p> : null}
         {detail ? <>
-          <ol className="exception-occurrences" aria-label="Occurrences">{detail.occurrences.map(o => <li key={`${o.source_kind}/${o.source_id}`}>
+          <ol className="exception-occurrences" aria-label="Occurrences">{detail.occurrences.map(o => <li key={o.seq}>
             Not met in {sourceLabel[o.source_kind]} {short(o.source_id)} · {o.origin === 'human' ? "a person's verdict" : o.origin === 'deterministic' ? 'rule evaluated by the platform' : 'judgment proposed by Zobba'}
           </li>)}</ol>
-          {detail.next_cursor ? <p className="work-omitted">More occurrences are recorded than shown.</p> : null}
+          {detail.next_cursor ? <p className="work-omitted">More occurrences are recorded than shown. <button type="button" className="text-button" onClick={() => load(detail.next_cursor)}>Show the next {50}</button></p> : null}
           {detail.dispositions.length ? <ul aria-label="Dispositions">{detail.dispositions.map(x => <li key={x.id}>
             {x.kind === 'closed' ? 'Closed' : 'Reopened'} by {x.actor_label ?? 'a person'}: <span className="retained-text">{x.rationale}</span>{x.references.length ? ` · ${plural(String(x.references.length), 'reference')}` : ''}
           </li>)}</ul> : null}

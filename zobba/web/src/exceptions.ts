@@ -7,7 +7,8 @@ import { AccessError, readJsonBody, readSessionJson } from './auth.ts';
 import type { Session } from './auth.ts';
 import { parseSource } from './citation.ts';
 import { cursor, identifier } from './conversation.ts';
-import { parseSummary } from './coverage.ts';
+import { conclusions, parseSummary } from './coverage.ts';
+export { conclusionLabel } from './coverage.ts';
 import { parseScope } from './engagements.ts';
 import type { Scope } from './engagements.ts';
 import { array, boolean, digest, exact, invalid, nullable, oneOf, record, subject, text } from './assessment.ts';
@@ -22,10 +23,31 @@ export type ExceptionDetail = components['schemas']['ExceptionDetailResponse'];
 export type ExceptionDispositionCommand = components['schemas']['ExceptionDispositionCommandRequest'];
 
 export const statuses = ['open', 'resolved_by_evidence', 'replaced_by_human_judgment', 'closed_by_disposition'] as const;
-export const observed = ['not_met', 'not_observed'] as const;
+export const observed = ['not_met', 'not_observed', 'proposed_met', 'person_undetermined'] as const;
 export const sourceKinds = ['evaluation', 'revision', 'opportunity', 'disposition'] as const;
-export const limitationCodes = ['population_incomplete', 'unresolved_subjects', 'pending_reconsideration', 'unreviewed_model_proposals', 'superseded_inputs_not_reevaluated', 'sample_only'] as const;
+export const limitationCodes = ['population_incomplete', 'unresolved_subjects', 'pending_reconsideration', 'unreviewed_model_proposals', 'superseded_inputs_not_reevaluated', 'open_exceptions', 'sample_only'] as const;
 export const NOT_REMEDIATION = 'not observed in the latest revision; this is not evidence of remediation';
+/** Owner decisions 2026-10-21: an unreviewed model proposal of "met" never
+ * resolves an exception, and a person's "undetermined" is not remediation. */
+export const PROPOSED_MET = 'a model proposal suggests this is met; awaiting human review';
+export const PERSON_UNDETERMINED = 'a person marked this undetermined; this is not evidence of remediation';
+/** Exceptions one list page holds (its counts are over all of them). */
+export const EXCEPTION_PAGE = 50;
+
+/** The exact sentence the server derives for a status and what the latest
+ * observation shows (the same rule as the Rust domain). */
+export function statusWords(status: (typeof statuses)[number], latest: (typeof observed)[number]): string {
+  switch (status) {
+    case 'open':
+      return latest === 'not_met' ? 'Open: a current observation does not meet the criterion.'
+        : latest === 'proposed_met' ? `Open: ${PROPOSED_MET}.`
+          : latest === 'person_undetermined' ? `Open: ${PERSON_UNDETERMINED}.`
+            : `Open: ${NOT_REMEDIATION}.`;
+    case 'resolved_by_evidence': return 'Resolved by evidence: a later evaluation of new evidence meets the criterion.';
+    case 'replaced_by_human_judgment': return "Replaced by human judgment: a person's verdict that the criterion is met replaces the failing judgment.";
+    case 'closed_by_disposition': return 'Closed by a disposition with evidence; a later failing observation on new evidence reopens it.';
+  }
+}
 export const MAX_RATIONALE_BYTES = 2000;
 export const MAX_REFERENCES = 8;
 
@@ -72,13 +94,18 @@ export function parseException(value: unknown): ExceptionView {
     latest_observed: oneOf(v.latest_observed, observed),
     status_words: text(v.status_words, 300),
     occurrences: cursor(v.occurrences),
+    dispositions: cursor(v.dispositions),
     first_source_kind: oneOf(v.first_source_kind, sourceKinds),
     first_source_id: text(v.first_source_id, 300),
     recorded_us: nullable(v.recorded_us, cursor),
     disposition: nullable(v.disposition, parseExceptionDisposition),
   };
-  if (n(e.occurrences) < 1n
-    || (e.status === 'open' && e.latest_observed === 'not_observed') !== e.status_words.includes(NOT_REMEDIATION)
+  if (n(e.occurrences) < 1n || n(e.dispositions) > 16n
+    || e.status_words !== statusWords(e.status as (typeof statuses)[number], e.latest_observed as (typeof observed)[number])
+    // Resolved or replaced means nothing current fails or awaits review.
+    || ((e.status === 'resolved_by_evidence' || e.status === 'replaced_by_human_judgment') && e.latest_observed !== 'not_observed')
+    // A newest disposition exists exactly when one was saved.
+    || (e.disposition === null) !== (n(e.dispositions) === 0n)
     || (e.disposition !== null && e.disposition.exception_id !== e.id)
     // A closed exception's newest disposition is a closure.
     || (e.status === 'closed_by_disposition' && e.disposition?.kind !== 'closed')) invalid();
@@ -104,6 +131,7 @@ export function parseEffective(value: unknown): EffectiveSummary {
     supersedes: nullable(v.supersedes, summaryId),
     aggregation: oneOf(v.aggregation, ['effective_partition_v1'] as const),
     exact: boolean(v.exact),
+    conclusion: oneOf(v.conclusion, conclusions),
     summary: parseSummary(v.summary),
     criteria: array(v.criteria, 16).map(item => {
       const c = record(item);
@@ -120,14 +148,18 @@ export function parseEffective(value: unknown): EffectiveSummary {
         status: oneOf(l.status, statuses), latest_observed: oneOf(l.latest_observed, observed),
       });
     }),
-    effective_limitations: array(v.effective_limitations, 6).map(item => {
+    effective_limitations: array(v.effective_limitations, 7).map(item => {
       const l = record(item);
       return exact(l, { code: oneOf(l.code, limitationCodes), count: nullable(l.count, cursor), text: text(l.text, 400) });
     }),
     recorded_us: nullable(v.recorded_us, cursor),
   };
   const codes = e.effective_limitations.map(l => l.code as (typeof limitationCodes)[number]);
-  if (e.summary.id !== e.id || e.supersedes === e.id
+  // An open exception caps "no exception found" at inconclusive; the
+  // conclusion otherwise is the coverage summary's.
+  const expected = e.summary.conclusion === 'no_exception_found' && n(e.exceptions.open) > 0n ? 'inconclusive' : e.summary.conclusion;
+  if (e.summary.id !== e.id || e.supersedes === e.id || e.conclusion !== expected
+    || (n(e.exceptions.open) > 0n) !== codes.includes('open_exceptions')
     || e.criteria.length !== e.summary.criteria.length
     || e.criteria.some((c, i) => c.criterion_id !== e.summary.criteria[i]!.criterion_id)
     // Lists exactly the first 50 of the exact total.
@@ -143,8 +175,9 @@ export function parseEffective(value: unknown): EffectiveSummary {
 export function parseExceptions(value: unknown): ExceptionsList {
   const v = record(value);
   const l: ExceptionsList = {
-    exceptions: array(v.exceptions, 200).map(parseException),
+    exceptions: array(v.exceptions, EXCEPTION_PAGE).map(parseException),
     counts: parseCounts(v.counts),
+    next_cursor: nullable(v.next_cursor, exceptionId),
     may_close: boolean(v.may_close),
     not_remediation: text(v.not_remediation, 300),
     effective_summaries: array(v.effective_summaries, 16).map(parseEffective),
@@ -153,7 +186,9 @@ export function parseExceptions(value: unknown): ExceptionsList {
   if (l.not_remediation !== NOT_REMEDIATION
     || BigInt(l.exceptions.length) > n(l.counts.total)
     || BigInt(l.effective_summaries.length) > n(l.total_effective_summaries)
-    || new Set(l.exceptions.map(e => e.id)).size !== l.exceptions.length) invalid();
+    || new Set(l.exceptions.map(e => e.id)).size !== l.exceptions.length
+    // A next page follows only a full page, from its last exception.
+    || (l.next_cursor !== null && (l.exceptions.length !== EXCEPTION_PAGE || l.next_cursor !== l.exceptions[l.exceptions.length - 1]!.id))) invalid();
   return exact(v, l);
 }
 
@@ -168,7 +203,7 @@ export function parseDetail(value: unknown, exception: string): ExceptionDetail 
         population_id: nullable(o.population_id, identifier), member_ordinal: nullable(o.member_ordinal, cursor),
         criterion_id: identifier(o.criterion_id), basis_id: identifier(o.basis_id),
         origin: oneOf(o.origin, ['deterministic', 'model_proposal', 'human'] as const),
-        evidence: array(o.evidence, 32).map(digest), source_us: cursor(o.source_us),
+        evidence: array(o.evidence, 32).map(digest), source_us: cursor(o.source_us), seq: cursor(o.seq),
       };
       if ((parsed.source_kind === 'opportunity') !== (parsed.population_id !== null)
         || (parsed.population_id === null) !== (parsed.member_ordinal === null)
@@ -178,7 +213,10 @@ export function parseDetail(value: unknown, exception: string): ExceptionDetail 
     dispositions: array(v.dispositions, 16).map(parseExceptionDisposition),
     next_cursor: nullable(v.next_cursor, cursor),
   };
-  if (d.exception.id !== exception || d.dispositions.some(x => x.exception_id !== exception)) invalid();
+  if (d.exception.id !== exception || d.dispositions.some(x => x.exception_id !== exception)
+    // Occurrences in their order; a next page continues after the last.
+    || d.occurrences.some((o, i) => i > 0 && n(o.seq) <= n(d.occurrences[i - 1]!.seq))
+    || (d.next_cursor !== null && (d.occurrences.length !== 50 || d.next_cursor !== d.occurrences[d.occurrences.length - 1]!.seq))) invalid();
   return exact(v, d);
 }
 
@@ -188,8 +226,11 @@ function route(scope: Scope, path: string, query?: Record<string, string>): stri
   return `/engagements/${encodeURIComponent(scope.engagement_id)}/${path}?${params}`;
 }
 
-export async function readExceptions(scope: Scope, taskId: string, session: Session | null, signal: AbortSignal): Promise<ExceptionsList> {
-  return parseExceptions(await readSessionJson(route(scope, `tasks/${identifier(taskId)}/assessment/exceptions`), session, signal));
+/** One page of the Task's exceptions; `after` is the previous page's
+ * `next_cursor`. The counts are always over every exception. */
+export async function readExceptions(scope: Scope, taskId: string, after: string | null, session: Session | null, signal: AbortSignal): Promise<ExceptionsList> {
+  const path = route(scope, `tasks/${identifier(taskId)}/assessment/exceptions`, after ? { cursor: exceptionId(after) } : undefined);
+  return parseExceptions(await readSessionJson(path, session, signal));
 }
 export async function readException(scope: Scope, taskId: string, exception: string, after: string | null, session: Session | null, signal: AbortSignal): Promise<ExceptionDetail> {
   const path = route(scope, `tasks/${identifier(taskId)}/assessment/exceptions/${exceptionId(exception)}`, after ? { cursor: cursor(after) } : undefined);
