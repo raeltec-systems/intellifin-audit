@@ -112,6 +112,7 @@ fn view() -> ExportView {
             ],
             total_label: "Subjects in scope".into(),
             total: 1_200,
+            exact: true,
         }],
         preparation: "Prepared by Zobba (agent); edited by Alex Auditor".into(),
     }

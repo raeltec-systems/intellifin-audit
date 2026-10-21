@@ -33,16 +33,16 @@ use zobba_application::{
     task::TaskError,
     work_product::{
         BlockRefusal, ClaimView, EditBlock, EditError, EditRequest, ExportError, ExportRecord,
-        ProductHead, VersionRecord, VersionView, WorkProductStore, download, export, save_edit,
-        viewer_readable, views,
+        ProductHead, ProposalState, VersionRecord, VersionView, WorkProductStore, decide, download,
+        export, save_edit, viewer_readable, views,
     },
 };
 use zobba_domain::{
     identity::valid_scope_id,
     work_product::{
         Author, Block, Content, ExportFormat, JUDGMENT_LABEL, NOT_COMPLETED, NarrativeLabel, Pin,
-        REVIEW_STATE, export::media_type, valid_block_id, valid_export_id, valid_product_id,
-        valid_version_id,
+        REVIEW_STATE, Version, export::media_type, valid_block_id, valid_export_id,
+        valid_product_id, valid_proposal_id, valid_version_id,
     },
 };
 use zobba_infrastructure::{
@@ -94,6 +94,10 @@ pub(crate) fn router(
         .route(
             "/engagements/{engagement_id}/tasks/{task_id}/work-products/{product_id}/exports/{export_id}/content",
             get(content),
+        )
+        .route(
+            "/engagements/{engagement_id}/tasks/{task_id}/work-products/{product_id}/proposals/{proposal_id}/decision",
+            post(decision),
         )
         .with_state(WorkProductState {
             identity,
@@ -160,6 +164,9 @@ pub struct WorkProductSummaryResponse {
     /// Exact count of claims needing refresh now.
     #[schema(pattern = "^[0-9]+$")]
     pub refresh: String,
+    /// Exact count of coverage and exceptions blocks needing refresh now.
+    #[schema(pattern = "^[0-9]+$")]
+    pub platform_refresh: String,
     /// Required template sections with no content, in template order.
     #[schema(max_items = 64)]
     pub missing_required: Vec<String>,
@@ -179,8 +186,9 @@ pub struct WorkProductShelfResponse {
     pub next_cursor: Option<String>,
 }
 
-/// One checked assertion of a claim. A quote's value is withheld from a
-/// viewer who may not read its original now.
+/// One checked assertion of a claim. A quote's value (or a fact's) is
+/// withheld from a viewer who may not read its original (or any of its
+/// verified sources) now.
 #[derive(Serialize, ToSchema)]
 pub struct WorkProductAssertionResponse {
     pub kind: String,
@@ -222,7 +230,8 @@ pub struct WorkProductClaimResponse {
     pub refresh: Vec<String>,
     #[schema(max_items = 6)]
     pub refresh_words: Vec<String>,
-    /// A quote this viewer may not read now (withheld, never stale).
+    /// A quote or fact this viewer may not read now (withheld, never stale):
+    /// the claim's sentence, which restates it, is withheld too.
     pub withheld: bool,
     /// The platform coverage line of its summary or basis.
     #[schema(required = true)]
@@ -239,6 +248,9 @@ pub struct WorkProductClaimResponse {
 pub struct WorkProductBlockResponse {
     #[schema(pattern = "^blk-[0-9a-f]{40}$")]
     pub id: String,
+    /// Its 0-based position in the version (an editor keeps this order).
+    #[schema(pattern = "^[0-9]+$")]
+    pub ordinal: String,
     pub section_id: String,
     /// `heading`, `narrative`, `claim`, `coverage`, `exceptions` or
     /// `limitations`.
@@ -249,9 +261,12 @@ pub struct WorkProductBlockResponse {
     /// "Zobba's judgment — not checked against records" on a judgment block.
     #[schema(required = true)]
     pub label_words: Option<String>,
-    /// A heading's or narrative's text, or a claim's sentence.
+    /// A heading's or narrative's text, or a claim's sentence (absent when
+    /// the sentence restates a record withheld for this viewer).
     #[schema(required = true)]
     pub text: Option<String>,
+    /// The claim's sentence is withheld for this viewer.
+    pub text_withheld: bool,
     #[schema(required = true)]
     pub record_id: Option<String>,
     pub author_kind: String,
@@ -262,8 +277,71 @@ pub struct WorkProductBlockResponse {
     #[schema(required = true)]
     pub claim: Option<WorkProductClaimResponse>,
     /// Platform lines of a coverage, exceptions or limitations block.
-    #[schema(max_items = 256)]
+    #[schema(max_items = 512)]
     pub lines: Vec<String>,
+    /// Closed reasons a coverage or exceptions block needs refresh now.
+    #[schema(max_items = 6)]
+    pub refresh: Vec<String>,
+    #[schema(max_items = 6)]
+    pub refresh_words: Vec<String>,
+}
+
+/// The person's confirmed request an agent's version answers.
+#[derive(Serialize, ToSchema)]
+pub struct WorkProductChangeRequestResponse {
+    pub requested_by: String,
+    #[schema(required = true)]
+    pub requested_by_label: Option<String>,
+    pub request_id: String,
+    #[schema(pattern = "^wpp-[0-9a-f]{40}$")]
+    pub proposal_id: String,
+    #[schema(pattern = "^wpd-[0-9a-f]{40}$")]
+    pub confirmation_id: String,
+    /// "Changed by the agent at <person>'s request".
+    pub words: String,
+}
+
+/// One block a proposal changes or removes: its text before and after.
+#[derive(Serialize, ToSchema)]
+pub struct WorkProductProposalChangeResponse {
+    #[schema(pattern = "^blk-[0-9a-f]{40}$")]
+    pub block_id: String,
+    /// `changed` or `removed`.
+    pub change: String,
+    #[schema(required = true)]
+    pub before: Option<String>,
+    #[schema(required = true)]
+    pub after: Option<String>,
+}
+
+/// A person's decision on a proposal.
+#[derive(Serialize, ToSchema)]
+pub struct WorkProductDecisionResponse {
+    #[schema(pattern = "^wpd-[0-9a-f]{40}$")]
+    pub id: String,
+    /// `confirmed` or `declined`.
+    pub decision: String,
+    #[schema(required = true, pattern = "^[0-9]+$")]
+    pub recorded_us: Option<String>,
+}
+
+/// The agent's proposal, at this viewer's request, to change or remove
+/// their blocks of this version. Only the person who asked sees it and may
+/// confirm or decline it.
+#[derive(Serialize, ToSchema)]
+pub struct WorkProductProposalResponse {
+    #[schema(pattern = "^wpp-[0-9a-f]{40}$")]
+    pub id: String,
+    pub request_id: String,
+    #[schema(pattern = "^wpv-[0-9a-f]{40}$")]
+    pub version_id: String,
+    pub title: String,
+    #[schema(max_items = 64)]
+    pub changes: Vec<WorkProductProposalChangeResponse>,
+    #[schema(required = true)]
+    pub decision: Option<WorkProductDecisionResponse>,
+    #[schema(required = true, pattern = "^[0-9]+$")]
+    pub recorded_us: Option<String>,
 }
 
 /// One template section with its blocks.
@@ -297,14 +375,24 @@ pub struct WorkProductVersionResponse {
     pub title: String,
     pub kind: String,
     pub template: String,
+    /// `statement_figures_v1` or `statement_figures_v2`.
     pub figure_rule: String,
     pub review_state: String,
+    /// The person's confirmed request when the agent changed their blocks.
+    #[schema(required = true)]
+    pub change_request: Option<WorkProductChangeRequestResponse>,
+    /// Proposals on this version the viewer asked for (at most 16).
+    #[schema(max_items = 16)]
+    pub proposals: Vec<WorkProductProposalResponse>,
     #[schema(max_items = 64)]
     pub sections: Vec<WorkProductSectionResponse>,
     #[schema(max_items = 512)]
     pub limitations: Vec<String>,
     #[schema(pattern = "^[0-9]+$")]
     pub refresh: String,
+    /// Exact count of coverage and exceptions blocks needing refresh now.
+    #[schema(pattern = "^[0-9]+$")]
+    pub platform_refresh: String,
     #[schema(pattern = "^[0-9]+$")]
     pub withheld: String,
     #[schema(max_items = 64)]
@@ -394,6 +482,7 @@ fn summary_response(head: &ProductHead, view: &VersionView) -> WorkProductSummar
         review_state: REVIEW_STATE.into(),
         claims: view.claims.len().to_string(),
         refresh: view.refresh.to_string(),
+        platform_refresh: view.platform_refresh.to_string(),
         missing_required: v.missing_required.clone(),
         recorded_us: head.head.recorded_us.map(|u| u.to_string()),
     }
@@ -438,7 +527,6 @@ fn assertion_response(
 }
 
 fn claim_response(
-    view: &VersionView,
     claim: &ClaimView,
     pins: &[Pin],
     originals: &Originals,
@@ -463,11 +551,11 @@ fn claim_response(
         support: claim.support.clone(),
         assertions: pins
             .iter()
-            .map(|p| {
+            .enumerate()
+            .map(|(i, p)| {
                 assertion_response(
                     p,
-                    p.kind == zobba_domain::work_product::AssertionKind::Quote
-                        && view.withheld_originals.contains(&p.record_id),
+                    claim.withheld_pins.get(i).copied().unwrap_or(true),
                     originals,
                 )
             })
@@ -477,6 +565,7 @@ fn claim_response(
 
 fn block_response(
     view: &VersionView,
+    ordinal: usize,
     block: &Block,
     labels: &BTreeMap<String, String>,
     originals: &Originals,
@@ -493,20 +582,27 @@ fn block_response(
         Content::Claim { pins, .. } => view
             .claims
             .get(&block.id)
-            .map(|c| claim_response(view, c, pins, originals)),
+            .map(|c| claim_response(c, pins, originals)),
         _ => None,
     };
     let lines = match &block.content {
         Content::Limitations => view.limitations.clone(),
         _ => view.lines.get(&block.id).cloned().unwrap_or_default(),
     };
+    let text_withheld = view
+        .claims
+        .get(&block.id)
+        .is_some_and(|c| c.statement_withheld);
+    let platform = view.platform.get(&block.id).cloned().unwrap_or_default();
     WorkProductBlockResponse {
         id: block.id.clone(),
+        ordinal: ordinal.to_string(),
         section_id: block.section.clone(),
         kind: block.content.kind().as_str().into(),
         label: label.map(|l| l.as_str().into()),
         label_words: (label == Some(NarrativeLabel::Judgment)).then(|| JUDGMENT_LABEL.into()),
-        text,
+        text: if text_withheld { None } else { text },
+        text_withheld,
         record_id: record,
         author_kind: block.author.kind().as_str().into(),
         author_id: block.author.id().into(),
@@ -517,6 +613,47 @@ fn block_response(
         authored_in_version: block.authored_in.clone(),
         claim,
         lines,
+        refresh: platform.iter().map(|r| r.as_str().into()).collect(),
+        refresh_words: platform.iter().map(|r| r.words().into()).collect(),
+    }
+}
+
+/// The text of one block of a version, for a proposal's before and after.
+fn block_text(version: &Version, block_id: &str) -> Option<String> {
+    version
+        .blocks
+        .iter()
+        .find(|b| b.id == block_id)
+        .and_then(|b| b.text())
+        .map(String::from)
+}
+
+fn proposal_response(base: &Version, state: &ProposalState) -> WorkProductProposalResponse {
+    let p = &state.proposal;
+    WorkProductProposalResponse {
+        id: p.id.clone(),
+        request_id: p.request_id.clone(),
+        version_id: p.version.id.clone(),
+        title: p.version.title.clone(),
+        changes: p
+            .changes
+            .iter()
+            .map(|(block, kind)| WorkProductProposalChangeResponse {
+                block_id: block.clone(),
+                change: kind.as_str().into(),
+                before: block_text(base, block),
+                after: block_text(&p.version, block),
+            })
+            .collect(),
+        decision: state
+            .decision
+            .as_ref()
+            .map(|d| WorkProductDecisionResponse {
+                id: d.id.clone(),
+                decision: if d.confirmed { "confirmed" } else { "declined" }.into(),
+                recorded_us: d.recorded_us.map(|u| u.to_string()),
+            }),
+        recorded_us: p.recorded_us.map(|u| u.to_string()),
     }
 }
 
@@ -526,8 +663,15 @@ fn version_response(
     view: &VersionView,
     labels: &BTreeMap<String, String>,
     originals: &Originals,
+    proposals: &[ProposalState],
 ) -> WorkProductVersionResponse {
     let v = &view.record.version;
+    let ordinals: BTreeMap<&str, usize> = v
+        .blocks
+        .iter()
+        .enumerate()
+        .map(|(i, b)| (b.id.as_str(), i))
+        .collect();
     let sections = v
         .template
         .sections
@@ -537,7 +681,15 @@ fn version_response(
                 .blocks
                 .iter()
                 .filter(|b| b.section == s.id)
-                .map(|b| block_response(view, b, labels, originals))
+                .map(|b| {
+                    block_response(
+                        view,
+                        ordinals.get(b.id.as_str()).copied().unwrap_or(0),
+                        b,
+                        labels,
+                        originals,
+                    )
+                })
                 .collect();
             WorkProductSectionResponse {
                 id: s.id.clone(),
@@ -565,11 +717,27 @@ fn version_response(
         title: v.title.clone(),
         kind: v.kind.as_str().into(),
         template: v.template.label(),
-        figure_rule: zobba_domain::work_product::FIGURE_RULE.into(),
+        figure_rule: v.figure_rule.as_str().into(),
         review_state: REVIEW_STATE.into(),
+        change_request: v.change.as_ref().map(|c| {
+            let label = labels.get(&c.requested_by).cloned();
+            WorkProductChangeRequestResponse {
+                words: format!(
+                    "Changed by the agent at {}'s request",
+                    label.as_deref().unwrap_or(&c.requested_by)
+                ),
+                requested_by: c.requested_by.clone(),
+                requested_by_label: label,
+                request_id: c.request_id.clone(),
+                proposal_id: c.proposal_id.clone(),
+                confirmation_id: c.confirmation_id.clone(),
+            }
+        }),
+        proposals: proposals.iter().map(|p| proposal_response(v, p)).collect(),
         sections,
         limitations: view.limitations.clone(),
         refresh: view.refresh.to_string(),
+        platform_refresh: view.platform_refresh.to_string(),
         withheld: view.withheld.to_string(),
         missing_required: v.missing_required.clone(),
         newer_version_id: (head.head.version.id != v.id).then(|| head.head.version.id.clone()),
@@ -583,7 +751,7 @@ fn export_response(record: &ExportRecord) -> WorkProductExportResponse {
         version_id: record.version_id.clone(),
         format: record.format.as_str().into(),
         media_type: media_type(record.format).into(),
-        renderer: zobba_domain::work_product::RENDERER.into(),
+        renderer: record.renderer.clone(),
         digest: record.digest.clone(),
         size: record.size.to_string(),
         withheld_digest: record.withheld_digest.clone(),
@@ -665,7 +833,9 @@ fn export_refusal(error: ExportError) -> Response {
         ExportError::Invalid => StatusCode::BAD_REQUEST,
         ExportError::Denied => StatusCode::FORBIDDEN,
         ExportError::NotFound => StatusCode::NOT_FOUND,
-        ExportError::Conflict | ExportError::ScopeChanged => StatusCode::CONFLICT,
+        ExportError::Conflict | ExportError::ScopeChanged | ExportError::Unfrozen => {
+            StatusCode::CONFLICT
+        }
         ExportError::Integrity | ExportError::Unavailable => StatusCode::SERVICE_UNAVAILABLE,
     };
     error_response(status, error.code())
@@ -855,12 +1025,18 @@ async fn read_version(
         .map_err(reading_failure)?
         .filter(|v| v.version.product_id == product_id)
         .ok_or_else(not_found)?;
-    let readable = viewer_readable(&state.assessments, actor, scope, &record.version)
+    let readable = viewer_readable(&state.assessments, actor, scope, task_id, &record.version)
         .await
         .map_err(reading_failure)?;
-    let mut head_readable = viewer_readable(&state.assessments, actor, scope, &head.head.version)
-        .await
-        .map_err(reading_failure)?;
+    let mut head_readable = viewer_readable(
+        &state.assessments,
+        actor,
+        scope,
+        task_id,
+        &head.head.version,
+    )
+    .await
+    .map_err(reading_failure)?;
     head_readable.extend(readable.clone());
     let digests: BTreeMap<String, String> = head_readable
         .iter()
@@ -879,14 +1055,18 @@ async fn read_version(
     let head_view = list.pop().ok_or_else(|| failure(TaskError::Unavailable))?;
     let view = list.pop().ok_or_else(|| failure(TaskError::Unavailable))?;
     let people = zobba_application::work_product::editors(&record.version);
-    let labels = zobba_application::work_product::WorkProductPeople::labels(
-        &state.assessments,
-        actor,
-        scope,
-        &people,
-    )
-    .await
-    .map_err(reading_failure)?;
+    let labels = WorkProductStore::labels(&state.assessments, actor, scope, &people)
+        .await
+        .map_err(reading_failure)?;
+    // The proposals on this version the viewer asked for: only they see
+    // the before and after, and only they decide.
+    let proposals: Vec<ProposalState> =
+        WorkProductStore::proposals(&state.assessments, actor, scope, task_id, version_id)
+            .await
+            .map_err(reading_failure)?
+            .into_iter()
+            .filter(|p| p.proposal.requested_by == actor)
+            .collect();
     let quotes: Vec<String> = record
         .version
         .claims()
@@ -899,7 +1079,7 @@ async fn read_version(
         .viewer_originals(actor, scope, &quotes)
         .await
         .map_err(reading_failure)?;
-    Ok((head, head_view, view, labels, originals))
+    Ok((head, head_view, view, labels, originals, proposals))
 }
 
 /// Engagement, Task, work product, version and claim block.
@@ -911,6 +1091,7 @@ type Read = (
     VersionView,
     BTreeMap<String, String>,
     Originals,
+    Vec<ProposalState>,
 );
 
 #[derive(Deserialize)]
@@ -961,8 +1142,8 @@ pub(crate) async fn version(
     )
     .await
     {
-        Ok((head, head_view, view, labels, originals)) => Json(version_response(
-            &head, &head_view, &view, &labels, &originals,
+        Ok((head, head_view, view, labels, originals, proposals)) => Json(version_response(
+            &head, &head_view, &view, &labels, &originals, &proposals,
         ))
         .into_response(),
         Err(response) => response,
@@ -1003,7 +1184,7 @@ pub(crate) async fn support(
     {
         return not_found();
     }
-    let (_, _, view, _, originals) = match read_version(
+    let (_, _, view, _, originals, _) = match read_version(
         &state,
         &current.identity.id,
         &scope,
@@ -1024,15 +1205,15 @@ pub(crate) async fn support(
     else {
         return not_found();
     };
-    let response = claim_response(&view, claim, pins, &originals);
+    let response = claim_response(claim, pins, &originals);
     let items = pins
         .iter()
         .zip(&claim.support)
-        .map(|(p, s)| WorkProductSupportItemResponse {
+        .enumerate()
+        .map(|(i, (p, s))| WorkProductSupportItemResponse {
             pinned: assertion_response(
                 p,
-                p.kind == zobba_domain::work_product::AssertionKind::Quote
-                    && view.withheld_originals.contains(&p.record_id),
+                claim.withheld_pins.get(i).copied().unwrap_or(true),
                 &originals,
             ),
             support: s.clone(),
@@ -1040,7 +1221,11 @@ pub(crate) async fn support(
         .collect();
     Json(WorkProductSupportResponse {
         block_id: block.id.clone(),
-        statement: statement.clone(),
+        statement: if claim.statement_withheld {
+            zobba_application::work_product::WITHHELD.into()
+        } else {
+            statement.clone()
+        },
         claim: response,
         items,
     })
@@ -1159,14 +1344,128 @@ pub(crate) async fn edit(
         )
         .await
         {
-            Ok((head, head_view, view, labels, originals)) => Json(version_response(
-                &head, &head_view, &view, &labels, &originals,
+            Ok((head, head_view, view, labels, originals, proposals)) => Json(version_response(
+                &head, &head_view, &view, &labels, &originals, &proposals,
             ))
             .into_response(),
             Err(response) => response,
         },
         Err(error) => edit_refusal(error),
     }
+}
+
+/// A person's decision on the agent's proposal to change their blocks.
+#[derive(Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WorkProductDecisionRequest {
+    /// Request key, idempotent per actor and bound to the session.
+    #[schema(min_length = 1, max_length = 128, pattern = "^[A-Za-z0-9_-]+$")]
+    pub key: String,
+    /// `confirm` records the agent's version; `decline` records nothing else.
+    pub decision: String,
+}
+
+/// The recorded decision and, when it confirms, the agent's version.
+#[derive(Serialize, ToSchema)]
+pub struct WorkProductDecisionOutcomeResponse {
+    pub decision: WorkProductDecisionResponse,
+    #[schema(required = true)]
+    pub version: Option<WorkProductVersionResponse>,
+}
+
+#[utoipa::path(post,path="/engagements/{engagement_id}/tasks/{task_id}/work-products/{product_id}/proposals/{proposal_id}/decision",operation_id="decide_work_product_proposal",security(("server_session"=[])),
+    params(("engagement_id"=String,Path),("task_id"=String,Path),("product_id"=String,Path),("proposal_id"=String,Path),("organisation_id"=String,Query),("client_id"=String,Query),("Origin"=String,Header,description="Exact configured HTTPS application origin"),("X-CSRF-Token"=String,Header,description="Current session-bound token"),("X-Expected-Actor"=String,Header,description="Required refusal fence for the current session actor",min_length=1,max_length=128,pattern="^[A-Za-z0-9_-]+$")),
+    request_body=WorkProductDecisionRequest,
+    responses((status=200,description="The decision (an exact retry returns the original); a confirmation records the agent's version, changed by the agent at this person's request, with the request and confirmation IDs",body=WorkProductDecisionOutcomeResponse),(status=400,body=WorkProductErrorResponse),(status=401,body=crate::auth::ErrorResponse),(status=403,description="access_denied: only the person who asked decides, as a currently assigned Auditor or Audit manager in their own session",body=WorkProductErrorResponse),(status=404,body=WorkProductErrorResponse),(status=409,description="stale_base, a closed refusal reason, or work_product_edit_conflict (already decided)",body=WorkProductErrorResponse),(status=429,body=crate::auth::ErrorResponse),(status=503,body=WorkProductErrorResponse)))]
+pub(crate) async fn decision(
+    State(state): State<WorkProductState>,
+    headers: HeaderMap,
+    path: Result<Path<(String, String, String, String)>, PathRejection>,
+    query: Result<Query<TaskScopeQuery>, QueryRejection>,
+    body: Result<Json<WorkProductDecisionRequest>, JsonRejection>,
+) -> Response {
+    let current = match state.identity.current(&headers).await {
+        Ok(current) => current,
+        Err(error) => return crate::auth::failure(error),
+    };
+    if !mutation_actor(&state, &headers, &current.identity.id, &current.csrf_token) {
+        return crate::auth::failure(zobba_application::identity::IdentityError::Denied);
+    }
+    let Some(token) = crate::auth::cookie(&headers, crate::auth::SESSION_COOKIE) else {
+        return crate::auth::failure(zobba_application::identity::IdentityError::Unauthenticated);
+    };
+    let (Ok(Path((engagement_id, task_id, product_id, proposal_id))), Ok(Query(query))) =
+        (path, query)
+    else {
+        return edit_refusal(EditError::Invalid);
+    };
+    let scope = match query.scope(engagement_id) {
+        Ok(scope) => scope,
+        Err(_) => return edit_refusal(EditError::Denied),
+    };
+    let Ok(Json(body)) = body else {
+        return edit_refusal(EditError::Invalid);
+    };
+    let confirm = match body.decision.as_str() {
+        "confirm" => true,
+        "decline" => false,
+        _ => return edit_refusal(EditError::Invalid),
+    };
+    if !valid_scope_id(&task_id)
+        || !valid_product_id(&product_id)
+        || !valid_proposal_id(&proposal_id)
+    {
+        return edit_refusal(EditError::Invalid);
+    }
+    let evidence = state
+        .evidence
+        .clone()
+        .with_session_hash(secret_hash(&token));
+    let reader = PersonReader {
+        metadata: &evidence,
+        objects: state.objects.as_deref(),
+        store: &state.assessments,
+    };
+    let actor = current.identity.id.clone();
+    let outcome = match decide(
+        &state.assessments,
+        &reader,
+        &actor,
+        &scope,
+        &secret_hash(&token),
+        &task_id,
+        &product_id,
+        &proposal_id,
+        &body.key,
+        confirm,
+    )
+    .await
+    {
+        Ok(outcome) => outcome,
+        Err(error) => return edit_refusal(error),
+    };
+    let decision = WorkProductDecisionResponse {
+        id: outcome.decision.id.clone(),
+        decision: if outcome.decision.confirmed {
+            "confirmed"
+        } else {
+            "declined"
+        }
+        .into(),
+        recorded_us: outcome.decision.recorded_us.map(|u| u.to_string()),
+    };
+    let version = match &outcome.version {
+        Some(v) => {
+            match read_version(&state, &actor, &scope, &task_id, &product_id, &v.version.id).await {
+                Ok((head, head_view, view, labels, originals, proposals)) => Some(
+                    version_response(&head, &head_view, &view, &labels, &originals, &proposals),
+                ),
+                Err(response) => return response,
+            }
+        }
+        None => None,
+    };
+    Json(WorkProductDecisionOutcomeResponse { decision, version }).into_response()
 }
 
 /// An export request: the format and a request key idempotent per actor.
@@ -1292,6 +1591,7 @@ pub(crate) async fn content(
         &actor,
         &scope,
         &task_id,
+        &product_id,
         &export_id,
     )
     .await

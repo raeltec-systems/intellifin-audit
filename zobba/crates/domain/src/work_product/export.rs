@@ -1,5 +1,6 @@
-//! Renderer `zobba-export-v1`: deterministic DOCX and XLSX from one exact
-//! version of a work product, by trusted code. A stored (uncompressed) ZIP
+//! Renderer `zobba-export-v2` (v1 before the Story 24.4 review round, the
+//! same layout): deterministic DOCX and XLSX from one exact version of a
+//! work product, frozen at that version, by trusted code. A stored (uncompressed) ZIP
 //! with CRC-32 and minimal OOXML parts, no timestamps and a fixed part
 //! order, so the same view always gives the same bytes. Every text is
 //! written as text (a DOCX run, an XLSX inline string), never as a formula;
@@ -181,7 +182,12 @@ pub struct ExportCoverage {
     pub line: String,
     pub partition: [(String, u64); 4],
     pub total_label: String,
+    /// The summary's stored total: its in-scope subjects, or its selected
+    /// items for a sample.
     pub total: u64,
+    /// Whether the total is exact (a complete population or a sample); an
+    /// incomplete population's is only "at least".
+    pub exact: bool,
 }
 
 /// Everything an export shows, resolved by trusted code from one exact
@@ -614,19 +620,26 @@ pub fn xlsx(view: &ExportView) -> Vec<u8> {
             t(&quote),
         ]);
     }
-    let mut coverage = vec![vec![t("Summary"), t("Subjects"), t("Exact count")]];
+    let mut coverage = vec![vec![t("Summary"), t("Subjects"), t("Count"), t("Count is")]];
     for c in &view.coverage {
         coverage.push(vec![t(&c.summary_id), t(&c.line)]);
+        // An incomplete population's counts are only "at least".
+        let kind = if c.exact { "exact" } else { "at least" };
         let first = coverage.len() + 1;
         for (label, n) in &c.partition {
-            coverage.push(vec![t(""), t(label), Cell::Number(*n)]);
+            coverage.push(vec![t(""), t(label), Cell::Number(*n), t(kind)]);
         }
         let last = coverage.len();
-        coverage.push(vec![
-            t(""),
-            t(&c.total_label),
-            Cell::Sum(format!("C{first}:C{last}"), c.total),
-        ]);
+        let sum: u64 = c.partition.iter().map(|(_, n)| *n).sum();
+        // The stored total, as a SUM only when the partition adds up to it
+        // (a recalculation then shows the same number); never a formula
+        // whose result would differ from the stored total.
+        let total = if sum == c.total {
+            Cell::Sum(format!("C{first}:C{last}"), c.total)
+        } else {
+            Cell::Number(c.total)
+        };
+        coverage.push(vec![t(""), t(&c.total_label), total, t(kind)]);
     }
     let names = ["Work product", "Claims", "Citations", "Coverage"];
     let workbook = format!(

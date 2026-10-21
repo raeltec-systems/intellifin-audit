@@ -77,6 +77,10 @@ struct State {
     readable: BTreeMap<String, (String, Option<String>)>,
     editors: Vec<String>,
     objects: BTreeMap<String, Vec<u8>>,
+    guide: Vec<GuideRequest>,
+    proposals: Vec<ProposalState>,
+    /// Object writes fail (an outage of the store).
+    objects_down: bool,
 }
 #[derive(Default)]
 struct Store {
@@ -114,6 +118,7 @@ impl Store {
                 subject: "INV-0042".into(),
                 supported: true,
                 superseded: false,
+                sources: vec![("ap-policy".into(), POLICY_SHA.into())],
             });
             s.records.exceptions.push(ExceptionNow {
                 id: hex("exc", '7'),
@@ -128,6 +133,7 @@ impl Store {
                 period: "2026-01-01/2026-12-31".into(),
                 limitations: vec!["The organisation chart is dated 2025.".into()],
                 exceptions: [1, 0, 0, 0],
+                superseded: false,
             });
             s.readable.insert(
                 "ap-policy".into(),
@@ -287,9 +293,14 @@ impl WorkProductStore for Store {
                         }
                         AssertionKind::Quote => {
                             row.registered =
-                                (pin.record_id == "ap-policy").then(|| POLICY_SHA.into())
+                                (pin.record_id == "ap-policy").then(|| POLICY_SHA.into());
+                            // Whether a replacement source corrects it.
+                            row.superseded = Some(s.records.corrected.contains(&pin.record_id));
                         }
-                        AssertionKind::Period => {}
+                        AssertionKind::Period => {
+                            // Whether a successor basis supersedes it.
+                            row.superseded = s.records.basis(&pin.record_id).map(|b| b.superseded)
+                        }
                     }
                     rows.push(row);
                 }
@@ -316,6 +327,103 @@ impl WorkProductStore for Store {
         let stored = Self::stored(version);
         s.versions.push(stored.clone());
         Ok(stored)
+    }
+    async fn labels(
+        &self,
+        _: &str,
+        _: &Scope,
+        ids: &[String],
+    ) -> Result<BTreeMap<String, String>, ReadingError> {
+        Ok(ids
+            .iter()
+            .map(|i| (i.clone(), format!("Person {i}")))
+            .collect())
+    }
+    async fn guide_requests(
+        &self,
+        _: &str,
+        _: &Scope,
+        _: &str,
+    ) -> Result<Vec<GuideRequest>, ReadingError> {
+        Ok(self.state.lock().unwrap().guide.clone())
+    }
+    async fn guide_request(
+        &self,
+        _: &str,
+        _: &Scope,
+        _: &str,
+        command_id: &str,
+    ) -> Result<Option<GuideRequest>, ReadingError> {
+        Ok(self
+            .state
+            .lock()
+            .unwrap()
+            .guide
+            .iter()
+            .find(|g| g.command_id == command_id)
+            .cloned())
+    }
+    async fn invocation_proposal(
+        &self,
+        _: &ClaimBasis,
+        invocation_id: &str,
+    ) -> Result<Option<ProposalRecord>, ReadingError> {
+        Ok(self
+            .state
+            .lock()
+            .unwrap()
+            .proposals
+            .iter()
+            .find(|p| p.proposal.invocation_id == invocation_id)
+            .map(|p| p.proposal.clone()))
+    }
+    async fn record_proposal(
+        &self,
+        _: &ClaimBasis,
+        proposal: &ProposalRecord,
+    ) -> Result<ProposalRecord, WriteError> {
+        assert!(
+            proposal.version.is_valid(),
+            "trusted code wrote an invalid proposal"
+        );
+        self.state.lock().unwrap().proposals.push(ProposalState {
+            proposal: proposal.clone(),
+            decision: None,
+        });
+        Ok(proposal.clone())
+    }
+    async fn proposals(
+        &self,
+        _: &str,
+        _: &Scope,
+        _: &str,
+        base: &str,
+    ) -> Result<Vec<ProposalState>, ReadingError> {
+        Ok(self
+            .state
+            .lock()
+            .unwrap()
+            .proposals
+            .iter()
+            .filter(|p| p.proposal.base_version_id == base)
+            .cloned()
+            .collect())
+    }
+    async fn proposal(
+        &self,
+        _: &str,
+        _: &Scope,
+        _: &str,
+        id: &str,
+    ) -> Result<Option<ProposalState>, ReadingError> {
+        Ok(self
+            .state
+            .lock()
+            .unwrap()
+            .proposals
+            .iter()
+            .find(|p| p.proposal.id == id)
+            .cloned())
     }
 }
 impl WorkProductPeople for Store {
@@ -419,16 +527,48 @@ impl WorkProductPeople for Store {
         self.state.lock().unwrap().exports.push(record.clone());
         Ok(record.clone())
     }
-    async fn labels(
+    async fn decision_by_key(
+        &self,
+        actor: &str,
+        _: &Scope,
+        _: &str,
+        key: &str,
+    ) -> Result<Option<DecisionRecord>, EditError> {
+        Ok(self
+            .state
+            .lock()
+            .unwrap()
+            .proposals
+            .iter()
+            .filter_map(|p| p.decision.clone())
+            .find(|d| d.actor_id == actor && d.key == key))
+    }
+    async fn record_decision(
         &self,
         _: &str,
         _: &Scope,
-        ids: &[String],
-    ) -> Result<BTreeMap<String, String>, ReadingError> {
-        Ok(ids
-            .iter()
-            .map(|i| (i.clone(), format!("Person {i}")))
-            .collect())
+        _: &str,
+        decision: &DecisionRecord,
+        version: Option<&Version>,
+    ) -> Result<(DecisionRecord, Option<VersionRecord>), EditError> {
+        let mut s = self.state.lock().unwrap();
+        let p = s
+            .proposals
+            .iter_mut()
+            .find(|p| p.proposal.id == decision.proposal_id)
+            .ok_or(EditError::NotFound)?;
+        if p.decision.is_some() {
+            return Err(EditError::Conflict);
+        }
+        p.decision = Some(decision.clone());
+        let stored = version.map(|v| {
+            assert!(v.is_valid(), "trusted code wrote an invalid version");
+            Self::stored(v)
+        });
+        if let Some(v) = &stored {
+            s.versions.push(v.clone());
+        }
+        Ok((decision.clone(), stored))
     }
     async fn readable(
         &self,
@@ -455,6 +595,9 @@ impl EvidenceObjects for Store {
     }
     async fn put_if_absent(&self, id: &str, bytes: Vec<u8>) -> Result<String, ObjectError> {
         let mut s = self.state.lock().unwrap();
+        if s.objects_down {
+            return Err(ObjectError::Unavailable);
+        }
         if s.objects.contains_key(id) {
             return Err(ObjectError::AlreadyExists);
         }
@@ -619,6 +762,7 @@ fn draft(base: Option<String>, blocks: Vec<ProposedBlock>) -> Draft {
         template_version: "v1".into(),
         base_version: base,
         blocks,
+        request: None,
     }
 }
 fn first_draft() -> Draft {
@@ -1231,8 +1375,18 @@ fn currency_is_derived_on_read_and_withheld_quotes_are_never_stale() {
         .collect();
     assert_eq!(numbers.len(), 4);
     assert!(numbers.windows(2).all(|w| w[0] < w[1]), "{numbers:?}");
-    assert_eq!(view.withheld, 1, "the viewer may not read the policy");
+    // The quote and the fact verified against the policy are both withheld
+    // from a viewer who may not read the policy, and so are their claims'
+    // sentences, which restate them.
+    assert_eq!(view.withheld, 2, "the viewer may not read the policy");
     assert!(view.withheld_originals.contains("ap-policy"));
+    assert_eq!(
+        view.claims
+            .values()
+            .filter(|c| c.statement_withheld)
+            .count(),
+        2
+    );
     assert!(view.claims.values().any(|c| {
         c.support
             .iter()
@@ -1244,12 +1398,12 @@ fn currency_is_derived_on_read_and_withheld_quotes_are_never_stale() {
         .remove(0);
     let line = product_line(&head, &view);
     assert!(
-        line.contains("4 need refresh") && line.contains("1 quotes withheld"),
+        line.contains("4 need refresh") && line.contains("1 platform blocks need refresh"),
         "{line}"
     );
     assert_eq!(store.state.lock().unwrap().versions[0], v1);
     // The message shows each block by ID with its author class.
-    let text = products_text(&[(head, view)]).unwrap();
+    let text = products_text(&[(head, view)], &[]).unwrap();
     assert!(
         text.contains("NEEDS REFRESH (evaluation_revised)"),
         "{text}"
@@ -1322,15 +1476,32 @@ fn exports_are_deterministic_and_bound_to_the_viewers_withheld_set() {
         .unwrap_err(),
         ExportError::Conflict
     );
-    let (record, bytes) =
-        run(download(&store, &store, "actor", &scope, "task", &first.id)).unwrap();
+    let (record, bytes) = run(download(
+        &store,
+        &store,
+        "actor",
+        &scope,
+        "task",
+        &v1.product_id,
+        &first.id,
+    ))
+    .unwrap();
     assert_eq!(record, first);
     assert_eq!(sha256_hex(&bytes), first.digest);
     // The viewer loses access to the policy: their withheld set is no
     // longer the export's.
     store.state.lock().unwrap().readable.clear();
     assert_eq!(
-        run(download(&store, &store, "actor", &scope, "task", &first.id)).unwrap_err(),
+        run(download(
+            &store,
+            &store,
+            "actor",
+            &scope,
+            "task",
+            &v1.product_id,
+            &first.id
+        ))
+        .unwrap_err(),
         ExportError::ScopeChanged
     );
     let theirs = run(export(
@@ -1347,7 +1518,13 @@ fn exports_are_deterministic_and_bound_to_the_viewers_withheld_set() {
     .unwrap();
     assert_ne!(theirs.withheld_digest, first.withheld_digest);
     let (_, bytes) = run(download(
-        &store, &store, "actor", &scope, "task", &theirs.id,
+        &store,
+        &store,
+        "actor",
+        &scope,
+        "task",
+        &v1.product_id,
+        &theirs.id,
     ))
     .unwrap();
     let parts = zobba_domain::work_product::export::unzip(&bytes).unwrap();
@@ -1361,23 +1538,65 @@ fn exports_are_deterministic_and_bound_to_the_viewers_withheld_set() {
     )
     .unwrap();
     assert!(document.contains("withheld for this viewer"));
+    // The export of another work product is not found under this one.
+    assert_eq!(
+        run(download(
+            &store,
+            &store,
+            "actor",
+            &scope,
+            "task",
+            &hex("wp", 'f'),
+            &theirs.id
+        ))
+        .unwrap_err(),
+        ExportError::NotFound
+    );
     // Altered stored bytes are refused.
+    let object = export_object(&scope, &theirs);
+    let kept = store.state.lock().unwrap().objects[&object].clone();
     store
         .state
         .lock()
         .unwrap()
         .objects
-        .insert(theirs.id.clone(), b"changed".to_vec());
+        .insert(object.clone(), b"changed".to_vec());
     assert_eq!(
         run(download(
-            &store, &store, "actor", &scope, "task", &theirs.id
+            &store,
+            &store,
+            "actor",
+            &scope,
+            "task",
+            &v1.product_id,
+            &theirs.id
         ))
         .unwrap_err(),
         ExportError::Integrity
     );
-    // Stale at export: the count is recorded.
+    // A new export of the same content whose stored object was altered is
+    // refused too: stored bytes are adopted only when they are the rendered
+    // ones.
+    assert_eq!(
+        run(export(
+            &store,
+            &store,
+            "actor",
+            &scope,
+            "s",
+            "task",
+            &v1.id,
+            ExportFormat::Docx,
+            "x5",
+        ))
+        .unwrap_err(),
+        ExportError::Integrity
+    );
+    store.state.lock().unwrap().objects.insert(object, kept);
+    // Frozen at the version: a summary superseded later changes nothing in
+    // the bytes (the app shows the claim as needing refresh).
     store.state.lock().unwrap().records.summaries[0].superseded = true;
-    let stale = run(export(
+    let later = run(export(
         &store,
         &store,
         "actor",
@@ -1385,11 +1604,32 @@ fn exports_are_deterministic_and_bound_to_the_viewers_withheld_set() {
         "s",
         "task",
         &v1.id,
-        ExportFormat::Xlsx,
+        ExportFormat::Docx,
         "x4",
     ))
     .unwrap();
-    assert_eq!(stale.refresh_count, 1);
+    assert_eq!(later.refresh_count, 0, "as recorded");
+    assert_eq!(later.digest, theirs.digest, "the same bytes");
+    // An object-store outage records nothing.
+    store.state.lock().unwrap().objects.clear();
+    store.state.lock().unwrap().objects_down = true;
+    let before = store.state.lock().unwrap().exports.len();
+    assert_eq!(
+        run(export(
+            &store,
+            &store,
+            "actor",
+            &scope,
+            "s",
+            "task",
+            &v1.id,
+            ExportFormat::Xlsx,
+            "x6",
+        ))
+        .unwrap_err(),
+        ExportError::Unavailable
+    );
+    assert_eq!(store.state.lock().unwrap().exports.len(), before);
 }
 
 #[test]

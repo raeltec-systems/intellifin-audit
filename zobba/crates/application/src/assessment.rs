@@ -2425,6 +2425,13 @@ impl<
         )
         .await?;
         let paired: Vec<_> = heads.into_iter().zip(views).collect();
+        let requests = crate::work_product::WorkProductStore::guide_requests(
+            self.store,
+            &basis.actor_id,
+            &basis.scope,
+            &basis.task_id,
+        )
+        .await?;
         let mut outline = outline_all(&snapshot, &covered, &revisions, &exceptions);
         if !paired.is_empty() {
             let lines: Vec<String> = paired
@@ -2441,7 +2448,7 @@ impl<
             outline,
             feedback,
             reconsiderations: revision::reconsiderations_text(&revisions),
-            work_products: crate::work_product::products_text(&paired),
+            work_products: crate::work_product::products_text(&paired, &requests),
         })
     }
 }

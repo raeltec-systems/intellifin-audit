@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use super::export::*;
 use super::*;
 use crate::{
@@ -16,25 +18,30 @@ fn renderings(values: &[u64]) -> Renderings {
     r
 }
 
+fn v2(statement: &str, r: &Renderings, ids: &Identifiers) -> Result<(), String> {
+    statement_figures_v2(statement, r, ids, &BTreeSet::new())
+}
+
 #[test]
 fn every_figure_of_a_statement_is_an_asserted_value() {
     let ids = Identifiers::default();
     let r = renderings(&[15, 1000]);
     assert_eq!(
-        statement_figures_v1(
+        v2(
             "15 of 1,000 applicable invoices had no recorded approver.",
             &r,
             &ids
         ),
         Ok(())
     );
-    assert_eq!(
-        statement_figures_v1("15 of 1000 applicable invoices.", &r, &ids),
-        Ok(())
-    );
+    assert_eq!(v2("15 of 1000 applicable invoices.", &r, &ids), Ok(()));
+    // Grouped by a space, a no-break space or a narrow no-break space.
+    for text in ["15 of 1 000.", "15 of 1\u{a0}000.", "15 of 1\u{202f}000."] {
+        assert_eq!(v2(text, &r, &ids), Ok(()), "{text:?}");
+    }
     // The wrong figure is named.
     assert_eq!(
-        statement_figures_v1(
+        v2(
             "14 of 1,000 applicable invoices had no recorded approver.",
             &r,
             &ids
@@ -42,31 +49,70 @@ fn every_figure_of_a_statement_is_an_asserted_value() {
         Err("14".into())
     );
     // A figure is matched whole, never as a part of a longer run.
-    assert_eq!(
-        statement_figures_v1("115 of 1,000.", &r, &ids),
-        Err("115".into())
-    );
-    assert_eq!(
-        statement_figures_v1("15 of 1,0000.", &r, &ids),
-        Err("1,0000".into())
-    );
-    // Non-ASCII digits are figures too (Arabic-Indic fifteen).
-    assert!(statement_figures_v1("\u{661}\u{665} invoices", &r, &ids).is_err());
-    // Dates of a period are renderings; the two bounds split at the slash.
+    assert_eq!(v2("115 of 1,000.", &r, &ids), Err("115".into()));
+    assert!(v2("15 of 1,0000.", &r, &ids).is_err());
+    // Non-ASCII digits are figures too (Arabic-Indic fifteen; fullwidth).
+    assert!(v2("\u{661}\u{665} invoices", &r, &ids).is_err());
+    assert!(v2("\u{ff11}\u{ff14} invoices", &r, &ids).is_err());
+    // Dates of a period are renderings, in each written form.
     let mut period = Renderings::default();
     period.text("2026-01-01/2026-12-31");
-    assert_eq!(
-        statement_figures_v1("From 2026-01-01 to 2026-12-31.", &period, &ids),
-        Ok(())
-    );
-    assert!(statement_figures_v1("From 2026-01-02.", &period, &ids).is_err());
-    // A decimal fact value, plain or grouped, signed or not.
+    for text in [
+        "From 2026-01-01 to 2026-12-31.",
+        "From 1 January 2026 to 31 December 2026.",
+        "From January 1, 2026 to December 31, 2026.",
+    ] {
+        assert_eq!(v2(text, &period, &ids), Ok(()), "{text}");
+    }
+    assert!(v2("From 2026-01-02.", &period, &ids).is_err());
+    assert!(v2("From 2 January 2026.", &period, &ids).is_err());
+    assert!(v2("From 02/01/2026.", &period, &ids).is_err());
+    // A decimal fact value, plain or grouped, signed exactly.
     let mut decimal = Renderings::default();
     decimal.decimal("-1250.00");
-    for text in ["1250.00", "1,250.00"] {
-        assert_eq!(statement_figures_v1(text, &decimal, &ids), Ok(()), "{text}");
+    for text in ["-1250.00", "-1,250.00"] {
+        assert_eq!(v2(text, &decimal, &ids), Ok(()), "{text}");
     }
-    assert!(statement_figures_v1("1250.0", &decimal, &ids).is_err());
+    assert!(v2("1250.0", &decimal, &ids).is_err());
+    assert!(
+        v2("1250.00", &decimal, &ids).is_err(),
+        "the sign is part of it"
+    );
+}
+
+#[test]
+fn number_words_numerals_and_hidden_characters_count_as_figures() {
+    let ids = Identifiers::default();
+    let r = renderings(&[15, 1000]);
+    // Number words name a value: the asserted one passes, another is named.
+    assert_eq!(v2("Fifteen of one thousand invoices.", &r, &ids), Ok(()));
+    assert_eq!(v2("Fifteen of a thousand invoices.", &r, &ids), Ok(()));
+    assert_eq!(
+        v2("Fourteen of 1,000 invoices.", &r, &ids),
+        Err("Fourteen".into())
+    );
+    assert_eq!(
+        v2("Two dozen of 1,000 invoices.", &r, &ids),
+        Err("Two dozen".into())
+    );
+    // "No one" is not a figure.
+    assert_eq!(v2("No one approved 15 of 1,000.", &r, &ids), Ok(()));
+    // A Roman numeral is a figure unless the template uses it.
+    assert_eq!(v2("XV of 1,000 invoices.", &r, &ids), Ok(()));
+    assert_eq!(v2("XIV of 1,000 invoices.", &r, &ids), Err("XIV".into()));
+    let mut template = Identifiers::default();
+    template.add("Part II");
+    assert_eq!(v2("Part II: 15 of 1,000.", &r, &template), Ok(()));
+    // Superscripts and circled numbers are figures.
+    assert!(v2("15\u{b2} of 1,000.", &r, &ids).is_err());
+    assert!(v2("\u{2460} of 1,000.", &r, &ids).is_err());
+    // A character that changes display without being seen is refused.
+    for hidden in ['\u{200b}', '\u{202e}', '\u{2066}', '\u{feff}', '\u{e0041}'] {
+        assert!(first_hidden(&format!("15{hidden}")).is_some(), "{hidden:?}");
+        assert!(v2(&format!("15 of 1,000{hidden}."), &r, &ids).is_err());
+        assert!(narrative_figures(&format!("Approvals{hidden}"), &ids).is_err());
+    }
+    assert!(is_numeric('\u{1d7ce}') && is_numeric('\u{2160}') && is_numeric('\u{b2}'));
 }
 
 #[test]
@@ -75,7 +121,6 @@ fn identifiers_resolve_only_to_records_and_template_sections() {
     ids.add("FY2026 AP working paper");
     ids.add("Risk assessment under ISA 315");
     ids.add_record("INV-0042");
-    ids.add_record("000123");
     ids.add("Sample 25 items");
     let none = Renderings::default();
     // Named identifiers and LABEL-number pairs resolve in narrative.
@@ -86,7 +131,7 @@ fn identifiers_resolve_only_to_records_and_template_sections() {
     ] {
         assert_eq!(narrative_figures(text, &ids), Ok(()), "{text}");
     }
-    // A pure number never resolves in narrative, even a record's subject.
+    // A pure number never resolves in narrative.
     assert_eq!(
         narrative_figures("about 20 items failed", &ids),
         Err("20".into())
@@ -95,6 +140,10 @@ fn identifiers_resolve_only_to_records_and_template_sections() {
         narrative_figures("Invoice 000123", &ids),
         Err("000123".into())
     );
+    // Number words and numerals are figures in narrative too.
+    assert!(narrative_figures("About twenty items failed", &ids).is_err());
+    assert!(narrative_figures("Section XIV", &ids).is_err());
+    assert_eq!(narrative_figures("No one approved them.", &ids), Ok(()));
     // An identifier the version does not name does not resolve.
     assert_eq!(
         narrative_figures("FY2025 results", &ids),
@@ -102,35 +151,44 @@ fn identifiers_resolve_only_to_records_and_template_sections() {
     );
     assert_eq!(narrative_figures("Under ISA 316", &ids), Err("316".into()));
     // A number in template text is never an identifier in a claim.
+    assert_eq!(v2("25 invoices", &none, &ids), Err("25".into()));
+    // A pure-number subject resolves only in its own claim, after a word.
+    let own: BTreeSet<String> = ["000123".to_string()].into();
     assert_eq!(
-        statement_figures_v1("25 invoices", &none, &ids),
-        Err("25".into())
-    );
-    // A pinned subject's pure number resolves in a claim.
-    assert_eq!(
-        statement_figures_v1("Invoice 000123 had no approver.", &none, &ids),
+        statement_figures_v2("Invoice 000123 had no approver.", &none, &ids, &own),
         Ok(())
     );
-    // Non-ASCII digits in narrative are refused.
-    assert!(narrative_figures("\u{966}", &ids).is_err());
-    assert!(is_decimal_digit('\u{1D7CE}'));
+    assert_eq!(
+        v2("Invoice 000123 had no approver.", &none, &ids),
+        Err("000123".into()),
+        "another claim's subject does not resolve"
+    );
     assert!(
-        !is_decimal_digit('\u{2160}'),
-        "a Roman numeral is Nl, not Nd"
+        statement_figures_v2("000123 invoices had no approver.", &none, &ids, &own).is_err(),
+        "a bare number is a figure even when it is a subject"
     );
 }
 
 #[test]
 fn verdict_words_are_closed_whole_and_case_insensitive() {
     assert_eq!(verdict_word("The control PASSED."), Some("passed".into()));
-    assert_eq!(verdict_word("not met"), Some("met".into()));
+    assert_eq!(verdict_word("not met"), Some("not met".into()));
     assert_eq!(
         verdict_word("No exception was seen"),
-        Some("exception".into())
+        Some("no exception".into())
     );
-    assert_eq!(verdict_word("non-compliant"), Some("compliant".into()));
+    assert_eq!(verdict_word("non-compliant"), Some("non compliant".into()));
     assert_eq!(verdict_word("The policy says approvals metre"), None);
     assert_eq!(verdict_word("Invoices require an approver"), None);
+    // Classes: a negation within three words flips the class.
+    let class = |t: &str| verdicts(t).into_iter().map(|(c, _)| c).collect::<Vec<_>>();
+    assert_eq!(class("The control passed."), vec![VerdictClass::Positive]);
+    assert_eq!(class("The control failed."), vec![VerdictClass::Negative]);
+    assert_eq!(
+        class("The criterion was not met."),
+        vec![VerdictClass::Negative]
+    );
+    assert_eq!(class("Execution failed."), vec![VerdictClass::Undetermined]);
 }
 
 fn pin(kind: AssertionKind, record_kind: RecordKind, id: &str, value: &str) -> Pin {
@@ -190,17 +248,15 @@ fn currency_is_derived_from_pins_with_one_closed_reason_each() {
         currency(std::slice::from_ref(&outcome), &[replaced]).reasons,
         vec![RefreshReason::DispositionChanged]
     );
-    // An acceptance alone changes the review state: also a disposition.
+    // An acceptance alone changes neither the verdict nor its origin: the
+    // claim is still true (review round 1).
     let accepted = Current::Outcome {
         head_id: head,
         verdict: Some(Verdict::NotMet),
         origin: EffectiveOrigin::ModelProposal,
         review: ReviewState::Accepted,
     };
-    assert_eq!(
-        currency(std::slice::from_ref(&outcome), &[accepted]).reasons,
-        vec![RefreshReason::DispositionChanged]
-    );
+    assert!(currency(std::slice::from_ref(&outcome), &[accepted]).current());
     let count = pin(
         AssertionKind::Count,
         RecordKind::Summary,
@@ -265,6 +321,7 @@ fn currency_is_derived_from_pins_with_one_closed_reason_each() {
         &[Current::Quote {
             registered: Some("a".repeat(64)),
             readable: false,
+            corrected: false,
         }],
     );
     assert!(withheld.current() && withheld.withheld);
@@ -274,6 +331,20 @@ fn currency_is_derived_from_pins_with_one_closed_reason_each() {
             &[Current::Quote {
                 registered: Some("b".repeat(64)),
                 readable: true,
+                corrected: false,
+            }]
+        )
+        .reasons,
+        vec![RefreshReason::SourceWithdrawn]
+    );
+    // A replacement source corrects the quoted original: refresh.
+    assert_eq!(
+        currency(
+            std::slice::from_ref(&quote),
+            &[Current::Quote {
+                registered: Some("a".repeat(64)),
+                readable: true,
+                corrected: true,
             }]
         )
         .reasons,
@@ -285,6 +356,7 @@ fn currency_is_derived_from_pins_with_one_closed_reason_each() {
         &[Current::Quote {
             registered: None,
             readable: false,
+            corrected: false,
         }],
     );
     assert!(hidden.current() && hidden.withheld);
@@ -448,7 +520,10 @@ pub(super) fn version() -> Version {
     ];
     let template = template();
     Version {
-        missing_required: missing_required(&template, &blocks),
+        missing_required: missing_required(&template, &blocks, FigureRule::V2),
+        figure_rule: FigureRule::V2,
+        snapshot: Some(Snapshot::default()),
+        change: None,
         id,
         product_id: product_id("task-1", "invocation-1"),
         task_id: "task-1".into(),
@@ -713,6 +788,7 @@ pub(super) fn view() -> ExportView {
             ],
             total_label: "in scope (stored total)".into(),
             total: 1000,
+            exact: true,
         }],
         preparation: "Prepared by Zobba (agent); edited by Alex".into(),
     }

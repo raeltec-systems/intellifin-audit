@@ -248,6 +248,7 @@ pub fn authenticated_router_with_proposals(
         work_products::edit,
         work_products::request_export,
         work_products::content,
+        work_products::decision,
         answers::get_answers,
         work::direct,
         work::questions,
