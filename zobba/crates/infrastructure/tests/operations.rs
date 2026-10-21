@@ -913,14 +913,11 @@ async fn cutoff_races(f: &Fixture, admin: &mut PgConnection, holder: &mut PgConn
             let name = format!("cutoff-{cutoff:?}-{consume_first}");
             let case = f.case(&name, true, 0).await;
             let operation = f.admit(&case, &format!("{name}-operation")).await;
-            // The case's setup ran after its 5-second owner lease was taken:
-            // renew it once before the held race (as the worker's poll would),
-            // so a slow machine cannot turn the committed consumption into
-            // Fenced. The production lease is unchanged.
-            assert!(
-                f.tasks.current(&case.basis).await.unwrap(),
-                "the case still owns its Task before the race"
-            );
+            // No renewal here: the claim is admitted, not consumed, and only a
+            // consumed claim's lease is renewed (`current`). As in production,
+            // coordinate → admit → consume stays well inside the 5-second
+            // lease; only a second suite running on the same machine stretched
+            // it (review round 1, K).
             let table = if consume_first {
                 "operation_attempts"
             } else if matches!(cutoff, Cutoff::Revoke) {
