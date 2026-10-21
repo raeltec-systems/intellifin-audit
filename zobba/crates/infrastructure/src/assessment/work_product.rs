@@ -18,9 +18,10 @@ use zobba_application::{
     citation::ReadingError,
     task::TaskError,
     work_product::{
-        BasisNow, CurrentRow, EditBasis, EditError, ExceptionNow, ExportError, ExportRecord,
-        FactNow, HeadNow, ProductHead, ProductRecord, RecordQuery, RecordsNow, SummaryNow,
-        VersionRecord, WorkProductPeople, WorkProductStore, WriteError,
+        BasisNow, ChangeKind, CurrentRow, DecisionRecord, EditBasis, EditError, ExceptionNow,
+        ExportError, ExportRecord, FactNow, GuideRequest, HeadNow, ProductHead, ProductRecord,
+        ProposalRecord, ProposalState, RecordQuery, RecordsNow, SummaryNow, VersionRecord,
+        WorkProductPeople, WorkProductStore, WriteError,
     },
 };
 use zobba_domain::{
@@ -33,7 +34,7 @@ use zobba_domain::{
     task::ClaimBasis,
     work_product::{
         Content, ExportFormat, RecordKind, SectionRef, TemplateRef, Version, valid_export_id,
-        valid_product_id, valid_version_id,
+        valid_product_id, valid_proposal_id, valid_version_id,
     },
 };
 
@@ -213,15 +214,36 @@ async fn records_in(
             .fetch_all(&mut **tx)
             .await
             .map_err(unavailable)?;
+        let sources: Vec<(String, String, String)> = bind4("SELECT s.fact_id, s.original_id, s.original_sha256 FROM public.assessment_fact_sources s JOIN public.assessment_facts f ON (f.organisation_id,f.client_id,f.engagement_id,f.id)=(s.organisation_id,s.client_id,s.engagement_id,s.fact_id) WHERE (s.organisation_id,s.client_id,s.engagement_id)=($1,$2,$3) AND f.task_id=$4 AND s.fact_id = ANY($5) AND s.verification='verified' ORDER BY s.fact_id COLLATE \"C\", s.ordinal")
+            .bind(&facts)
+            .fetch_all(&mut **tx)
+            .await
+            .map_err(unavailable)?
+            .iter()
+            .map(|row| {
+                Ok((
+                    row.try_get("fact_id").map_err(unavailable)?,
+                    row.try_get("original_id").map_err(unavailable)?,
+                    row.try_get("original_sha256").map_err(unavailable)?,
+                ))
+            })
+            .collect::<Result<_, ReadingError>>()?;
         for row in &rows {
+            let id: String = row.try_get("id").map_err(unavailable)?;
+            let of: Vec<(String, String)> = sources
+                .iter()
+                .filter(|(f, _, _)| *f == id)
+                .map(|(_, o, sha)| (o.clone(), sha.clone()))
+                .collect();
             now.facts.push(FactNow {
-                id: row.try_get("id").map_err(unavailable)?,
+                id,
                 digest: row.try_get("digest").map_err(unavailable)?,
                 value: row.try_get("value").map_err(unavailable)?,
                 unit: row.try_get("unit").map_err(unavailable)?,
                 subject: row.try_get("subject").map_err(unavailable)?,
                 supported: row.try_get("supported").map_err(unavailable)?,
                 superseded: row.try_get("superseded").map_err(unavailable)?,
+                sources: of,
             });
         }
     }
@@ -249,6 +271,7 @@ async fn records_in(
            r AS MATERIALIZED (SELECT DISTINCT b.id AS basis_id, public.assessment_criterion_root($1,$2,$3,c.value) AS root FROM b CROSS JOIN LATERAL jsonb_array_elements_text(b.criteria) c(value)),
            s AS MATERIALIZED (SELECT x.criterion_root, x.status FROM public.assessment_exception_statuses($1,$2,$3,$4,NULL) x WHERE EXISTS(SELECT 1 FROM b))
            SELECT b.id, b.digest, b.period, b.limitations,
+             EXISTS(SELECT 1 FROM public.assessment_bases n WHERE (n.organisation_id,n.client_id,n.engagement_id)=($1,$2,$3) AND n.supersedes=b.id) AS superseded,
              (SELECT count(*) FROM s JOIN r ON r.root=s.criterion_root AND r.basis_id=b.id WHERE s.status='open') AS open,
              (SELECT count(*) FROM s JOIN r ON r.root=s.criterion_root AND r.basis_id=b.id WHERE s.status='resolved_by_evidence') AS resolved,
              (SELECT count(*) FROM s JOIN r ON r.root=s.criterion_root AND r.basis_id=b.id WHERE s.status='replaced_by_human_judgment') AS replaced,
@@ -276,8 +299,21 @@ async fn records_in(
                     })
                     .unwrap_or_default(),
                 exceptions: [n("open")?, n("resolved")?, n("replaced")?, n("closed")?],
+                superseded: row.try_get("superseded").map_err(unavailable)?,
             });
         }
+    }
+    let originals = ids(&query.originals);
+    if !originals.is_empty() {
+        let corrected: Vec<String> = sqlx::query_scalar("SELECT DISTINCT c.original_id FROM public.knowledge_source_corrections c WHERE (c.organisation_id,c.client_id,c.engagement_id)=($1,$2,$3) AND c.original_id = ANY($4)")
+            .bind(&s.organisation_id)
+            .bind(&s.client_id)
+            .bind(&s.engagement_id)
+            .bind(&originals)
+            .fetch_all(&mut **tx)
+            .await
+            .map_err(unavailable)?;
+        now.corrected.extend(corrected);
     }
     Ok(now)
 }
@@ -450,6 +486,101 @@ async fn stored_version(tx: &mut Tx, id: &str) -> Result<VersionRecord, ReadingE
     version_from(&row)
 }
 
+/// An applied Guide command of a Task with its author's label.
+const GUIDE_SELECT: &str = "SELECT c.id, c.author_id, i.display_name, c.content FROM public.task_commands c LEFT JOIN public.identities i ON i.id=c.author_id WHERE c.kind='guide' AND c.target_task_id=$1 AND EXISTS(SELECT 1 FROM public.task_events e WHERE e.command_id=c.id AND e.kind='applied')";
+
+fn guide_from(row: &PgRow) -> Result<GuideRequest, ReadingError> {
+    Ok(GuideRequest {
+        command_id: row.try_get("id").map_err(unavailable)?,
+        author_id: row.try_get("author_id").map_err(unavailable)?,
+        label: row.try_get("display_name").map_err(unavailable)?,
+        content: row
+            .try_get::<Option<String>, _>("content")
+            .map_err(unavailable)?
+            .ok_or(ReadingError::Unavailable)?,
+    })
+}
+
+const PROPOSAL_SELECT: &str = "SELECT p.id, p.task_id, p.cycle_id, p.invocation_id, p.product_id, p.base_version_id, p.version_id, p.requested_by, p.request_id, p.changes, p.document, p.digest, p.created_us, d.id AS decision_id, d.actor_id AS decision_actor, d.key AS decision_key, d.decision, d.created_us AS decision_us FROM public.work_product_proposals p LEFT JOIN public.work_product_proposal_decisions d ON (d.organisation_id,d.client_id,d.engagement_id,d.proposal_id)=(p.organisation_id,p.client_id,p.engagement_id,p.id)";
+
+fn proposal_from(row: &PgRow) -> Result<ProposalState, ReadingError> {
+    let t = |n: &str| row.try_get::<String, _>(n).map_err(unavailable);
+    let document: Value = row.try_get("document").map_err(unavailable)?;
+    let digest = t("digest")?;
+    let document = crate::work::json_value(&document).ok_or(ReadingError::Unavailable)?;
+    if document_digest(&document) != digest {
+        return Err(ReadingError::Unavailable);
+    }
+    let version = Version::from_document(&document).ok_or(ReadingError::Unavailable)?;
+    let changes: Value = row.try_get("changes").map_err(unavailable)?;
+    let changes = changes
+        .as_array()
+        .ok_or(ReadingError::Unavailable)?
+        .iter()
+        .map(|c| {
+            Some((
+                c.get("block_id")?.as_str()?.to_string(),
+                ChangeKind::parse(c.get("change")?.as_str()?)?,
+            ))
+        })
+        .collect::<Option<Vec<_>>>()
+        .ok_or(ReadingError::Unavailable)?;
+    let proposal = ProposalRecord {
+        id: t("id")?,
+        task_id: t("task_id")?,
+        cycle_id: t("cycle_id")?,
+        invocation_id: t("invocation_id")?,
+        product_id: t("product_id")?,
+        base_version_id: t("base_version_id")?,
+        requested_by: t("requested_by")?,
+        request_id: t("request_id")?,
+        changes,
+        version,
+        recorded_us: Some(row.try_get("created_us").map_err(unavailable)?),
+    };
+    if proposal.version.id != t("version_id")? || proposal.version.product_id != proposal.product_id
+    {
+        return Err(ReadingError::Unavailable);
+    }
+    let decision = match row
+        .try_get::<Option<String>, _>("decision_id")
+        .map_err(unavailable)?
+    {
+        None => None,
+        Some(id) => Some(DecisionRecord {
+            id,
+            proposal_id: proposal.id.clone(),
+            task_id: proposal.task_id.clone(),
+            actor_id: t("decision_actor")?,
+            key: t("decision_key")?,
+            confirmed: t("decision")? == "confirmed",
+            recorded_us: Some(row.try_get("decision_us").map_err(unavailable)?),
+        }),
+    };
+    Ok(ProposalState { proposal, decision })
+}
+
+const DECISION_SELECT: &str = "SELECT d.id, d.proposal_id, d.task_id, d.actor_id, d.key, d.decision, d.created_us FROM public.work_product_proposal_decisions d";
+
+fn decision_from(row: &PgRow) -> Result<DecisionRecord, EditError> {
+    let t = |n: &str| {
+        row.try_get::<String, _>(n)
+            .map_err(|_| EditError::Unavailable)
+    };
+    Ok(DecisionRecord {
+        id: t("id")?,
+        proposal_id: t("proposal_id")?,
+        task_id: t("task_id")?,
+        actor_id: t("actor_id")?,
+        key: t("key")?,
+        confirmed: t("decision")? == "confirmed",
+        recorded_us: Some(
+            row.try_get("created_us")
+                .map_err(|_| EditError::Unavailable)?,
+        ),
+    })
+}
+
 impl WorkProductStore for AssessmentRepository {
     async fn invocation_version(
         &self,
@@ -570,6 +701,183 @@ impl WorkProductStore for AssessmentRepository {
         tx.commit().await.map_err(write_error)?;
         Ok(stored)
     }
+    async fn labels(
+        &self,
+        actor: &str,
+        scope: &Scope,
+        ids: &[String],
+    ) -> Result<BTreeMap<String, String>, ReadingError> {
+        if ids.is_empty() {
+            return Ok(BTreeMap::new());
+        }
+        let mut tx = scoped(&self.pool, actor, scope).await?;
+        let found: Vec<(String, String)> =
+            sqlx::query_as("SELECT id, display_name FROM public.identities WHERE id = ANY($1)")
+                .bind(ids)
+                .fetch_all(&mut *tx)
+                .await
+                .map_err(unavailable)?;
+        tx.commit().await.map_err(unavailable)?;
+        Ok(found.into_iter().collect())
+    }
+    async fn guide_requests(
+        &self,
+        actor: &str,
+        scope: &Scope,
+        task_id: &str,
+    ) -> Result<Vec<GuideRequest>, ReadingError> {
+        if !valid_scope_id(task_id) {
+            return Ok(Vec::new());
+        }
+        let mut tx = scoped(&self.pool, actor, scope).await?;
+        let rows = sqlx::query(&format!(
+            "{GUIDE_SELECT} ORDER BY c.received_cursor DESC LIMIT $2"
+        ))
+        .bind(task_id)
+        .bind(zobba_application::work_product::MAX_GUIDE_REQUESTS as i64)
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(unavailable)?;
+        let found = rows.iter().map(guide_from).collect::<Result<_, _>>()?;
+        tx.commit().await.map_err(unavailable)?;
+        Ok(found)
+    }
+    async fn guide_request(
+        &self,
+        actor: &str,
+        scope: &Scope,
+        task_id: &str,
+        command_id: &str,
+    ) -> Result<Option<GuideRequest>, ReadingError> {
+        if !valid_scope_id(task_id) || !valid_scope_id(command_id) {
+            return Ok(None);
+        }
+        let mut tx = scoped(&self.pool, actor, scope).await?;
+        let found = sqlx::query(&format!("{GUIDE_SELECT} AND c.id=$2"))
+            .bind(task_id)
+            .bind(command_id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(unavailable)?
+            .as_ref()
+            .map(guide_from)
+            .transpose()?;
+        tx.commit().await.map_err(unavailable)?;
+        Ok(found)
+    }
+    async fn invocation_proposal(
+        &self,
+        basis: &ClaimBasis,
+        invocation_id: &str,
+    ) -> Result<Option<ProposalRecord>, ReadingError> {
+        if !valid_scope_id(invocation_id) {
+            return Ok(None);
+        }
+        let mut tx = scoped(&self.pool, &basis.actor_id, &basis.scope).await?;
+        let found = sqlx::query(&format!(
+            "{PROPOSAL_SELECT} WHERE p.task_id=$1 AND p.invocation_id=$2"
+        ))
+        .bind(&basis.task_id)
+        .bind(invocation_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(unavailable)?
+        .as_ref()
+        .map(proposal_from)
+        .transpose()?
+        .map(|s| s.proposal);
+        tx.commit().await.map_err(unavailable)?;
+        Ok(found)
+    }
+    async fn record_proposal(
+        &self,
+        basis: &ClaimBasis,
+        proposal: &ProposalRecord,
+    ) -> Result<ProposalRecord, WriteError> {
+        if !proposal.version.is_valid()
+            || proposal.task_id != basis.task_id
+            || !valid_proposal_id(&proposal.id)
+            || proposal.changes.is_empty()
+        {
+            return Err(WriteError::Reading(ReadingError::Invalid));
+        }
+        let mut tx = claimed(
+            &self.pool,
+            basis,
+            &format!("work_product:{}", basis.task_id),
+        )
+        .await?;
+        let document = proposal.version.document();
+        let changes = Value::Array(
+            proposal
+                .changes
+                .iter()
+                .map(|(block, kind)| json!({"block_id": block, "change": kind.as_str()}))
+                .collect(),
+        );
+        sqlx::query("INSERT INTO public.work_product_proposals(organisation_id,client_id,engagement_id,task_id,cycle_id,actor_id,invocation_id,id,product_id,base_version_id,version_id,requested_by,request_id,changes,document,digest) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)")
+            .bind(&basis.scope.organisation_id).bind(&basis.scope.client_id).bind(&basis.scope.engagement_id)
+            .bind(&proposal.task_id).bind(&proposal.cycle_id).bind(&basis.actor_id)
+            .bind(&proposal.invocation_id).bind(&proposal.id).bind(&proposal.product_id)
+            .bind(&proposal.base_version_id).bind(&proposal.version.id)
+            .bind(&proposal.requested_by).bind(&proposal.request_id)
+            .bind(&changes).bind(to_json(&document)).bind(document_digest(&document))
+            .execute(&mut *tx).await.map_err(write_error)?;
+        let stored = sqlx::query(&format!("{PROPOSAL_SELECT} WHERE p.id=$1"))
+            .bind(&proposal.id)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(unavailable)?;
+        let stored = proposal_from(&stored)?.proposal;
+        tx.commit().await.map_err(write_error)?;
+        Ok(stored)
+    }
+    async fn proposals(
+        &self,
+        actor: &str,
+        scope: &Scope,
+        task_id: &str,
+        base_version_id: &str,
+    ) -> Result<Vec<ProposalState>, ReadingError> {
+        if !valid_scope_id(task_id) || !valid_version_id(base_version_id) {
+            return Ok(Vec::new());
+        }
+        let mut tx = scoped(&self.pool, actor, scope).await?;
+        let rows = sqlx::query(&format!(
+            "{PROPOSAL_SELECT} WHERE p.task_id=$1 AND p.base_version_id=$2 ORDER BY p.id COLLATE \"C\" LIMIT 16"
+        ))
+        .bind(task_id)
+        .bind(base_version_id)
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(unavailable)?;
+        let found = rows.iter().map(proposal_from).collect::<Result<_, _>>()?;
+        tx.commit().await.map_err(unavailable)?;
+        Ok(found)
+    }
+    async fn proposal(
+        &self,
+        actor: &str,
+        scope: &Scope,
+        task_id: &str,
+        proposal_id: &str,
+    ) -> Result<Option<ProposalState>, ReadingError> {
+        if !valid_scope_id(task_id) || !valid_proposal_id(proposal_id) {
+            return Ok(None);
+        }
+        let mut tx = scoped(&self.pool, actor, scope).await?;
+        let found = sqlx::query(&format!("{PROPOSAL_SELECT} WHERE p.task_id=$1 AND p.id=$2"))
+            .bind(task_id)
+            .bind(proposal_id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(unavailable)?
+            .as_ref()
+            .map(proposal_from)
+            .transpose()?;
+        tx.commit().await.map_err(unavailable)?;
+        Ok(found)
+    }
 }
 
 // --------------------------------------------------------------- people
@@ -617,7 +925,7 @@ async fn edit_basis_in(
     })
 }
 
-const EXPORT_SELECT: &str = "SELECT id,key,actor_id,task_id,version_id,format,withheld_digest,digest,size,namespace,object_version,refresh_count,created_us FROM public.work_product_exports";
+const EXPORT_SELECT: &str = "SELECT id,key,renderer,actor_id,task_id,version_id,format,withheld_digest,digest,size,namespace,object_version,refresh_count,created_us FROM public.work_product_exports";
 
 fn export_from(row: &PgRow) -> Result<ExportRecord, ExportError> {
     let t = |n: &str| {
@@ -627,6 +935,7 @@ fn export_from(row: &PgRow) -> Result<ExportRecord, ExportError> {
     Ok(ExportRecord {
         id: t("id")?,
         key: t("key")?,
+        renderer: t("renderer")?,
         actor_id: t("actor_id")?,
         task_id: t("task_id")?,
         version_id: t("version_id")?,
@@ -808,7 +1117,7 @@ impl WorkProductPeople for AssessmentRepository {
             .bind(&scope.organisation_id).bind(&scope.client_id).bind(&scope.engagement_id)
             .bind(&record.task_id).bind(actor).bind(&record.id).bind(&record.key)
             .bind(&record.version_id).bind(record.format.as_str())
-            .bind(zobba_domain::work_product::RENDERER)
+            .bind(&record.renderer)
             .bind(&record.withheld_digest).bind(&record.digest).bind(record.size as i64)
             .bind(&record.namespace).bind(&record.object_version).bind(record.refresh_count as i32)
             .execute(&mut *tx).await;
@@ -842,24 +1151,88 @@ impl WorkProductPeople for AssessmentRepository {
         tx.commit().await.map_err(|_| ExportError::Unavailable)?;
         Ok(stored)
     }
-    async fn labels(
+    async fn decision_by_key(
         &self,
         actor: &str,
         scope: &Scope,
-        ids: &[String],
-    ) -> Result<BTreeMap<String, String>, ReadingError> {
-        if ids.is_empty() {
-            return Ok(BTreeMap::new());
-        }
+        session_hash: &str,
+        key: &str,
+    ) -> Result<Option<DecisionRecord>, EditError> {
         let mut tx = scoped(&self.pool, actor, scope).await?;
-        let found: Vec<(String, String)> =
-            sqlx::query_as("SELECT id, display_name FROM public.identities WHERE id = ANY($1)")
-                .bind(ids)
-                .fetch_all(&mut *tx)
-                .await
-                .map_err(unavailable)?;
-        tx.commit().await.map_err(unavailable)?;
-        Ok(found.into_iter().collect())
+        person_fence(&mut tx, actor, scope, session_hash)
+            .await
+            .map_err(edit_denied)?;
+        let found = sqlx::query(&format!(
+            "{DECISION_SELECT} WHERE d.actor_id=$1 AND d.key=$2"
+        ))
+        .bind(actor)
+        .bind(key)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|_| EditError::Unavailable)?
+        .as_ref()
+        .map(decision_from)
+        .transpose()?;
+        tx.commit().await.map_err(|_| EditError::Unavailable)?;
+        Ok(found)
+    }
+    async fn record_decision(
+        &self,
+        actor: &str,
+        scope: &Scope,
+        session_hash: &str,
+        decision: &DecisionRecord,
+        version: Option<&Version>,
+    ) -> Result<(DecisionRecord, Option<VersionRecord>), EditError> {
+        if decision.actor_id != actor
+            || decision.confirmed != version.is_some()
+            || version.is_some_and(|v| !v.is_valid())
+        {
+            return Err(EditError::Invalid);
+        }
+        let mut tx = task::lock(&self.pool, actor, scope)
+            .await
+            .map_err(edit_denied)?;
+        person_fence(&mut tx, actor, scope, session_hash)
+            .await
+            .map_err(edit_denied)?;
+        sqlx::query("SELECT set_config('zobba.session_hash',$1,true)")
+            .bind(session_hash)
+            .execute(&mut *tx)
+            .await
+            .map_err(|_| EditError::Unavailable)?;
+        let inserted = sqlx::query("INSERT INTO public.work_product_proposal_decisions(organisation_id,client_id,engagement_id,task_id,actor_id,id,proposal_id,key,decision) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)")
+            .bind(&scope.organisation_id).bind(&scope.client_id).bind(&scope.engagement_id)
+            .bind(&decision.task_id).bind(actor).bind(&decision.id).bind(&decision.proposal_id)
+            .bind(&decision.key).bind(if decision.confirmed { "confirmed" } else { "declined" })
+            .execute(&mut *tx).await;
+        if let Err(error) = inserted {
+            let unique =
+                matches!(&error, sqlx::Error::Database(d) if d.code().as_deref() == Some("23505"));
+            drop(tx);
+            if unique {
+                // Decided meanwhile (by this key, or the proposal by another).
+                return Err(EditError::Conflict);
+            }
+            return Err(edit_error(write_error(error)));
+        }
+        let stored_version = match version {
+            Some(v) => {
+                insert_version(&mut tx, scope, actor, None, v)
+                    .await
+                    .map_err(edit_error)?;
+                Some(stored_version(&mut tx, &v.id).await?)
+            }
+            None => None,
+        };
+        let row = sqlx::query(&format!("{DECISION_SELECT} WHERE d.id=$1"))
+            .bind(&decision.id)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(|_| EditError::Unavailable)?;
+        let stored = decision_from(&row)?;
+        tx.commit().await.map_err(|e| edit_error(write_error(e)))?;
+        Ok((stored, stored_version))
     }
     async fn readable(
         &self,
@@ -931,16 +1304,12 @@ impl AssessmentRepository {
             return Err(ReadingError::Invalid);
         }
         let mut tx = scoped(&self.pool, actor, scope).await?;
-        let total: i64 = sqlx::query_scalar(
-            "SELECT count(*) FROM public.work_products p WHERE ($1::text IS NULL OR p.task_id=$1)",
-        )
-        .bind(task_id)
-        .fetch_one(&mut *tx)
-        .await
-        .map_err(unavailable)?;
         let page = zobba_domain::work_product::SHELF_PAGE as i64;
+        // One statement: the exact count and the page share one snapshot.
         let rows = sqlx::query(&format!(
-            "SELECT {PRODUCT_COLUMNS} {PRODUCT_FROM} WHERE ($1::text IS NULL OR p.task_id=$1) AND ($2::text IS NULL OR p.id COLLATE \"C\" > $2::text COLLATE \"C\") ORDER BY p.id COLLATE \"C\" LIMIT $3"
+            "WITH n AS (SELECT count(*) AS total FROM public.work_products p WHERE ($1::text IS NULL OR p.task_id=$1)),
+             page AS (SELECT {PRODUCT_COLUMNS} {PRODUCT_FROM} WHERE ($1::text IS NULL OR p.task_id=$1) AND ($2::text IS NULL OR p.id COLLATE \"C\" > $2::text COLLATE \"C\") ORDER BY p.id COLLATE \"C\" LIMIT $3)
+             SELECT n.total, page.* FROM n LEFT JOIN page ON true ORDER BY page.product_id COLLATE \"C\""
         ))
         .bind(task_id)
         .bind(after)
@@ -948,8 +1317,20 @@ impl AssessmentRepository {
         .fetch_all(&mut *tx)
         .await
         .map_err(unavailable)?;
-        let mut products: Vec<ProductHead> =
-            rows.iter().map(head_from).collect::<Result<_, _>>()?;
+        let total: i64 = match rows.first() {
+            Some(row) => row.try_get("total").map_err(unavailable)?,
+            None => return Err(ReadingError::Unavailable),
+        };
+        let mut products: Vec<ProductHead> = rows
+            .iter()
+            .filter(|row| {
+                row.try_get::<Option<String>, _>("product_id")
+                    .ok()
+                    .flatten()
+                    .is_some()
+            })
+            .map(head_from)
+            .collect::<Result<_, _>>()?;
         let next = if products.len() as i64 > page {
             products.truncate(page as usize);
             products.last().map(|p| p.product.id.clone())

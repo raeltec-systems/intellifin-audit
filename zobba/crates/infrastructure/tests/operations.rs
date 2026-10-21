@@ -913,6 +913,11 @@ async fn cutoff_races(f: &Fixture, admin: &mut PgConnection, holder: &mut PgConn
             let name = format!("cutoff-{cutoff:?}-{consume_first}");
             let case = f.case(&name, true, 0).await;
             let operation = f.admit(&case, &format!("{name}-operation")).await;
+            // No renewal here: the claim is admitted, not consumed, and only a
+            // consumed claim's lease is renewed (`current`). As in production,
+            // coordinate → admit → consume stays well inside the 5-second
+            // lease; only a second suite running on the same machine stretched
+            // it (review round 1, K).
             let table = if consume_first {
                 "operation_attempts"
             } else if matches!(cutoff, Cutoff::Revoke) {

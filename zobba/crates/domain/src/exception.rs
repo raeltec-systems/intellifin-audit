@@ -48,8 +48,9 @@ pub const EXCEPTION_KIND: &str = "criterion_not_met";
 pub const EFFECTIVE_AGGREGATION: &str = "effective_partition_v1";
 /// Exceptions an effective summary lists (the exact total is beside them).
 pub const MAX_LISTED_EXCEPTIONS: usize = 50;
-/// Exception dispositions one exception may hold (the latest is effective).
-pub const MAX_EXCEPTION_DISPOSITIONS: usize = 16;
+/// An exception holds any number of dispositions (the latest is
+/// effective): its full history is kept and one read lists at most this many.
+pub const EXCEPTION_DISPOSITION_PAGE: usize = 50;
 /// `summarise_effective` entries one answer may make.
 pub const MAX_SUMMARISE_EFFECTIVE: usize = 2;
 /// Occurrences one page of an exception's detail lists.

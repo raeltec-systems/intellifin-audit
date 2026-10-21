@@ -31,8 +31,8 @@ pub mod export;
 pub mod figures;
 
 pub use figures::{
-    Identifiers, Renderings, is_decimal_digit, narrative_figures, statement_figures_v1,
-    verdict_word,
+    Identifiers, Renderings, VerdictClass, first_hidden, hidden_character, is_numeric,
+    narrative_figures, statement_figures_v2, verdict_word, verdicts,
 };
 
 /// Blocks one version holds.
@@ -57,10 +57,15 @@ pub const MAX_PRODUCTS: usize = 16;
 pub const MAX_VERSIONS: u32 = 256;
 /// Shelf page size.
 pub const SHELF_PAGE: usize = 50;
-/// The renderer of every export.
-pub const RENDERER: &str = "zobba-export-v1";
-/// The figure rule every recorded claim passed.
-pub const FIGURE_RULE: &str = "statement_figures_v1";
+/// The renderer of every new export: frozen at its version (review round 1).
+pub const RENDERER: &str = "zobba-export-v2";
+/// The renderer of exports made before the review round (stored under the
+/// export's own ID).
+pub const RENDERER_V1: &str = "zobba-export-v1";
+/// The figure rule every new claim passes (review round 1).
+pub const FIGURE_RULE: &str = "statement_figures_v2";
+/// The figure rule of versions recorded before the review round.
+pub const FIGURE_RULE_V1: &str = "statement_figures_v1";
 /// How the built-in neutral starter is always labelled.
 pub const NEUTRAL_LABEL: &str = "Neutral starter (not firm methodology)";
 /// How a judgment block is always labelled.
@@ -172,6 +177,8 @@ vocabulary!(Refusal {
     SectionUnknown => "section_unknown",
     HumanBlockDropped => "human_block_dropped",
     BoundExceeded => "bound_exceeded",
+    HiddenCharacter => "hidden_character",
+    ChangeNotRequested => "change_not_requested",
 });
 
 // Why a recorded claim needs refresh (derived on read, never stored).
@@ -182,6 +189,13 @@ vocabulary!(RefreshReason {
     ExceptionStatusChanged => "exception_status_changed",
     FactSuperseded => "fact_superseded",
     SourceWithdrawn => "source_withdrawn",
+    BasisSuperseded => "basis_superseded",
+});
+
+// The rule a version's claims and sections were checked under.
+vocabulary!(FigureRule {
+    V1 => "statement_figures_v1",
+    V2 => "statement_figures_v2",
 });
 
 vocabulary!(ExportFormat {
@@ -284,7 +298,7 @@ impl Refusal {
                 "narrative and judgment text carries no figures; put a figure in a checked claim"
             }
             Self::VerdictWithoutRecord => {
-                "a claim that rests only on quotes may not state a verdict"
+                "a claim may state a verdict only when it rests on an outcome, conclusion, exception or count that holds one"
             }
             Self::UnknownRecord => "the record is not one of this Task's records",
             Self::StaleBase => "the version it edits is not the work product's latest version",
@@ -293,6 +307,12 @@ impl Refusal {
             Self::HumanBlockDropped => "a person's block must be kept by its ID, unchanged",
             Self::BoundExceeded => {
                 "a bound of the work product is exceeded or a block is malformed"
+            }
+            Self::HiddenCharacter => {
+                "the text holds a character that changes how it displays without being seen (a bidirectional control or zero-width character)"
+            }
+            Self::ChangeNotRequested => {
+                "a person's block is changed or removed only at that person's explicit request in the conversation: name their Guide request"
             }
         }
     }
@@ -311,8 +331,9 @@ impl RefreshReason {
             Self::ExceptionStatusChanged => "the exception's derived status changed",
             Self::FactSuperseded => "a successor basis replaced the fact it cites",
             Self::SourceWithdrawn => {
-                "the original it quotes is no longer registered with the digest it was verified against"
+                "the original it quotes is no longer registered with its digest, or a replacement source corrects it"
             }
+            Self::BasisSuperseded => "a successor basis supersedes the basis it cites",
         }
     }
 }
@@ -345,9 +366,48 @@ pub fn human_version_id(task_id: &str, actor_id: &str, key: &str) -> String {
 pub fn block_id(version_id: &str, ordinal: usize) -> String {
     id_of("blk", &[version_id, &ordinal.to_string()])
 }
-/// An export a viewer requested with one request key.
-pub fn export_id(actor_id: &str, key: &str) -> String {
-    id_of("wpx", &[actor_id, key])
+/// An export a viewer requested with one request key, in one engagement.
+pub fn export_id(scope: &crate::identity::Scope, actor_id: &str, key: &str) -> String {
+    id_of(
+        "wpx",
+        &[
+            &scope.organisation_id,
+            &scope.client_id,
+            &scope.engagement_id,
+            actor_id,
+            key,
+        ],
+    )
+}
+/// The object an export's bytes are stored under: named by what determines
+/// them (the version, the format and the withheld set), so a retry or another
+/// viewer with the same withheld set adopts the same bytes.
+pub fn export_object_id(
+    scope: &crate::identity::Scope,
+    version_id: &str,
+    format: ExportFormat,
+    withheld: &str,
+) -> String {
+    id_of(
+        "wpo",
+        &[
+            &scope.organisation_id,
+            &scope.client_id,
+            &scope.engagement_id,
+            version_id,
+            format.as_str(),
+            withheld,
+        ],
+    )
+}
+/// A proposal the agent makes in one answer invocation to change or remove
+/// a person's blocks at that person's request.
+pub fn proposal_id(task_id: &str, invocation_id: &str) -> String {
+    id_of("wpp", &[task_id, invocation_id])
+}
+/// A person's decision on a proposal, with one session-bound request key.
+pub fn decision_id(proposal_id: &str, actor_id: &str, key: &str) -> String {
+    id_of("wpd", &[proposal_id, actor_id, key])
 }
 /// The identity digest an exception pin holds (its record never changes;
 /// its status is derived): SHA-256 of `exception|id|task|criterion
@@ -373,6 +433,12 @@ pub fn valid_block_id(id: &str) -> bool {
 pub fn valid_export_id(id: &str) -> bool {
     valid_prefixed(id, "wpx-")
 }
+pub fn valid_proposal_id(id: &str) -> bool {
+    valid_prefixed(id, "wpp-")
+}
+pub fn valid_decision_id(id: &str) -> bool {
+    valid_prefixed(id, "wpd-")
+}
 fn valid_digest(value: &str) -> bool {
     value.len() == 64
         && value
@@ -386,6 +452,7 @@ fn text_ok(value: &str, max: usize) -> bool {
             .chars()
             .any(|c| c.is_control() && !matches!(c, '\n' | '\r' | '\t'))
 }
+
 /// A title: 1–200 Unicode scalars under the scope-label rules.
 pub fn valid_title(value: &str) -> bool {
     valid_scope_label(value) && value.chars().count() <= MAX_TITLE_CHARS
@@ -501,10 +568,23 @@ pub enum ProposedContent {
 pub enum ProposedBlock {
     /// Keep a block of the base version by its ID, byte for byte.
     Keep(String),
+    /// Keep every person's block of the base version here, in their base
+    /// order, byte for byte (so a draft can always keep them).
+    KeepPeople,
     New {
         section: String,
         content: ProposedContent,
     },
+    /// Change a person's block (its ID, section and kind kept) at that
+    /// person's request: new text, or a claim's new sentence with its
+    /// assertions (empty keeps the claim's own).
+    Change {
+        block: String,
+        text: String,
+        assertions: Vec<ProposedAssertion>,
+    },
+    /// Remove a person's block at that person's request.
+    Remove(String),
 }
 
 /// A `draft_work_product` answer entry.
@@ -518,6 +598,9 @@ pub struct Draft {
     /// product); None for a new work product.
     pub base_version: Option<String>,
     pub blocks: Vec<ProposedBlock>,
+    /// The person's Guide request a change or removal of their blocks
+    /// answers (a task command ID); None when it changes no person's block.
+    pub request: Option<String>,
 }
 
 // ---------------------------------------------------------------- records
@@ -765,9 +848,162 @@ impl Block {
             ),
         ])
     }
+    /// The text of a heading or narrative, or a claim's sentence.
+    pub fn text(&self) -> Option<&str> {
+        match &self.content {
+            Content::Heading { text } | Content::Narrative { text, .. } => Some(text),
+            Content::Claim { statement, .. } => Some(statement),
+            _ => None,
+        }
+    }
     /// SHA-256 of the canonical block document.
     pub fn digest(&self) -> String {
         sha256_hex(canonical_json(&self.document()).as_bytes())
+    }
+}
+
+/// What was true when a version was recorded, frozen in it (owner decision
+/// of 2026-10-21): the names of the people who wrote it, each exceptions
+/// block's counts by derived status (open, resolved, replaced, closed), and
+/// the claims already needing refresh then (a kept block can be stale when
+/// it is kept). Its exports show exactly this; what changes later shows as
+/// needing refresh, never as silently new values.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Snapshot {
+    pub labels: BTreeMap<String, String>,
+    pub exceptions: BTreeMap<String, [u64; 4]>,
+    pub refresh: BTreeMap<String, Vec<RefreshReason>>,
+}
+impl Snapshot {
+    pub fn document(&self) -> JsonValue {
+        object(vec![
+            (
+                "labels",
+                JsonValue::Object(self.labels.iter().map(|(k, v)| (k.clone(), s(v))).collect()),
+            ),
+            (
+                "exceptions",
+                JsonValue::Object(
+                    self.exceptions
+                        .iter()
+                        .map(|(k, v)| {
+                            (
+                                k.clone(),
+                                JsonValue::Array(v.iter().map(|n| int(*n)).collect()),
+                            )
+                        })
+                        .collect(),
+                ),
+            ),
+            (
+                "refresh",
+                JsonValue::Object(
+                    self.refresh
+                        .iter()
+                        .map(|(k, v)| {
+                            (
+                                k.clone(),
+                                JsonValue::Array(v.iter().map(|r| s(r.as_str())).collect()),
+                            )
+                        })
+                        .collect(),
+                ),
+            ),
+        ])
+    }
+    fn from_document(value: &JsonValue) -> Option<Self> {
+        let map = as_map(value)?;
+        let labels = as_map(map.get("labels")?)?
+            .iter()
+            .map(|(k, v)| match v {
+                JsonValue::String(v) => Some((k.clone(), v.clone())),
+                _ => None,
+            })
+            .collect::<Option<BTreeMap<_, _>>>()?;
+        let exceptions = as_map(map.get("exceptions")?)?
+            .iter()
+            .map(|(k, v)| {
+                let counts = as_array(v)?
+                    .iter()
+                    .map(|n| match n {
+                        JsonValue::Integer(n) => u64::try_from(*n).ok(),
+                        _ => None,
+                    })
+                    .collect::<Option<Vec<u64>>>()?;
+                Some((k.clone(), <[u64; 4]>::try_from(counts).ok()?))
+            })
+            .collect::<Option<BTreeMap<_, _>>>()?;
+        let refresh = as_map(map.get("refresh")?)?
+            .iter()
+            .map(|(k, v)| {
+                Some((
+                    k.clone(),
+                    as_array(v)?
+                        .iter()
+                        .map(|r| match r {
+                            JsonValue::String(r) => RefreshReason::parse(r),
+                            _ => None,
+                        })
+                        .collect::<Option<Vec<_>>>()?,
+                ))
+            })
+            .collect::<Option<BTreeMap<_, _>>>()?;
+        (map.len() == 3).then_some(Self {
+            labels,
+            exceptions,
+            refresh,
+        })
+    }
+    pub fn is_valid(&self) -> bool {
+        self.labels.len() <= MAX_BLOCKS + 1
+            && self
+                .labels
+                .iter()
+                .all(|(k, v)| valid_scope_id(k) && valid_scope_label(v) && v.chars().count() <= 200)
+            && self.exceptions.len() <= MAX_BLOCKS
+            && self.exceptions.keys().all(|k| valid_prefixed(k, "basis-"))
+            && self.refresh.len() <= MAX_CLAIMS
+            && self.refresh.iter().all(|(k, v)| {
+                valid_block_id(k) && !v.is_empty() && v.windows(2).all(|w| w[0] < w[1])
+            })
+    }
+}
+
+/// How a version that changes or removes a person's blocks came about: the
+/// agent proposed it at that person's explicit request in the conversation
+/// (their Guide command), the person saw it as a before/after proposal and
+/// confirmed it. Recorded as "changed by the agent at <person>'s request".
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ChangeRequest {
+    pub requested_by: String,
+    pub request_id: String,
+    pub proposal_id: String,
+    pub confirmation_id: String,
+}
+impl ChangeRequest {
+    pub fn is_valid(&self) -> bool {
+        valid_scope_id(&self.requested_by)
+            && valid_scope_id(&self.request_id)
+            && valid_proposal_id(&self.proposal_id)
+            && valid_decision_id(&self.confirmation_id)
+    }
+    fn document(&self) -> JsonValue {
+        object(vec![
+            ("requested_by", s(&self.requested_by)),
+            ("request_id", s(&self.request_id)),
+            ("proposal_id", s(&self.proposal_id)),
+            ("confirmation_id", s(&self.confirmation_id)),
+        ])
+    }
+    fn from_document(value: &JsonValue) -> Option<Self> {
+        let map = as_map(value)?;
+        (map.len() == 4).then_some(())?;
+        Some(Self {
+            requested_by: text(map, "requested_by")?,
+            request_id: text(map, "request_id")?,
+            proposal_id: text(map, "proposal_id")?,
+            confirmation_id: text(map, "confirmation_id")?,
+        })
     }
 }
 
@@ -791,6 +1027,13 @@ pub struct Version {
     pub blocks: Vec<Block>,
     /// Required template sections with no content block, in template order.
     pub missing_required: Vec<String>,
+    /// The rule its new claims and sections were checked under.
+    pub figure_rule: FigureRule,
+    /// What was true when it was recorded (every version of rule V2).
+    pub snapshot: Option<Snapshot>,
+    /// A version the agent recorded at a person's confirmed request to
+    /// change or remove their blocks.
+    pub change: Option<ChangeRequest>,
 }
 
 fn s(value: &str) -> JsonValue {
@@ -827,18 +1070,23 @@ fn pin_document(p: &Pin) -> JsonValue {
     ])
 }
 
-/// Which template sections have content (any block but the platform's
-/// limitations block).
-pub fn missing_required(template: &TemplateRef, blocks: &[Block]) -> Vec<String> {
+/// Which required template sections have no content. Under rule V2 content
+/// is a narrative, a claim or a placed coverage or exceptions block (a
+/// heading alone, or the limitations block, completes nothing); under V1 any
+/// block but the limitations block.
+pub fn missing_required(template: &TemplateRef, blocks: &[Block], rule: FigureRule) -> Vec<String> {
+    let content = |b: &Block| match rule {
+        FigureRule::V1 => b.content.kind() != BlockKind::Limitations,
+        FigureRule::V2 => matches!(
+            b.content.kind(),
+            BlockKind::Narrative | BlockKind::Claim | BlockKind::Coverage | BlockKind::Exceptions
+        ),
+    };
     template
         .sections
         .iter()
         .filter(|s| s.required)
-        .filter(|s| {
-            !blocks
-                .iter()
-                .any(|b| b.section == s.id && b.content.kind() != BlockKind::Limitations)
-        })
+        .filter(|s| !blocks.iter().any(|b| b.section == s.id && content(b)))
         .map(|s| s.id.clone())
         .collect()
 }
@@ -847,7 +1095,7 @@ impl Version {
     /// The canonical version document (digest and time excluded).
     pub fn document(&self) -> JsonValue {
         let t = &self.template;
-        object(vec![
+        let mut fields = vec![
             ("record", s("work_product_version")),
             ("id", s(&self.id)),
             ("product_id", s(&self.product_id)),
@@ -888,7 +1136,7 @@ impl Version {
             ),
             ("methodology_binding_id", s(&self.methodology_binding_id)),
             ("execution_epoch", int(self.execution_epoch)),
-            ("figure_rule", s(FIGURE_RULE)),
+            ("figure_rule", s(self.figure_rule.as_str())),
             (
                 "blocks",
                 JsonValue::Array(self.blocks.iter().map(Block::document).collect()),
@@ -897,7 +1145,16 @@ impl Version {
                 "missing_required",
                 JsonValue::Array(self.missing_required.iter().map(|m| s(m)).collect()),
             ),
-        ])
+        ];
+        // Present only when there is one, so the documents (and digests) of
+        // versions recorded before the review round are unchanged.
+        if let Some(snapshot) = &self.snapshot {
+            fields.push(("snapshot", snapshot.document()));
+        }
+        if let Some(change) = &self.change {
+            fields.push(("change_request", change.document()));
+        }
+        object(fields)
     }
     /// SHA-256 of the canonical version document.
     pub fn digest(&self) -> String {
@@ -942,13 +1199,26 @@ impl Version {
                 b.is_valid()
                     && self.template.section(&b.section).is_some()
                     && (b.authored_in != self.id || b.author == self.author)
+                    && (b.authored_in != self.id
+                        || self.figure_rule == FigureRule::V1
+                        || b.text().is_none_or(|t| first_hidden(t).is_none()))
             })
             && self
                 .blocks
                 .iter()
                 .enumerate()
                 .all(|(i, b)| self.blocks[..i].iter().all(|p| p.id != b.id))
-            && self.missing_required == missing_required(&self.template, &self.blocks)
+            && self.missing_required
+                == missing_required(&self.template, &self.blocks, self.figure_rule)
+            && (self.figure_rule == FigureRule::V2) == self.snapshot.is_some()
+            && self.snapshot.as_ref().is_none_or(Snapshot::is_valid)
+            && self.change.as_ref().is_none_or(|c| {
+                c.is_valid()
+                    && self.figure_rule == FigureRule::V2
+                    && matches!(self.author, Author::Agent { .. })
+                    && self.number > 1
+            })
+            && (self.figure_rule == FigureRule::V1 || first_hidden(&self.title).is_none())
             && canonical_json(&self.document()).len() <= MAX_VERSION_BYTES
     }
     /// Decode a stored version document; refused unless it re-renders to the
@@ -1041,6 +1311,15 @@ impl Version {
                     _ => None,
                 })
                 .collect::<Option<Vec<_>>>()?,
+            figure_rule: FigureRule::parse(&text(map, "figure_rule")?)?,
+            snapshot: match map.get("snapshot") {
+                Some(v) => Some(Snapshot::from_document(v)?),
+                None => None,
+            },
+            change: match map.get("change_request") {
+                Some(v) => Some(ChangeRequest::from_document(v)?),
+                None => None,
+            },
         };
         (version.is_valid() && version.document() == *document).then_some(version)
     }
@@ -1140,12 +1419,17 @@ pub enum Current {
         superseded: bool,
     },
     /// The original's currently registered digest as this reader sees it
-    /// (None: not visible to it), and whether this viewer may read it now.
+    /// (None: not visible to it), whether this viewer may read it now, and
+    /// whether a replacement source corrects it (21.4).
     Quote {
         registered: Option<String>,
         readable: bool,
+        corrected: bool,
     },
-    Period,
+    /// Whether a successor basis supersedes the basis.
+    Period {
+        superseded: bool,
+    },
 }
 
 /// Whether a claim is current, derived on read and never stored.
@@ -1187,12 +1471,12 @@ pub fn currency(pins: &[Pin], current: &[Current]) -> ClaimCurrency {
                     review,
                 }),
             ) => {
+                // The effective outcome is the verdict with its origin; a
+                // review state alone (an acceptance) changes neither.
+                let _ = review;
                 if *head_id != pin.record_id {
                     reasons.insert(RefreshReason::EvaluationRevised);
-                } else if verdict_value(*verdict) != pin.value
-                    || Some(*origin) != pin.origin
-                    || Some(*review) != pin.review
-                {
+                } else if verdict_value(*verdict) != pin.value || Some(*origin) != pin.origin {
                     reasons.insert(RefreshReason::DispositionChanged);
                 }
             }
@@ -1220,12 +1504,16 @@ pub fn currency(pins: &[Pin], current: &[Current]) -> ClaimCurrency {
                 Some(Current::Quote {
                     registered,
                     readable,
+                    corrected,
                 }),
             ) => {
-                // Registered under another digest: the original it quotes is
-                // not the one it was verified against. Not visible to this
-                // viewer (or not readable now) is never proof of that: the
-                // quote is withheld, not stale.
+                // A replacement source corrects the original it quotes, or it
+                // is registered under another digest: not the original it was
+                // verified against. Not visible to this viewer (or not
+                // readable now) is never proof of that: withheld, not stale.
+                if *corrected {
+                    reasons.insert(RefreshReason::SourceWithdrawn);
+                }
                 match registered {
                     Some(digest) if *digest != pin.record_digest => {
                         reasons.insert(RefreshReason::SourceWithdrawn);
@@ -1237,13 +1525,153 @@ pub fn currency(pins: &[Pin], current: &[Current]) -> ClaimCurrency {
             (AssertionKind::Quote, _) => {
                 reasons.insert(RefreshReason::SourceWithdrawn);
             }
-            (AssertionKind::Period, _) => {}
+            (AssertionKind::Period, Some(Current::Period { superseded: false })) => {}
+            (AssertionKind::Period, _) => {
+                reasons.insert(RefreshReason::BasisSuperseded);
+            }
         }
     }
     ClaimCurrency {
         reasons: reasons.into_iter().collect(),
         withheld,
     }
+}
+
+// --------------------------------------------------------------- verdicts
+
+fn class_words(class: VerdictClass) -> &'static str {
+    match class {
+        VerdictClass::Positive => "met or no exception",
+        VerdictClass::Negative => "not met or an exception",
+        VerdictClass::Undetermined => "undetermined or inconclusive",
+    }
+}
+
+/// The verdicts a claim's own assertions hold (owner decision of
+/// 2026-10-21): an outcome its verdict; a conclusion and an exception status
+/// what they say; a count of met, not met, failing, undetermined or
+/// unresolved items what it counts (zero failing items is "no exception").
+/// Quotes, facts and periods hold none.
+pub fn held_verdicts(pins: &[Pin]) -> BTreeSet<VerdictClass> {
+    use VerdictClass::*;
+    let mut out = BTreeSet::new();
+    for p in pins {
+        match p.kind {
+            AssertionKind::Outcome => match p.value.as_str() {
+                "met" => {
+                    out.insert(Positive);
+                }
+                "not_met" => {
+                    out.insert(Negative);
+                }
+                "undetermined" => {
+                    out.insert(Undetermined);
+                }
+                _ => {}
+            },
+            AssertionKind::Conclusion => match Conclusion::parse(&p.value) {
+                Some(Conclusion::NoExceptionFound) => {
+                    out.insert(Positive);
+                }
+                Some(Conclusion::ExceptionsFound) => {
+                    out.insert(Negative);
+                }
+                Some(Conclusion::ExceptionsFoundInconclusive) => {
+                    out.extend([Negative, Undetermined]);
+                }
+                Some(Conclusion::Inconclusive | Conclusion::NoItemsFoundAbsenceNotProven) => {
+                    out.insert(Undetermined);
+                }
+                _ => {}
+            },
+            AssertionKind::Exception => {
+                // An exception was found; resolved by evidence or replaced
+                // by a person's judgment also says it is met now.
+                out.insert(Negative);
+                if matches!(
+                    ExceptionStatus::parse(&p.value),
+                    Some(
+                        ExceptionStatus::ResolvedByEvidence
+                            | ExceptionStatus::ReplacedByHumanJudgment
+                    )
+                ) {
+                    out.insert(Positive);
+                }
+            }
+            AssertionKind::Count => {
+                let zero = p.value == "0";
+                match p.measure {
+                    Some(CountMeasure::Met | CountMeasure::MeetsEveryApplicable) => {
+                        out.insert(Positive);
+                        if zero {
+                            out.insert(Negative);
+                        }
+                    }
+                    Some(
+                        CountMeasure::NotMet
+                        | CountMeasure::FailingSubjects
+                        | CountMeasure::FailingOpportunities,
+                    ) => {
+                        out.insert(Negative);
+                        if zero {
+                            out.insert(Positive);
+                        }
+                    }
+                    Some(
+                        CountMeasure::Undetermined
+                        | CountMeasure::Unresolved
+                        | CountMeasure::ExecutionFailed
+                        | CountMeasure::NotEvaluated,
+                    ) => {
+                        out.insert(Undetermined);
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+/// Every verdict word of a claim's sentence must be one its own assertions
+/// hold ([`held_verdicts`]); a claim that holds none states no verdict.
+/// Err names the closed reason and the platform's detail.
+pub fn verdict_agreement(statement: &str, pins: &[Pin]) -> Result<(), (Refusal, String)> {
+    let held = held_verdicts(pins);
+    for (class, phrase) in verdicts(statement) {
+        if held.contains(&class) {
+            continue;
+        }
+        if held.is_empty() {
+            return Err((
+                Refusal::VerdictWithoutRecord,
+                format!("\"{phrase}\" states a verdict, and none of the claim's records holds one"),
+            ));
+        }
+        let kinds: BTreeSet<AssertionKind> = pins.iter().map(|p| p.kind).collect();
+        let reason = if kinds.contains(&AssertionKind::Outcome) {
+            Refusal::OutcomeMismatch
+        } else if kinds.contains(&AssertionKind::Conclusion) {
+            Refusal::ConclusionMismatch
+        } else if kinds.contains(&AssertionKind::Exception) {
+            Refusal::StatusMismatch
+        } else {
+            Refusal::CountMismatch
+        };
+        return Err((
+            reason,
+            format!(
+                "\"{phrase}\" says {}, and the claim's records hold only: {}",
+                class_words(class),
+                held.iter()
+                    .map(|c| class_words(*c))
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            ),
+        ));
+    }
+    Ok(())
 }
 
 // --------------------------------------------------------- coverage words
@@ -1319,7 +1747,11 @@ fn strict(fields: Vec<(&str, ArgumentSchema)>) -> ArgumentSchema {
 /// is compact because the whole answer schema has one fixed byte bound:
 /// `template` is `id:version`; `base` is the version it edits (empty for a
 /// new work product, whose product is then created); a block's `kind` is
-/// `keep` (with the kept block's ID in `record`), `heading`, `narrative`,
+/// `keep` (with the kept block's ID in `record`), `keep_people` (every
+/// person's block of the base, in order), `change` (a person's block ID in
+/// `record`, its new text, or a claim's new sentence and assertions; only at
+/// that person's request, named in `request`), `remove` (a person's block ID
+/// in `record`, at their request), `heading`, `narrative`,
 /// `judgment` (narrative labelled Zobba's judgment), `claim` (its sentence
 /// in `text`), `coverage` (a summary ID in `record`), `exceptions` (a basis
 /// ID in `record`) or `limitations`; an assertion's `detail` is a count's
@@ -1342,6 +1774,9 @@ pub fn answer_fields() -> Vec<(&'static str, ArgumentSchema)> {
             "kind",
             enumerated(vec![
                 "keep",
+                "keep_people",
+                "change",
+                "remove",
                 "heading",
                 "narrative",
                 "judgment",
@@ -1370,6 +1805,7 @@ pub fn answer_fields() -> Vec<(&'static str, ArgumentSchema)> {
         ),
         ("template", string(257)),
         ("base", string(48)),
+        ("request", string(128)),
         (
             "blocks",
             ArgumentSchema::Array {
@@ -1449,6 +1885,22 @@ fn block_from(value: &JsonValue) -> Option<ProposedBlock> {
         "keep" if plain && section.is_empty() && body.is_empty() => {
             return Some(ProposedBlock::Keep(record));
         }
+        "keep_people" if plain && section.is_empty() && body.is_empty() && record.is_empty() => {
+            return Some(ProposedBlock::KeepPeople);
+        }
+        "remove" if plain && section.is_empty() && body.is_empty() => {
+            return Some(ProposedBlock::Remove(record));
+        }
+        "change" if section.is_empty() => {
+            if let Some(assertions) = decoded {
+                return Some(ProposedBlock::Change {
+                    block: record,
+                    text: body,
+                    assertions,
+                });
+            }
+            ProposedContent::Malformed
+        }
         "heading" if plain && record.is_empty() => ProposedContent::Heading { text: body },
         "narrative" | "judgment" if plain && record.is_empty() => ProposedContent::Narrative {
             label: if kind == "judgment" {
@@ -1495,6 +1947,12 @@ pub fn decode_draft(value: &JsonValue) -> Option<Draft> {
             .iter()
             .map(block_from)
             .collect::<Option<Vec<_>>>()?,
+        // Absent in answers stored before the review round.
+        request: match m.get("request") {
+            None => None,
+            Some(JsonValue::String(r)) => (!r.is_empty()).then(|| r.clone()),
+            Some(_) => return None,
+        },
     })
 }
 

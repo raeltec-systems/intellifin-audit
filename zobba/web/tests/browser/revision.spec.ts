@@ -237,3 +237,32 @@ test('a re-read work panel shows the assessment basis and coverage once each', a
   expect(await page.locator('section[aria-label="Coverage"]').count()).toBeLessThanOrEqual(1);
   await expect(page.getByRole('group', { name: 'Review of approval for INV-0042', exact: true })).toHaveCount(1);
 });
+
+test('a revision holds any number of reviews and shows them page by page', async ({ page }) => {
+  await openTask(page);
+  const second = history.entries[1];
+  const one = second.dispositions[0];
+  const many = (from: number, count: number) => Array.from({ length: count }, (_, i) => ({ ...one, id: `disp-x${from + i}`, rationale: `Reason ${from + i}.` }));
+  const paged = JSON.parse(JSON.stringify(history));
+  paged.entries[1] = { ...second, dispositions: many(1, 16), dispositions_total: '30', dispositions_next_cursor: 'disp-x16' };
+  await page.route('**/api/engagements/engagement-a/tasks/*/assessment/chains/*/history?*', async route => {
+    await route.fulfill({ json: paged });
+  });
+  const cursors: string[] = [];
+  await page.route(`**/api/engagements/engagement-a/tasks/*/assessment/revisions/${second.id}/dispositions?*`, async route => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    expect(route.request().headers()['x-expected-session']).toBeTruthy();
+    cursors.push(new URL(route.request().url()).searchParams.get('cursor') ?? '');
+    await route.fulfill({ json: { revision_id: second.id, total: '30', dispositions: many(17, 14), next_cursor: null } });
+  });
+  const review = page.getByRole('group', { name: 'Review of approval for INV-0042', exact: true });
+  await review.getByRole('button', { name: 'Show revision history', exact: true }).click();
+  const reviews = review.getByRole('list', { name: `Reviews of revision ${second.revision}`, exact: true });
+  await expect(reviews.getByRole('listitem')).toHaveCount(16);
+  await expect(review).toContainText('30 reviews are recorded · showing 16.');
+  await review.getByRole('button', { name: `Show the next 50 reviews of revision ${second.revision}`, exact: true }).click();
+  await expect(reviews.getByRole('listitem')).toHaveCount(30);
+  await expect(reviews).toContainText('Reason 30.');
+  await expect(review.getByRole('button', { name: `Show the next 50 reviews of revision ${second.revision}`, exact: true })).toHaveCount(0);
+  expect(cursors).toEqual(['disp-x16']);
+});

@@ -2425,13 +2425,40 @@ impl<
         )
         .await?;
         let paired: Vec<_> = heads.into_iter().zip(views).collect();
+        let requests = crate::work_product::WorkProductStore::guide_requests(
+            self.store,
+            &basis.actor_id,
+            &basis.scope,
+            &basis.task_id,
+        )
+        .await?;
         let mut outline = outline_all(&snapshot, &covered, &revisions, &exceptions);
         if !paired.is_empty() {
             let lines: Vec<String> = paired
                 .iter()
                 .map(|(head, view)| crate::work_product::product_line(head, view))
                 .collect();
-            let lines = lines.join("\n");
+            // The outline stays within its own bound: a product line that
+            // does not fit is counted, never silently cut (each product is
+            // also listed, by its blocks, in the work-products message).
+            let used = outline.as_ref().map_or(0, |t| t.len() + 1) + "Work products:\n".len();
+            let mut kept = Vec::new();
+            let mut size = used;
+            let mut left = 0usize;
+            for line in &lines {
+                if left == 0 && size + line.len() + 1 + 96 <= MAX_ASSESSMENT_OUTLINE_BYTES {
+                    size += line.len() + 1;
+                    kept.push(line.clone());
+                } else {
+                    left += 1;
+                }
+            }
+            if left > 0 {
+                kept.push(format!(
+                    "- {left} further work products are not listed here; each is listed in the work-products message."
+                ));
+            }
+            let lines = kept.join("\n");
             outline = Some(match outline {
                 Some(text) => format!("{text}\nWork products:\n{lines}"),
                 None => format!("Work products:\n{lines}"),
@@ -2441,7 +2468,7 @@ impl<
             outline,
             feedback,
             reconsiderations: revision::reconsiderations_text(&revisions),
-            work_products: crate::work_product::products_text(&paired),
+            work_products: crate::work_product::products_text(&paired, &requests),
         })
     }
 }

@@ -615,7 +615,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        get: operations["get_exception_dispositions"];
         put?: never;
         post: operations["save_exception_disposition"];
         delete?: never;
@@ -647,7 +647,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        get: operations["get_revision_dispositions"];
         put?: never;
         post: operations["save_disposition"];
         delete?: never;
@@ -831,6 +831,22 @@ export interface paths {
         get: operations["download_work_product_export"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagements/{engagement_id}/tasks/{task_id}/work-products/{product_id}/proposals/{proposal_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["decide_work_product_proposal"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2159,11 +2175,16 @@ export interface components {
             total: string;
         };
         /**
-         * @description One exception, one page of its occurrences (oldest first) and every
-         *     disposition.
+         * @description One exception, one page of its occurrences (oldest first) and the first
+         *     page of its dispositions (in their order; the newest is `exception.disposition`).
          */
         ExceptionDetailResponse: {
             dispositions: components["schemas"]["ExceptionDispositionResponse"][];
+            /**
+             * @description The cursor of the next disposition page (the last listed
+             *     disposition's place), when more follow.
+             */
+            dispositions_next_cursor: string | null;
             exception: components["schemas"]["ExceptionResponse"];
             next_cursor: string | null;
             occurrences: components["schemas"]["OccurrenceResponse"][];
@@ -2208,12 +2229,26 @@ export interface components {
              */
             references: components["schemas"]["CitationSourceResponse"][];
         };
+        /**
+         * @description One page of one exception's dispositions in their order (50 a page),
+         *     with their exact number. Dispositions are never changed.
+         */
+        ExceptionDispositionsResponse: {
+            dispositions: components["schemas"]["ExceptionDispositionResponse"][];
+            exception_id: string;
+            /** @description The last listed disposition's place, when more follow. */
+            next_cursor: string | null;
+            total: string;
+        };
         /** @description One exception of a Task with its derived status (never stored). */
         ExceptionResponse: {
             /** @description The criterion lineage (its first version's ID). */
             criterion_root: string;
             disposition: null | components["schemas"]["ExceptionDispositionResponse"];
-            /** @description The exact number of its dispositions; at most 16 may be saved. */
+            /**
+             * @description The exact number of its dispositions (any number may be saved; the
+             *     newest is effective).
+             */
             dispositions: string;
             first_source_id: string;
             /** @description The record its first occurrence names. */
@@ -2278,7 +2313,18 @@ export interface components {
             causes: string[];
             changes: components["schemas"]["ChangesResponse"];
             criterion_id: string;
+            /**
+             * @description Its first 16 dispositions, oldest first. A revision holds any number:
+             *     the rest are read from its disposition pages.
+             */
             dispositions: components["schemas"]["DispositionResponse"][];
+            /**
+             * @description The cursor of its next disposition page (the last listed
+             *     disposition), when more follow.
+             */
+            dispositions_next_cursor: string | null;
+            /** @description The exact number of its dispositions. */
+            dispositions_total: string;
             execution: string;
             id: string;
             inputs: components["schemas"]["EvaluationInputResponse"][];
@@ -3306,6 +3352,17 @@ export interface components {
             measure: string | null;
             name: string;
         };
+        /**
+         * @description One page of one revision's dispositions, oldest first (by time, then
+         *     ID), with their exact number. Dispositions are never changed.
+         */
+        RevisionDispositionsResponse: {
+            dispositions: components["schemas"]["DispositionResponse"][];
+            /** @description The last listed disposition, when more follow. */
+            next_cursor: string | null;
+            revision_id: string;
+            total: string;
+        };
         RevokeInvitationRequest: {
             expected_version: components["schemas"]["MembershipVersion"];
             invitation_id: components["schemas"]["MembershipIdentifier"];
@@ -3886,8 +3943,9 @@ export interface components {
             rule: string;
         };
         /**
-         * @description One checked assertion of a claim. A quote's value is withheld from a
-         *     viewer who may not read its original now.
+         * @description One checked assertion of a claim. A quote's value (or a fact's) is
+         *     withheld from a viewer who may not read its original (or any of its
+         *     verified sources) now.
          */
         WorkProductAssertionResponse: {
             criterion_id: string | null;
@@ -3924,10 +3982,30 @@ export interface components {
             label_words: string | null;
             /** @description Platform lines of a coverage, exceptions or limitations block. */
             lines: string[];
+            /** @description Its 0-based position in the version (an editor keeps this order). */
+            ordinal: string;
             record_id: string | null;
+            /** @description Closed reasons a coverage or exceptions block needs refresh now. */
+            refresh: string[];
+            refresh_words: string[];
             section_id: string;
-            /** @description A heading's or narrative's text, or a claim's sentence. */
+            /**
+             * @description A heading's or narrative's text, or a claim's sentence (absent when
+             *     the sentence restates a record withheld for this viewer).
+             */
             text: string | null;
+            /** @description The claim's sentence is withheld for this viewer. */
+            text_withheld: boolean;
+        };
+        /** @description The person's confirmed request an agent's version answers. */
+        WorkProductChangeRequestResponse: {
+            confirmation_id: string;
+            proposal_id: string;
+            request_id: string;
+            requested_by: string;
+            requested_by_label: string | null;
+            /** @description "Changed by the agent at <person>'s request". */
+            words: string;
         };
         /** @description A claim's currency, derived now (never stored). */
         WorkProductClaimResponse: {
@@ -3942,8 +4020,30 @@ export interface components {
             refresh_words: string[];
             /** @description What each record says, in the platform's words. */
             support: string[];
-            /** @description A quote this viewer may not read now (withheld, never stale). */
+            /**
+             * @description A quote or fact this viewer may not read now (withheld, never stale):
+             *     the claim's sentence, which restates it, is withheld too.
+             */
             withheld: boolean;
+        };
+        /** @description The recorded decision and, when it confirms, the agent's version. */
+        WorkProductDecisionOutcomeResponse: {
+            decision: components["schemas"]["WorkProductDecisionResponse"];
+            version: null | components["schemas"]["WorkProductVersionResponse"];
+        };
+        /** @description A person's decision on the agent's proposal to change their blocks. */
+        WorkProductDecisionRequest: {
+            /** @description `confirm` records the agent's version; `decline` records nothing else. */
+            decision: string;
+            /** @description Request key, idempotent per actor and bound to the session. */
+            key: string;
+        };
+        /** @description A person's decision on a proposal. */
+        WorkProductDecisionResponse: {
+            /** @description `confirmed` or `declined`. */
+            decision: string;
+            id: string;
+            recorded_us: string | null;
         };
         /**
          * @description One block a person keeps, in order: a base block by ID, with new text
@@ -3991,6 +4091,28 @@ export interface components {
             /** @description The digest of the requesting viewer's withheld set. */
             withheld_digest: string;
         };
+        /** @description One block a proposal changes or removes: its text before and after. */
+        WorkProductProposalChangeResponse: {
+            after: string | null;
+            before: string | null;
+            block_id: string;
+            /** @description `changed` or `removed`. */
+            change: string;
+        };
+        /**
+         * @description The agent's proposal, at this viewer's request, to change or remove
+         *     their blocks of this version. Only the person who asked sees it and may
+         *     confirm or decline it.
+         */
+        WorkProductProposalResponse: {
+            changes: components["schemas"]["WorkProductProposalChangeResponse"][];
+            decision: null | components["schemas"]["WorkProductDecisionResponse"];
+            id: string;
+            recorded_us: string | null;
+            request_id: string;
+            title: string;
+            version_id: string;
+        };
         /** @description A refusal of a person's edit, per block (or the edit as a whole). */
         WorkProductRefusalItemResponse: {
             /** Format: int32 */
@@ -4034,6 +4156,8 @@ export interface components {
              *     (not firm methodology)".
              */
             neutral: boolean;
+            /** @description Exact count of coverage and exceptions blocks needing refresh now. */
+            platform_refresh: string;
             recorded_us: string | null;
             /** @description Exact count of claims needing refresh now. */
             refresh: string;
@@ -4066,8 +4190,10 @@ export interface components {
         WorkProductVersionResponse: {
             author_kind: string;
             author_label: string | null;
+            change_request: null | components["schemas"]["WorkProductChangeRequestResponse"];
             /** @description SHA-256 of the version's canonical document. */
             digest: string;
+            /** @description `statement_figures_v1` or `statement_figures_v2`. */
             figure_rule: string;
             id: string;
             kind: string;
@@ -4078,8 +4204,12 @@ export interface components {
              *     is announced, never swapped in).
              */
             newer_version_id: string | null;
+            /** @description Exact count of coverage and exceptions blocks needing refresh now. */
+            platform_refresh: string;
             predecessor_id: string | null;
             product: components["schemas"]["WorkProductSummaryResponse"];
+            /** @description Proposals on this version the viewer asked for (at most 16). */
+            proposals: components["schemas"]["WorkProductProposalResponse"][];
             recorded_us: string | null;
             refresh: string;
             review_state: string;
@@ -7045,6 +7175,96 @@ export interface operations {
             };
         };
     };
+    get_exception_dispositions: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+                /** @description next_cursor of the previous page (the last listed disposition's place) */
+                cursor?: string;
+            };
+            header?: {
+                /** @description Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie */
+                "X-Expected-Session"?: string | null;
+            };
+            path: {
+                engagement_id: string;
+                task_id: string;
+                exception_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The exact number of one exception's dispositions and one page of them in their order (50 a page); dispositions are never changed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExceptionDispositionsResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description exception_not_found: no such exception of this Task */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Session changed */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     save_exception_disposition: {
         parameters: {
             query: {
@@ -7174,6 +7394,89 @@ export interface operations {
                     "application/json": components["schemas"]["PopulationMembersResponse"];
                 };
             };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Session changed */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_revision_dispositions: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+                /** @description next_cursor of the previous page (the last listed disposition) */
+                cursor?: string;
+            };
+            header?: {
+                /** @description Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie */
+                "X-Expected-Session"?: string | null;
+            };
+            path: {
+                engagement_id: string;
+                task_id: string;
+                /** @description The exact revision: a 24.1 evaluation or a revision */
+                revision_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The exact number of one revision's dispositions and one page of them (50 a page, oldest first); dispositions are never changed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevisionDispositionsResponse"];
+                };
+            };
+            /** @description A cursor that is not one of this revision's dispositions */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -8220,6 +8523,103 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkProductErrorResponse"];
+                };
+            };
+        };
+    };
+    decide_work_product_proposal: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+            };
+            header: {
+                /** @description Exact configured HTTPS application origin */
+                Origin: string;
+                /** @description Current session-bound token */
+                "X-CSRF-Token": string;
+                /** @description Required refusal fence for the current session actor */
+                "X-Expected-Actor": string;
+            };
+            path: {
+                engagement_id: string;
+                task_id: string;
+                product_id: string;
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkProductDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description The decision (an exact retry returns the original); a confirmation records the agent's version, changed by the agent at this person's request, with the request and confirmation IDs */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkProductDecisionOutcomeResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkProductErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description access_denied: only the person who asked decides, as a currently assigned Auditor or Audit manager in their own session */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkProductErrorResponse"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkProductErrorResponse"];
+                };
+            };
+            /** @description stale_base, a closed refusal reason, or work_product_edit_conflict (already decided) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkProductErrorResponse"];
                 };
             };
             429: {

@@ -112,6 +112,7 @@ fn view() -> ExportView {
             ],
             total_label: "Subjects in scope".into(),
             total: 1_200,
+            exact: true,
         }],
         preparation: "Prepared by Zobba (agent); edited by Alex Auditor".into(),
     }
@@ -215,6 +216,9 @@ fn the_export_fixtures_open_in_libreoffice_headless() {
         "Citations",
         "Coverage",
         "1200",
+        // Each count says whether it is exact (review round 1).
+        "Count is",
+        "exact",
     ] {
         assert!(html.contains(wanted), "{wanted} in the opened workbook");
     }

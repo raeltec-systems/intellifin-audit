@@ -51,29 +51,64 @@ test('a stale version names its refresh reasons and the newer version, never swa
   assert.deepEqual(numbers, [...numbers].sort((a, b) => a - b));
 });
 
-test('each version rule refuses exactly its own defect', () => {
+test('each version rule refuses exactly its own defect, and says which', () => {
   const v = recorded.version;
   const claimAt = (w, i) => claimBlocks(w)[i];
+  const quoteOf = w => claimBlocks(w).flatMap(b => b.claim.assertions).find(x => x.kind === 'quote');
+  const factOf = w => claimBlocks(w).find(b => b.claim.assertions.some(x => x.kind === 'fact'));
+  // [what is wrong, the rule that must refuse it (null: the exact field set), mutation]
   const cases = [
-    ['an unknown field (for example a confidence score)', w => { w.confidence = '0.9'; }],
-    ['a review state other than Draft', w => { w.review_state = 'Reviewed'; }],
-    ['a refresh count that is not its claims', w => { w.refresh = '1'; }],
-    ['a stale claim shown as current', w => { claimAt(w, 0).claim.refresh = ['evaluation_revised']; claimAt(w, 0).claim.refresh_words = ['x']; }],
-    ['claims not numbered in order', w => { claimAt(w, 1).claim.number = '3'; }],
-    ['a judgment block without its label', w => { blocks(w).find(b => b.label === 'judgment').label_words = null; }],
-    ['a missing required section not said', w => { w.sections[2].not_completed = null; }],
-    ['a newer version swapped in silently', w => { w.product.version_id = w.id.replace(/.$/, 'f'); }],
-    ['a withheld quote that still shows its text', w => { const a = claimBlocks(w).flatMap(b => b.claim.assertions).find(x => x.kind === 'quote'); a.withheld = true; }],
-    ['a count without a measure', w => { claimAt(w, 0).claim.assertions[0].measure = null; }],
-    ['a second limitations block', w => { w.sections[0].blocks.push(clone(w.sections[2].blocks[0])); }],
-    ['an agent block not labelled as Zobba', w => { blocks(w)[0].author_label = 'Someone'; }],
-    ['a different version than asked', w => { w.id = w.product.version_id.replace(/.$/, 'e'); }],
+    ['an unknown field (for example a confidence score)', null, w => { w.confidence = '0.9'; }],
+    ['a review state other than Draft', null, w => { w.review_state = 'Reviewed'; }],
+    ['a refresh count that is not its claims', 'refresh', w => { w.refresh = '1'; }],
+    ['a stale claim shown as current', 'claim-current', w => { claimAt(w, 0).claim.refresh = ['evaluation_revised']; claimAt(w, 0).claim.refresh_words = ['x']; }],
+    ['claims not numbered in order', 'claim-order', w => { claimAt(w, 1).claim.number = '3'; }],
+    ['a judgment block without its label', 'judgment-words', w => { blocks(w).find(b => b.label === 'judgment').label_words = null; }],
+    ['a missing required section not said', 'missing-required', w => { w.sections[2].not_completed = null; }],
+    ['a newer version swapped in silently', 'newer-version', w => { w.product.version_id = w.id.replace(/.$/, 'f'); }],
+    ['a withheld quote that still shows its text', 'withheld-value', w => { quoteOf(w).withheld = true; }],
+    ['a count without a measure', 'count-measure', w => { claimAt(w, 0).claim.assertions[0].measure = null; }],
+    ['a second limitations block', 'limitations-once', w => { const l = clone(w.sections[2].blocks[0]); l.ordinal = String(blocks(w).length); l.id = `blk-${'e'.repeat(40)}`; w.sections[0].blocks.push(l); }],
+    ['an agent block not labelled as Zobba', 'agent-label', w => { blocks(w)[0].author_label = 'Someone'; }],
+    ['a different version than asked', 'expected-version', w => { w.id = w.product.version_id.replace(/.$/, 'e'); }],
+    ['two blocks at one position', 'block-ordinal', w => { blocks(w)[1].ordinal = blocks(w)[0].ordinal; }],
+    ['a withheld claim whose sentence still shows', 'claim-withheld', w => { claimAt(w, 0).claim.withheld = true; }],
+    ['a sentence withheld from a claim that is not', 'text-withheld', w => { claimAt(w, 0).text_withheld = true; claimAt(w, 0).text = null; }],
+    ['a platform refresh count that is not its blocks', 'platform-refresh', w => { w.platform_refresh = '1'; }],
+    ['a heading block that needs refresh', 'block-refresh-kind', w => { blocks(w)[0].refresh = ['summary_superseded']; blocks(w)[0].refresh_words = ['x']; }],
+    ['a change request on a person\'s version', 'change-request', w => {
+      w.author_kind = 'human';
+      w.change_request = { requested_by: 'actor-a', requested_by_label: null, request_id: 'cmd-1', proposal_id: `wpp-${'1'.repeat(40)}`, confirmation_id: `wpd-${'1'.repeat(40)}`, words: "Changed by the agent at actor-a's request" };
+    }],
+    ['a proposal naming a block of another version', 'proposal-blocks', w => {
+      w.proposals = [{ id: `wpp-${'1'.repeat(40)}`, request_id: 'cmd-1', version_id: `wpv-${'9'.repeat(40)}`, title: 'T', changes: [{ block_id: `blk-${'9'.repeat(40)}`, change: 'removed', before: 'x', after: null }], decision: null, recorded_us: '1' }];
+    }],
   ];
-  for (const [name, mutate] of cases) {
+  for (const [name, rule, mutate] of cases) {
     const w = clone(v);
     mutate(w);
-    assert.throws(() => parseVersion(w, { product: v.product.id, version: v.id }), undefined, name);
+    assert.throws(() => parseVersion(w, { product: v.product.id, version: v.id }), rule ? new RegExp(`: ${rule}$`) : undefined, name);
   }
+  // A fact withheld for this viewer carries no value, and its claim's
+  // sentence is withheld too.
+  const w = clone(v);
+  const f = factOf(w);
+  if (f) {
+    const a = f.claim.assertions.find(x => x.kind === 'fact');
+    a.withheld = true; a.value = null; f.claim.withheld = true; f.text_withheld = true; f.text = null;
+    w.withheld = String(Number(w.withheld) + 1);
+    assert.equal(parseVersion(w).withheld, w.withheld);
+  }
+  // A version recorded before the review round keeps its rule.
+  const old = clone(v);
+  old.figure_rule = 'statement_figures_v1';
+  assert.equal(parseVersion(old).figure_rule, 'statement_figures_v1');
+  assert.throws(() => parseVersion({ ...clone(v), figure_rule: 'statement_figures_v3' }));
+  // Any identifier the server accepts names a section.
+  const ids = clone(v);
+  ids.sections[0].id = 'Objective-1';
+  for (const b of ids.sections[0].blocks) b.section_id = 'Objective-1';
+  assert.equal(parseVersion(ids).sections[0].id, 'Objective-1');
 });
 
 test('the shelf pages by ID and counts exactly', () => {
@@ -91,13 +126,26 @@ test('the shelf pages by ID and counts exactly', () => {
 test('exports are bound to their version and renderer', () => {
   const record = {
     id: `wpx-${'1'.repeat(40)}`, version_id: recorded.version.id, format: 'docx',
-    media_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', renderer: 'zobba-export-v1',
+    media_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', renderer: 'zobba-export-v2',
     digest: 'a'.repeat(64), size: '1024', withheld_digest: 'b'.repeat(64), refresh_count: '0', recorded_us: '1',
   };
   assert.deepEqual(parseExport(record, recorded.version.id), record);
   assert.throws(() => parseExport({ ...record, media_type: 'application/pdf' }), 'the format\'s own media type');
   assert.throws(() => parseExport(record, `wpv-${'2'.repeat(40)}`), 'another version');
   assert.throws(() => parseExport({ ...record, renderer: 'other' }));
+  // An export made before the review round keeps its renderer.
+  assert.equal(parseExport({ ...record, renderer: 'zobba-export-v1' }).renderer, 'zobba-export-v1');
+});
+
+test('a neutral template says so; a firm template\'s own name may end with any words', () => {
+  const s = clone(recorded.shelf);
+  s.products[0].neutral = true;
+  assert.throws(() => parseShelf(s), /: neutral-label$/);
+  s.products[0].template = `${s.products[0].template} · Neutral starter (not firm methodology)`;
+  assert.equal(parseShelf(s).products[0].neutral, true);
+  const t = clone(recorded.shelf);
+  t.products[0].template = 'Our Neutral starter (not firm methodology)';
+  assert.equal(parseShelf(t).products[0].neutral, false);
 });
 
 test('an edit keeps blocks by ID and sends only changed text, bounded in bytes', () => {
@@ -116,5 +164,7 @@ test('an edit keeps blocks by ID and sends only changed text, bounded in bytes',
 test('every closed reason and error has words', () => {
   for (const r of refusals) assert.ok(refusalLabel[r], r);
   for (const e of ['work_product_edit_invalid', 'access_denied', 'work_product_not_found', 'stale_base', 'work_product_refused', 'work_product_edit_conflict', 'work_product_capacity', 'work_product_unavailable']) assert.ok(editErrorLabel[e], e);
-  for (const e of ['work_product_export_invalid', 'access_denied', 'work_product_not_found', 'work_product_export_conflict', 'export_scope_changed', 'work_product_export_integrity', 'work_product_export_unavailable']) assert.ok(exportErrorLabel[e], e);
+  for (const e of ['work_product_export_invalid', 'access_denied', 'work_product_not_found', 'work_product_export_conflict', 'export_scope_changed', 'work_product_export_integrity', 'work_product_export_unfrozen', 'work_product_export_unavailable']) assert.ok(exportErrorLabel[e], e);
+  for (const r of refreshReasons) assert.ok(r.length > 0);
+  assert.ok(refreshReasons.includes('basis_superseded'));
 });

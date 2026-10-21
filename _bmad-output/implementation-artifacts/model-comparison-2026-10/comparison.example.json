@@ -1,0 +1,81 @@
+{
+  "_comment": "EXAMPLE ONLY. Every model ID and price here is a FAKE placeholder. Copy this file to comparison.json, fill in each provider's exact model ID and its published USD prices per million tokens, name the price source, and set verified to true. Live mode refuses placeholders. Paths are relative to the repository root.",
+  "comparison": "model-comparison-2026-10",
+  "total_cap_usd": 100,
+  "ledger": "_bmad-output/implementation-artifacts/model-comparison-2026-10/spend-ledger.json",
+  "output_root": "_bmad-output/implementation-artifacts/model-comparison-2026-10",
+  "qualification_receipts": "_bmad-output/implementation-artifacts/zobba-foundation-batch/qualification-receipts",
+  "defaults": {
+    "max_cycles": 3,
+    "max_model_calls": 80,
+    "max_minutes": 60,
+    "max_output_tokens": 4096,
+    "account": "zobba-test"
+  },
+  "runs": [
+    {
+      "id": "openai-1-cheapest",
+      "provider": "openai",
+      "model": "FILL-IN-openai-cheapest-model-id",
+      "openai_reasoning": false,
+      "effort": "none",
+      "run_cap_usd": 5,
+      "price": {
+        "input_usd_per_million": 1.11,
+        "output_usd_per_million": 2.22,
+        "cached_input_usd_per_million": 0.11,
+        "source": "FILL-IN: provider price page URL and the date you read it",
+        "verified": false
+      },
+      "notes": "FILL-IN: why this model is the cheapest candidate"
+    },
+    {
+      "id": "openai-2-most-capable",
+      "provider": "openai",
+      "model": "FILL-IN-openai-most-capable-model-id",
+      "openai_reasoning": true,
+      "effort": "none",
+      "run_cap_usd": 25,
+      "max_output_tokens": 8192,
+      "price": {
+        "input_usd_per_million": 3.33,
+        "output_usd_per_million": 4.44,
+        "cached_input_usd_per_million": 0.33,
+        "source": "FILL-IN: provider price page URL and the date you read it",
+        "verified": false
+      },
+      "notes": "FILL-IN"
+    },
+    {
+      "id": "anthropic-1-cheapest",
+      "provider": "anthropic",
+      "model": "FILL-IN-anthropic-cheapest-model-id",
+      "effort": "none",
+      "run_cap_usd": 5,
+      "price": {
+        "input_usd_per_million": 5.55,
+        "output_usd_per_million": 6.66,
+        "cached_input_usd_per_million": 0.55,
+        "source": "FILL-IN: provider price page URL and the date you read it",
+        "verified": false
+      },
+      "notes": "FILL-IN"
+    },
+    {
+      "id": "anthropic-2-most-capable",
+      "provider": "anthropic",
+      "model": "FILL-IN-anthropic-most-capable-model-id",
+      "effort": "none",
+      "run_cap_usd": 25,
+      "max_output_tokens": 8192,
+      "price": {
+        "input_usd_per_million": 7.77,
+        "output_usd_per_million": 8.88,
+        "cached_input_usd_per_million": 0.77,
+        "source": "FILL-IN: provider price page URL and the date you read it",
+        "verified": false
+      },
+      "notes": "FILL-IN"
+    }
+  ]
+}

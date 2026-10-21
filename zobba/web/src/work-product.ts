@@ -23,22 +23,33 @@ export type WorkProductSupport = components['schemas']['WorkProductSupportRespon
 export type WorkProductExport = components['schemas']['WorkProductExportResponse'];
 export type WorkProductRefusal = components['schemas']['WorkProductRefusalItemResponse'];
 export type WorkProductEditBlock = components['schemas']['WorkProductEditBlockRequest'];
+export type WorkProductProposal = components['schemas']['WorkProductProposalResponse'];
+export type WorkProductChangeRequest = components['schemas']['WorkProductChangeRequestResponse'];
+export type WorkProductDecision = components['schemas']['WorkProductDecisionResponse'];
 
 export const kinds = ['working_paper', 'analysis', 'finding_summary', 'report_draft'] as const;
 export const blockKinds = ['heading', 'narrative', 'claim', 'coverage', 'exceptions', 'limitations'] as const;
 export const assertionKinds = ['outcome', 'count', 'conclusion', 'exception', 'fact', 'quote', 'period'] as const;
 export const recordKinds = ['evaluation', 'revision', 'summary', 'effective_summary', 'exception', 'fact', 'original', 'basis'] as const;
 export const measures = ['received_rows', 'distinct_subjects', 'in_scope', 'selected', 'excluded', 'scope_unknown', 'applicable', 'not_applicable', 'met', 'not_met', 'undetermined', 'execution_failed', 'not_evaluated', 'failing_subjects', 'failing_opportunities', 'meets_every_applicable', 'unresolved'] as const;
-export const refusals = ['outcome_mismatch', 'count_mismatch', 'conclusion_mismatch', 'status_mismatch', 'fact_mismatch', 'quote_unverified', 'superseded_support', 'unsupported_figure', 'figure_in_narrative', 'verdict_without_record', 'unknown_record', 'stale_base', 'template_unbound', 'section_unknown', 'human_block_dropped', 'bound_exceeded'] as const;
-export const refreshReasons = ['evaluation_revised', 'disposition_changed', 'summary_superseded', 'exception_status_changed', 'fact_superseded', 'source_withdrawn'] as const;
+export const refusals = ['outcome_mismatch', 'count_mismatch', 'conclusion_mismatch', 'status_mismatch', 'fact_mismatch', 'quote_unverified', 'superseded_support', 'unsupported_figure', 'figure_in_narrative', 'verdict_without_record', 'unknown_record', 'stale_base', 'template_unbound', 'section_unknown', 'human_block_dropped', 'bound_exceeded', 'hidden_character', 'change_not_requested'] as const;
+export const refreshReasons = ['evaluation_revised', 'disposition_changed', 'summary_superseded', 'exception_status_changed', 'fact_superseded', 'source_withdrawn', 'basis_superseded'] as const;
 export const formats = ['docx', 'xlsx'] as const;
 
 export const REVIEW_STATE = 'Draft';
 export const JUDGMENT_LABEL = "Zobba's judgment — not checked against records";
 export const NOT_COMPLETED = 'Not completed in this version.';
 export const NEUTRAL_LABEL = 'Neutral starter (not firm methodology)';
-export const FIGURE_RULE = 'statement_figures_v1';
-export const RENDERER = 'zobba-export-v1';
+/** Versions recorded before the Story 24.4 review round keep rule v1. */
+export const FIGURE_RULES = ['statement_figures_v1', 'statement_figures_v2'] as const;
+export const FIGURE_RULE = 'statement_figures_v2';
+/** Exports made before the review round are renderer v1 (not frozen). */
+export const RENDERERS = ['zobba-export-v1', 'zobba-export-v2'] as const;
+export const RENDERER = 'zobba-export-v2';
+/** The words shown in place of what is withheld from this viewer. */
+export const WITHHELD = 'withheld for this viewer';
+export const MAX_PROPOSALS = 16;
+export const MAX_LINES = 512;
 export const AGENT_LABEL = 'Zobba (agent)';
 export const SHELF_PAGE = 50;
 export const MAX_BLOCKS = 64;
@@ -61,17 +72,25 @@ export const productId = prefixed('wp');
 export const versionId = prefixed('wpv');
 export const blockId = prefixed('blk');
 export const exportId = prefixed('wpx');
+export const proposalId = prefixed('wpp');
+export const decisionId = prefixed('wpd');
 function count(value: unknown): string { return cursor(value); }
 const n = (value: string) => BigInt(value);
 function label(value: unknown, max = 200): string {
   if (typeof value !== 'string' || !value || [...value].length > max || /[\u0000-\u001f\u007f-\u009f]/.test(value)) invalid();
   return value;
 }
+/** A template section ID: any identifier the server accepts. */
 function section(value: unknown): string {
-  if (typeof value !== 'string' || !/^[a-z][a-z0-9_]{0,63}$/.test(value)) invalid();
-  return value;
+  return identifier(value);
 }
 export const bytes = (value: string) => new TextEncoder().encode(value).length;
+
+/** Each consistency rule of a response, by name: the first one broken is
+ * named in the error, so a test (and a report) knows which rule refused. */
+function rules(checks: readonly (readonly [string, boolean])[]): void {
+  for (const [name, broken] of checks) if (broken) throw new Error(`Invalid work-product response: ${name}`);
+}
 
 export function parseSummary(value: unknown): WorkProductSummary {
   const v = record(value);
@@ -90,13 +109,20 @@ export function parseSummary(value: unknown): WorkProductSummary {
     review_state: oneOf(v.review_state, [REVIEW_STATE] as const),
     claims: count(v.claims),
     refresh: count(v.refresh),
+    platform_refresh: count(v.platform_refresh),
     missing_required: array(v.missing_required, MAX_BLOCKS).map(section),
     recorded_us: nullable(v.recorded_us, cursor),
   };
-  // A neutral template always says so; refresh counts only its own claims.
-  if (n(s.version) < 1n || n(s.claims) > BigInt(MAX_CLAIMS) || n(s.refresh) > n(s.claims)
-    || s.neutral !== s.template.endsWith(NEUTRAL_LABEL)
-    || new Set(s.missing_required).size !== s.missing_required.length) invalid();
+  // A neutral template always says so (a firm template's own name may end
+  // with any words); refresh counts only its own claims and blocks.
+  rules([
+    ['version-number', n(s.version) < 1n],
+    ['claim-bound', n(s.claims) > BigInt(MAX_CLAIMS)],
+    ['refresh-count', n(s.refresh) > n(s.claims)],
+    ['platform-refresh-bound', n(s.platform_refresh) > BigInt(MAX_BLOCKS)],
+    ['neutral-label', s.neutral && !s.template.endsWith(` · ${NEUTRAL_LABEL}`)],
+    ['missing-unique', new Set(s.missing_required).size !== s.missing_required.length],
+  ]);
   return exact(v, s);
 }
 
@@ -108,9 +134,11 @@ export function parseShelf(value: unknown): WorkProductShelf {
     next_cursor: nullable(v.next_cursor, productId),
   };
   // C-ordered by ID; a next page follows only a full page, from its last product.
-  if (BigInt(s.products.length) > n(s.total)
-    || s.products.some((p, i) => i > 0 && !(p.id > s.products[i - 1]!.id))
-    || (s.next_cursor !== null && (s.products.length !== SHELF_PAGE || s.next_cursor !== s.products[s.products.length - 1]!.id))) invalid();
+  rules([
+    ['shelf-total', BigInt(s.products.length) > n(s.total)],
+    ['shelf-order', s.products.some((p, i) => i > 0 && !(p.id > s.products[i - 1]!.id))],
+    ['shelf-cursor', s.next_cursor !== null && (s.products.length !== SHELF_PAGE || s.next_cursor !== s.products[s.products.length - 1]!.id)],
+  ]);
   return exact(v, s);
 }
 
@@ -123,7 +151,7 @@ export function parseAssertion(value: unknown): WorkProductAssertion {
     record_digest: digest(v.record_digest),
     measure: nullable(v.measure, value => oneOf(value, measures)),
     criterion_id: nullable(v.criterion_id, identifier),
-    value: nullable(v.value, value => text(value, 1000)),
+    value: nullable(v.value, value => text(value, 1024)),
     withheld: boolean(v.withheld),
     origin: nullable(v.origin, value => label(value, 64)),
     review: nullable(v.review, value => label(value, 64)),
@@ -132,13 +160,17 @@ export function parseAssertion(value: unknown): WorkProductAssertion {
     subject: nullable(v.subject, value => label(value, 128)),
     source: nullable(v.source, parseSource),
   };
-  // Only a quote is ever withheld, and then it carries no value and no source.
-  if ((a.withheld && (a.kind !== 'quote' || a.value !== null || a.source !== null))
-    || (!a.withheld && a.value === null)
-    || (a.kind === 'quote') !== (a.record_kind === 'original')
-    || (a.kind === 'count') !== (a.measure !== null)
-    || (a.kind === 'quote' && !a.withheld && (a.source === null || a.source.original_id !== a.record_id))
-    || (a.kind !== 'quote' && a.source !== null)) invalid();
+  // Only a quote or a fact is ever withheld, and then it carries no value
+  // and no source.
+  rules([
+    ['withheld-kind', a.withheld && a.kind !== 'quote' && a.kind !== 'fact'],
+    ['withheld-value', a.withheld && (a.value !== null || a.source !== null)],
+    ['value-present', !a.withheld && a.value === null],
+    ['quote-original', (a.kind === 'quote') !== (a.record_kind === 'original')],
+    ['count-measure', (a.kind === 'count') !== (a.measure !== null)],
+    ['quote-source', a.kind === 'quote' && !a.withheld && (a.source === null || a.source.original_id !== a.record_id)],
+    ['source-only-quote', a.kind !== 'quote' && a.source !== null],
+  ]);
   return exact(v, a);
 }
 
@@ -155,10 +187,14 @@ export function parseClaim(value: unknown): WorkProductClaim {
     assertions: array(v.assertions, MAX_ASSERTIONS).map(parseAssertion),
   };
   // Current exactly when nothing needs refresh; a withheld source never makes it stale.
-  if (n(c.number) < 1n || c.assertions.length < 1 || c.current !== (c.refresh.length === 0)
-    || c.refresh.length !== c.refresh_words.length || new Set(c.refresh).size !== c.refresh.length
-    // A withheld claim has a withheld quote (a withdrawn quote is hidden too, but stale).
-    || (c.withheld && !c.assertions.some(a => a.withheld))) invalid();
+  rules([
+    ['claim-number', n(c.number) < 1n],
+    ['claim-assertions', c.assertions.length < 1],
+    ['claim-current', c.current !== (c.refresh.length === 0)],
+    ['claim-refresh-words', c.refresh.length !== c.refresh_words.length || new Set(c.refresh).size !== c.refresh.length],
+    // Withheld exactly when one of its records is withheld for this viewer.
+    ['claim-withheld', c.withheld !== c.assertions.some(a => a.withheld)],
+  ]);
   return exact(v, c);
 }
 
@@ -166,27 +202,38 @@ export function parseBlock(value: unknown): WorkProductBlock {
   const v = record(value);
   const b: WorkProductBlock = {
     id: blockId(v.id),
+    ordinal: count(v.ordinal),
     section_id: section(v.section_id),
     kind: oneOf(v.kind, blockKinds),
     label: nullable(v.label, value => oneOf(value, ['judgment', 'narrative'] as const)),
     label_words: nullable(v.label_words, value => oneOf(value, [JUDGMENT_LABEL] as const)),
     text: nullable(v.text, value => text(value, MAX_BYTES.narrative)),
+    text_withheld: boolean(v.text_withheld),
     record_id: nullable(v.record_id, identifier),
     author_kind: oneOf(v.author_kind, ['agent', 'human'] as const),
     author_id: identifier(v.author_id),
     author_label: nullable(v.author_label, label),
     authored_in_version: versionId(v.authored_in_version),
     claim: nullable(v.claim, parseClaim),
-    lines: array(v.lines, 256).map(value => text(value, 1000)),
+    lines: array(v.lines, MAX_LINES).map(value => text(value, 1000)),
+    refresh: array(v.refresh, refreshReasons.length).map(value => oneOf(value, refreshReasons)),
+    refresh_words: array(v.refresh_words, refreshReasons.length).map(value => text(value, 300)),
   };
   const writable = b.kind === 'heading' || b.kind === 'narrative' || b.kind === 'claim';
-  if ((b.kind === 'narrative') !== (b.label !== null)
-    || (b.label === 'judgment') !== (b.label_words !== null)
-    || writable !== (b.text !== null)
-    || (b.text !== null && writable && bytes(b.text) > MAX_BYTES[b.kind as 'heading' | 'narrative' | 'claim'])
-    || (b.kind === 'coverage' || b.kind === 'exceptions') !== (b.record_id !== null)
-    || (b.kind === 'claim') !== (b.claim !== null)
-    || (b.author_kind === 'agent' && b.author_label !== AGENT_LABEL)) invalid();
+  rules([
+    ['narrative-label', (b.kind === 'narrative') !== (b.label !== null)],
+    ['judgment-words', (b.label === 'judgment') !== (b.label_words !== null)],
+    // A claim's sentence is withheld exactly when the claim is.
+    ['text-withheld', b.text_withheld !== (b.claim !== null && b.claim.withheld)],
+    ['text-present', (writable && !b.text_withheld) !== (b.text !== null)],
+    // Only a coverage or exceptions block needs refresh as a block.
+    ['block-refresh-kind', b.refresh.length > 0 && b.kind !== 'coverage' && b.kind !== 'exceptions'],
+    ['block-refresh-words', b.refresh.length !== b.refresh_words.length || new Set(b.refresh).size !== b.refresh.length],
+    ['text-bytes', b.text !== null && writable && bytes(b.text) > MAX_BYTES[b.kind as 'heading' | 'narrative' | 'claim']],
+    ['platform-record', (b.kind === 'coverage' || b.kind === 'exceptions') !== (b.record_id !== null)],
+    ['claim-present', (b.kind === 'claim') !== (b.claim !== null)],
+    ['agent-label', b.author_kind === 'agent' && b.author_label !== AGENT_LABEL],
+  ]);
   return exact(v, b);
 }
 export function parseVersion(value: unknown, expected?: { product: string; version: string }): WorkProductVersion {
@@ -202,8 +249,10 @@ export function parseVersion(value: unknown, expected?: { product: string; versi
     title: label(v.title),
     kind: oneOf(v.kind, kinds),
     template: label(v.template, 400),
-    figure_rule: oneOf(v.figure_rule, [FIGURE_RULE] as const),
+    figure_rule: oneOf(v.figure_rule, FIGURE_RULES),
     review_state: oneOf(v.review_state, [REVIEW_STATE] as const),
+    change_request: nullable(v.change_request, parseChangeRequest),
+    proposals: array(v.proposals, MAX_PROPOSALS).map(parseProposal),
     sections: array(v.sections, MAX_BLOCKS).map(item => {
       const s = record(item);
       return exact(s, {
@@ -212,8 +261,9 @@ export function parseVersion(value: unknown, expected?: { product: string; versi
         blocks: array(s.blocks, MAX_BLOCKS).map(parseBlock),
       });
     }),
-    limitations: array(v.limitations, 256).map(value => text(value, 1000)),
+    limitations: array(v.limitations, MAX_LINES).map(value => text(value, 1000)),
     refresh: count(v.refresh),
+    platform_refresh: count(v.platform_refresh),
     withheld: count(v.withheld),
     missing_required: array(v.missing_required, MAX_BLOCKS).map(section),
     newer_version_id: nullable(v.newer_version_id, versionId),
@@ -222,25 +272,84 @@ export function parseVersion(value: unknown, expected?: { product: string; versi
   const blocks = w.sections.flatMap(s => s.blocks);
   const claims = blocks.filter(b => b.claim);
   const missing = w.sections.filter(s => s.not_completed !== null).map(s => s.id);
-  if ((w.version === '1') !== (w.predecessor_id === null)
-    || (expected && (w.product.id !== expected.product || w.id !== expected.version))
-    || blocks.length > MAX_BLOCKS || claims.length > MAX_CLAIMS
-    || new Set(blocks.map(b => b.id)).size !== blocks.length
-    || new Set(w.sections.map(s => s.id)).size !== w.sections.length
-    // Exactly one limitations block, and claims numbered 1..n in order.
-    || blocks.filter(b => b.kind === 'limitations').length !== 1
-    || claims.some((b, i) => b.claim!.number !== String(i + 1))
+  // Under rule v2 a heading alone completes no required section either.
+  const empty = (b: WorkProductBlock) => b.kind === 'limitations' || (w.figure_rule === FIGURE_RULE && b.kind === 'heading');
+  rules([
+    ['predecessor', (w.version === '1') !== (w.predecessor_id === null)],
+    ['expected-version', !!expected && (w.product.id !== expected.product || w.id !== expected.version)],
+    ['block-bound', blocks.length > MAX_BLOCKS || claims.length > MAX_CLAIMS],
+    ['block-unique', new Set(blocks.map(b => b.id)).size !== blocks.length],
+    // Every block has its own position in the version.
+    ['block-ordinal', new Set(blocks.map(b => b.ordinal)).size !== blocks.length || blocks.some(b => n(b.ordinal) >= BigInt(blocks.length))],
+    ['section-unique', new Set(w.sections.map(s => s.id)).size !== w.sections.length],
+    ['limitations-once', blocks.filter(b => b.kind === 'limitations').length !== 1],
+    // Claims numbered 1..n in reading order (template section order, then
+    // their order within a section).
+    ['claim-order', claims.some((b, i) => b.claim!.number !== String(i + 1))],
+    ['platform-refresh', BigInt(blocks.filter(b => b.refresh.length > 0).length) !== n(w.platform_refresh)],
+    // A change request is the agent's version of a person's confirmed proposal.
+    ['change-request', w.change_request !== null && (w.author_kind !== 'agent' || w.figure_rule !== FIGURE_RULE)],
+    // Proposals on this version name this version's blocks.
+    ['proposal-blocks', w.proposals.some(p => p.changes.some(c => !blocks.some(b => b.id === c.block_id)))],
     // A required section with no content says so; the counts are this version's.
-    || missing.join('\0') !== w.missing_required.join('\0')
-    // (only the platform's limitations block may sit in a section with no content).
-    || w.sections.some(s => s.not_completed !== null && (!s.required || s.blocks.some(b => b.kind !== 'limitations')))
-    || BigInt(claims.filter(b => !b.claim!.current).length) !== n(w.refresh)
-    || BigInt(claims.filter(b => b.claim!.withheld).length) !== n(w.withheld)
+    ['missing-required', missing.join('\0') !== w.missing_required.join('\0')],
+    ['not-completed', w.sections.some(s => s.not_completed !== null && (!s.required || !s.blocks.every(empty)))],
+    ['refresh', BigInt(claims.filter(b => !b.claim!.current).length) !== n(w.refresh)],
+    ['withheld', BigInt(claims.filter(b => b.claim!.withheld).length) !== n(w.withheld)],
     // The newest version is announced, never swapped in.
-    || (w.newer_version_id !== null) !== (w.product.version_id !== w.id)
-    || (w.newer_version_id !== null && w.newer_version_id !== w.product.version_id)
-    || (w.author_kind === 'agent' && w.author_label !== AGENT_LABEL)) invalid();
+    ['newer-version', (w.newer_version_id !== null) !== (w.product.version_id !== w.id)
+      || (w.newer_version_id !== null && w.newer_version_id !== w.product.version_id)],
+    ['agent-label', w.author_kind === 'agent' && w.author_label !== AGENT_LABEL],
+  ]);
   return exact(v, w);
+}
+
+function parseChangeRequest(value: unknown): WorkProductChangeRequest {
+  const v = record(value);
+  const c: WorkProductChangeRequest = {
+    requested_by: identifier(v.requested_by),
+    requested_by_label: nullable(v.requested_by_label, label),
+    request_id: identifier(v.request_id),
+    proposal_id: proposalId(v.proposal_id),
+    confirmation_id: decisionId(v.confirmation_id),
+    words: text(v.words, 400),
+  };
+  if (c.words !== `Changed by the agent at ${c.requested_by_label ?? c.requested_by}'s request`) invalid();
+  return exact(v, c);
+}
+
+export function parseDecision(value: unknown): WorkProductDecision {
+  const v = record(value);
+  return exact(v, {
+    id: decisionId(v.id),
+    decision: oneOf(v.decision, ['confirmed', 'declined'] as const),
+    recorded_us: nullable(v.recorded_us, cursor),
+  });
+}
+
+export function parseProposal(value: unknown): WorkProductProposal {
+  const v = record(value);
+  const p: WorkProductProposal = {
+    id: proposalId(v.id),
+    request_id: identifier(v.request_id),
+    version_id: versionId(v.version_id),
+    title: label(v.title),
+    changes: array(v.changes, MAX_BLOCKS).map(item => {
+      const c = record(item);
+      return exact(c, {
+        block_id: blockId(c.block_id),
+        change: oneOf(c.change, ['changed', 'removed'] as const),
+        before: nullable(c.before, value => text(value, MAX_BYTES.narrative)),
+        after: nullable(c.after, value => text(value, MAX_BYTES.narrative)),
+      });
+    }),
+    decision: nullable(v.decision, parseDecision),
+    recorded_us: nullable(v.recorded_us, cursor),
+  };
+  // A removed block has no after; every changed block is a distinct one.
+  if (p.changes.length < 1 || p.changes.some(c => c.change === 'removed' && c.after !== null)
+    || new Set(p.changes.map(c => c.block_id)).size !== p.changes.length) invalid();
+  return exact(v, p);
 }
 
 export function parseSupport(value: unknown, block: string): WorkProductSupport {
@@ -266,7 +375,7 @@ export function parseExport(value: unknown, version?: string): WorkProductExport
     version_id: versionId(v.version_id),
     format,
     media_type: oneOf(v.media_type, [MEDIA_TYPE[format]] as const),
-    renderer: oneOf(v.renderer, [RENDERER] as const),
+    renderer: oneOf(v.renderer, RENDERERS),
     digest: digest(v.digest),
     size: count(v.size),
     withheld_digest: digest(v.withheld_digest),
@@ -358,8 +467,31 @@ export async function saveEdit(scope: Scope, taskId: string, product: string, ba
   return { ok: false, status: response.status, ...r };
 }
 
+export type DecisionResult =
+  | { ok: true; decision: WorkProductDecision; version: WorkProductVersion | null }
+  | { ok: false; status: number; error: string; head: string | null; refusals: WorkProductRefusal[] };
+
+/** The person's decision on the agent's proposal to change their blocks:
+ * a confirmation records the agent's version in the same request. */
+export async function decideProposal(scope: Scope, taskId: string, product: string, proposal: string, decision: 'confirm' | 'decline', key: string, session: Session, signal: AbortSignal): Promise<DecisionResult> {
+  const path = route(scope, `${productPath(taskId, product)}/proposals/${proposalId(proposal)}/decision`);
+  const response = await fetch(`/api${path}`, {
+    method: 'POST', signal, cache: 'no-store', credentials: 'same-origin', headers: mutationHeaders(session),
+    body: JSON.stringify({ decision, key }),
+  });
+  if (response.ok) {
+    const v = record(await readJsonBody(response));
+    const outcome = exact(v, { decision: parseDecision(v.decision), version: nullable(v.version, value => parseVersion(value)) });
+    if ((outcome.decision.decision === 'confirmed') !== (outcome.version !== null)
+      || (outcome.version && (outcome.version.product.id !== product || outcome.version.change_request?.proposal_id !== proposal))) invalid();
+    return { ok: true, ...outcome };
+  }
+  const r = await refusal(response, [...editErrors, 'work_product_unavailable']);
+  return { ok: false, status: response.status, ...r };
+}
+
 export type ExportResult = { ok: true; export: WorkProductExport } | { ok: false; status: number; error: string };
-const exportErrors = ['work_product_export_invalid', 'access_denied', 'work_product_not_found', 'work_product_export_conflict', 'export_scope_changed', 'work_product_export_integrity', 'work_product_export_unavailable'] as const;
+const exportErrors = ['work_product_export_invalid', 'access_denied', 'work_product_not_found', 'work_product_export_conflict', 'export_scope_changed', 'work_product_export_integrity', 'work_product_export_unfrozen', 'work_product_export_unavailable'] as const;
 
 /** Render one exact version as DOCX or XLSX, for this viewer's withheld set. */
 export async function requestExport(scope: Scope, taskId: string, product: string, version: string, format: (typeof formats)[number], key: string, session: Session, signal: AbortSignal): Promise<ExportResult> {
@@ -455,6 +587,8 @@ export const refusalLabel: Record<string, string> = {
   section_unknown: 'the section is not one of the template’s sections',
   human_block_dropped: 'a person’s block may not be dropped',
   bound_exceeded: 'the work product is larger than allowed',
+  hidden_character: 'the text holds a character that changes how it displays without being seen',
+  change_not_requested: 'a person’s block is changed only at that person’s own request',
 };
 export const editErrorLabel: Record<string, string> = {
   work_product_edit_invalid: 'The edit is not complete. Nothing was saved.',
@@ -473,5 +607,6 @@ export const exportErrorLabel: Record<string, string> = {
   work_product_export_conflict: 'That request was already used for a different export.',
   export_scope_changed: 'What you may read changed since this export was made. Request a new export.',
   work_product_export_integrity: 'The stored export did not match its recorded digest. Nothing was downloaded.',
+  work_product_export_unfrozen: 'This version was recorded before exports were frozen at their version. Save a new version, then export it.',
   work_product_export_unavailable: 'The export could not be made now. Nothing was recorded; try again.',
 };

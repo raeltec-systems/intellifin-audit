@@ -63,6 +63,7 @@ function ShelfItem({ product: p, open, onOpen }: { product: WorkProductSummary; 
     <ul className="work-product-facts" aria-label={`About ${p.title}`}>
       <li>{plural(p.claims, 'checked claim')}</li>
       <li className={p.refresh === '0' ? undefined : 'needs-refresh'}>{p.refresh === '0' ? 'No claim needs refresh' : `${plural(p.refresh, 'claim needs', 'claims need')} refresh`}</li>
+      {p.platform_refresh !== '0' ? <li className="needs-refresh">{plural(p.platform_refresh, 'coverage or exceptions block needs', 'coverage or exceptions blocks need')} refresh</li> : null}
       {p.missing_required.length ? <li>Required sections {NOT_COMPLETED.toLowerCase().replace(/\.$/, '')}: {p.missing_required.join(', ')}</li> : null}
       <li>Last {p.author_kind === 'human' ? 'edited by a person' : 'drafted by Zobba'}</li>
     </ul>
@@ -99,7 +100,7 @@ export function EngagementShelf({ scope, session, accessReady, onOpenTask }: {
       <ul className="work-product-shelf-list">{shelf.products.map(p => <li key={p.id}>
         <button type="button" className="task-list-open" onClick={event => onOpenTask(p.task_id, event.currentTarget)}>
           <span>{p.title}</span>
-          <small>{kindLabel[p.kind]} · version {number(p.version)} · {p.review_state} · {p.refresh === '0' ? 'no claim needs refresh' : `${plural(p.refresh, 'claim needs', 'claims need')} refresh`}{p.missing_required.length ? ` · ${plural(String(p.missing_required.length), 'required section')} not completed` : ''}</small>
+          <small>{kindLabel[p.kind]} · version {number(p.version)} · {p.review_state} · {p.refresh === '0' ? 'no claim needs refresh' : `${plural(p.refresh, 'claim needs', 'claims need')} refresh`}{p.platform_refresh !== '0' ? ` · ${plural(p.platform_refresh, 'platform block needs', 'platform blocks need')} refresh` : ''}{p.missing_required.length ? ` · ${plural(String(p.missing_required.length), 'required section')} not completed` : ''}</small>
           <span className="open-label">Open its Task</span>
         </button>
       </li>)}</ul>

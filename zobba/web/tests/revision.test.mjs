@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { causeLabel, errorLabel, parseChain, parseDisposition, parseHistory, rationaleBytes, reviewLabel } from '../src/revision.ts';
+import { causeLabel, errorLabel, parseChain, parseDisposition, parseDispositionPage, parseHistory, rationaleBytes, reviewLabel } from '../src/revision.ts';
 
 // The exact history JSON `crates/worker/tests/revision.rs` recorded from the
 // real API (identifiers and digests replaced by stable ones).
@@ -36,12 +36,38 @@ test('each history rule refuses exactly its own defect', () => {
     ['a total below the listed revisions', h => { h.entries.splice(2, 1); h.next_cursor = '2'; h.total = '1'; }],
     ['a cursor that is not the last listed revision', h => { h.entries.splice(2, 1); h.next_cursor = '1'; }],
     ['a final page that stops short of the total', h => { h.total = '4'; }],
+    ['a disposition total below the listed ones', h => { h.entries[1].dispositions_total = '0'; }],
+    ['a disposition cursor after a short list', h => { h.entries[1].dispositions_next_cursor = h.entries[1].dispositions[0].id; }],
   ];
   for (const [name, change] of cases) {
     const h = clone(recorded);
     change(h);
     assert.throws(() => parseHistory(h, recorded.chain_id), /Invalid assessment response/, name);
   }
+});
+
+test('a revision holds any number of dispositions, read in bounded pages', () => {
+  const entry = clone(recorded.entries[1]);
+  const one = entry.dispositions[0];
+  const listed = n => Array.from({ length: n }, (_, i) => ({ ...clone(one), id: `disp-${i + 100}` }));
+  // A history entry lists the first 16 of 200 and names the next page.
+  const h = clone(recorded);
+  h.entries[1].dispositions = listed(16);
+  h.entries[1].dispositions_total = '200';
+  h.entries[1].dispositions_next_cursor = 'disp-115';
+  assert.deepEqual(parseHistory(h, recorded.chain_id), h);
+  const page = (n, next) => ({ revision_id: entry.id, total: '200', dispositions: listed(n), next_cursor: next });
+  const full = page(50, 'disp-149');
+  assert.deepEqual(parseDispositionPage(full, entry.id), full);
+  assert.deepEqual(parseDispositionPage(page(3, null), entry.id), page(3, null));
+  const cases = [
+    ['a cursor that is not the last listed', page(50, 'disp-100')],
+    ['a next page after a short page', page(49, 'disp-148')],
+    ['another revision', { ...page(1, null), revision_id: 'rev-99' }],
+    ['a total below the listed dispositions', { ...page(3, null), total: '2' }],
+    ['a repeated disposition', { ...page(2, null), dispositions: [clone(one), clone(one)] }],
+  ];
+  for (const [name, value] of cases) assert.throws(() => parseDispositionPage(value, entry.id), /Invalid/, name);
 });
 
 test('a chain head states its review state exactly as derived', () => {

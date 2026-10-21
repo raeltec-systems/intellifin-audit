@@ -4,7 +4,7 @@ import type { Scope } from './engagements';
 import type { AssessmentFact } from './assessment';
 import { blank as blankText, reasonLabel, verdictLabel } from './assessment';
 import {
-  MAX_RATIONALE_BYTES, MAX_REFERENCES, causeLabel, concernLabel, concerns, errorLabel, kindLabel, rationaleBytes, readHistory, reviewLabel, saveDisposition, verdicts,
+  DISPOSITION_PAGE, MAX_RATIONALE_BYTES, MAX_REFERENCES, causeLabel, concernLabel, concerns, errorLabel, kindLabel, rationaleBytes, readDispositions, readHistory, reviewLabel, saveDisposition, verdicts,
 } from './revision';
 import type { Chain, ChainHistory, Disposition, DispositionCommand, DispositionResult } from './revision';
 
@@ -52,6 +52,25 @@ export function EvaluationReview({ chain, subject, taskId, facts, criterion, sco
       setLoading(false);
     });
   };
+  // A revision holds any number of reviews: the history lists its first
+  // ones, later pages are read on request and kept beside it.
+  const [more, setMore] = useState<Record<string, { list: Disposition[]; next: string | null }>>({});
+  const [moreError, setMoreError] = useState('');
+  const moreRequest = useRef<AbortController | null>(null);
+  useEffect(() => () => moreRequest.current?.abort(), []);
+  const loadMore = (revision: string, after: string) => {
+    if (!scope || !session) return;
+    moreRequest.current?.abort();
+    const controller = new AbortController();
+    moreRequest.current = controller;
+    setMoreError('');
+    readDispositions(scope, taskId, revision, after, session, controller.signal).then(page => {
+      if (controller.signal.aborted) return;
+      setMore(previous => ({ ...previous, [revision]: { list: [...(previous[revision]?.list ?? []), ...page.dispositions], next: page.next_cursor } }));
+    }, () => {
+      if (!controller.signal.aborted) setMoreError('More reviews could not be read now. Nothing is shown in their place.');
+    });
+  };
   const entries = pages.flatMap(p => p.entries);
   const last = pages.at(-1);
   const factName = new Map(pages.flatMap(p => p.facts).map(f => [f.id, `${f.name} (${f.basis_id.slice(0, 13)})`]));
@@ -82,8 +101,17 @@ export function EvaluationReview({ chain, subject, taskId, facts, criterion, sco
             {e.changes.replaced.length ? `Replaced ${e.changes.replaced.map(r => `${name(r.from)} with ${name(r.to)}`).join(', ')}.` : ''}
           </p> : null}
           {e.judgment ? <p><span className="retained-text">{e.judgment.rationale}</span></p> : null}
-          {e.dispositions.length ? <ul aria-label={`Reviews of revision ${e.revision}`}>{e.dispositions.map(d => <li key={d.id}>{disposedLabel(d)} by {d.actor_label ?? 'a person'}: <span className="retained-text">{d.rationale}</span>{d.references.length ? ` · ${d.references.length} ${d.references.length === 1 ? 'reference' : 'references'}` : ''}</li>)}</ul> : null}
+          {e.dispositions.length ? (() => {
+            const extra = more[e.id];
+            const listed = [...e.dispositions, ...(extra?.list ?? [])];
+            const next = extra ? extra.next : e.dispositions_next_cursor;
+            return <>
+              <ul aria-label={`Reviews of revision ${e.revision}`}>{listed.map(d => <li key={d.id}>{disposedLabel(d)} by {d.actor_label ?? 'a person'}: <span className="retained-text">{d.rationale}</span>{d.references.length ? ` · ${d.references.length} ${d.references.length === 1 ? 'reference' : 'references'}` : ''}</li>)}</ul>
+              {next ? <p className="work-omitted">{e.dispositions_total} reviews are recorded · showing {listed.length}. <button type="button" className="text-button" onClick={() => loadMore(e.id, next)}>Show the next {DISPOSITION_PAGE} reviews of revision {e.revision}</button></p> : null}
+            </>;
+          })() : null}
         </li>)}</ol>
+        {moreError ? <p role="alert" className="form-error">{moreError}</p> : null}
         {loading ? <p className="context-note">Reading revisions…</p> : null}
         {last?.next_cursor ? <button type="button" className="text-button" aria-disabled={loading} onClick={() => { if (!loading) load(last.next_cursor); }}>Show more revisions</button> : null}
       </div> : null}

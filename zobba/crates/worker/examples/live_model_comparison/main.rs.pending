@@ -1,0 +1,407 @@
+//! Live model comparison harness (owner approval 2026-10-21).
+//!
+//! Runs ONE fixed synthetic AP-approvals engagement and audit Task through the
+//! real worker coordinator (trusted reading, investigation and assessment
+//! composition), the real database and the real authenticated API, with one
+//! chosen provider and model, until a work product is recorded and its cycle
+//! ends, or a cycle, call, time or spend limit is reached. It then exports
+//! the recorded version as DOCX and XLSX through the API and writes
+//! `result.json` and `summary.md`.
+//!
+//! - Scripted mode (default): a loopback fixture answers with scripted
+//!   replies. No network, no cost. It checks its own expected outcome.
+//! - Live mode: the real native transport. Needs `--confirm-live <run id>`,
+//!   verified prices, a real model ID, the provider key in
+//!   `ZOBBA_OPENAI_API_KEY` / `ZOBBA_ANTHROPIC_API_KEY` (never printed), and a
+//!   qualification receipt (or `--assume-qualified-for-evaluation`, written
+//!   loudly into the result).
+//!
+//! Every call passes through a meter that refuses a call whose worst-case
+//! cost would pass the run's cap, and a cumulative ledger refuses a run whose
+//! cap would pass the comparison's total cap (USD 100).
+//!
+//! Requires a dedicated disposable `*_test` database (it is reset), the local
+//! OIDC fixture environment and a Docker engine with the pinned analysis
+//! image, exactly like `crates/worker/tests/work_product.rs`.
+mod analysis;
+mod config;
+mod engagement;
+mod ledger;
+mod meter;
+mod qualification;
+mod report;
+mod scripted;
+mod selfcheck;
+mod truth;
+
+#[path = "../../../infrastructure/tests/support/s3_protocol.rs"]
+mod s3_protocol;
+#[allow(dead_code)]
+#[path = "../../../infrastructure/tests/support/mod.rs"]
+mod support;
+
+use serde_json::json;
+use std::{
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex},
+    time::{Duration, SystemTime},
+};
+use zobba_application::model::{ModelQualificationSource, Provider, Qualification};
+use zobba_infrastructure::model::native::NativeAdapter;
+
+use config::Mode;
+use meter::{Meter, Metered, Rates};
+use qualification::{
+    ASSUMED_WARNING, FIXTURE_CAPABILITY_REVISION, LIVE_CAPABILITY_REVISION, QualificationRecord,
+};
+
+fn repo_root() -> PathBuf {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    path.canonicalize().unwrap_or(path)
+}
+fn harness_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/live_model_comparison")
+}
+
+fn main() {
+    // A large worker-thread stack: the work cycle's futures are big.
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(4)
+        .thread_stack_size(16 * 1024 * 1024)
+        .enable_all()
+        .build()
+        .expect("a tokio runtime");
+    let code = runtime.block_on(async {
+        match tokio::spawn(run()).await {
+            Ok(Ok(code)) => code,
+            Ok(Err(error)) => {
+                eprintln!("comparison refused: {error}");
+                2
+            }
+            Err(_) => {
+                eprintln!("comparison stopped: the harness panicked (see the message above)");
+                3
+            }
+        }
+    });
+    std::process::exit(code);
+}
+
+async fn run() -> Result<i32, String> {
+    let cli = config::Cli::parse(std::env::args().skip(1))?;
+    let repo = repo_root();
+    let harness = harness_dir();
+    let file = config::ComparisonFile::load(&cli.config)?;
+    let plan = config::RunPlan::resolve(&file, &cli, &repo)?;
+    let self_checks = selfcheck::run()?;
+    let truth = truth::Truth::load(&repo, &harness.join("fixtures").join(truth::ROLES_FILE))?;
+    for (_, path) in engagement::documents(&repo, &harness) {
+        if !path.is_file() {
+            return Err(format!("the engagement document {} is missing", path.display()));
+        }
+    }
+    eprintln!(
+        "comparison {}: run {} in {} mode ({} {}), run cap {:.2} USD, total cap {:.2} USD",
+        plan.comparison,
+        plan.run.id,
+        plan.mode.as_str(),
+        plan.provider.as_str(),
+        plan.model,
+        plan.run_cap_usd,
+        plan.total_cap_usd
+    );
+    eprintln!("self-checks passed: {}", self_checks.len());
+
+    // Live gates, before anything is reset, reserved or sent.
+    let mut key = None;
+    let qualification = match plan.mode {
+        Mode::Scripted => QualificationRecord::fixture(),
+        Mode::Live => {
+            let variable = match plan.provider {
+                Provider::OpenAi => "ZOBBA_OPENAI_API_KEY",
+                Provider::Anthropic => "ZOBBA_ANTHROPIC_API_KEY",
+            };
+            key = Some(
+                std::env::var(variable)
+                    .ok()
+                    .filter(|value| !value.trim().is_empty())
+                    .ok_or_else(|| format!("{variable} is not set; the key is read from the environment only"))?,
+            );
+            match qualification::receipt_for(&plan.receipts_dir, plan.provider, &plan.model)? {
+                Some(path) => QualificationRecord {
+                    basis: "receipt".into(),
+                    receipt: Some(path.display().to_string()),
+                    warning: None,
+                    note: "A qualification-runner receipt shows this provider and model passing the text, tool and continuation phases. It is native transport evidence only, not audit-quality approval; structured output is not part of that runner.".into(),
+                },
+                None if plan.assume_qualified => {
+                    eprintln!("\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n{ASSUMED_WARNING}\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
+                    QualificationRecord {
+                        basis: "assumed_for_evaluation".into(),
+                        receipt: None,
+                        warning: Some(ASSUMED_WARNING.into()),
+                        note: "Started with --assume-qualified-for-evaluation.".into(),
+                    }
+                }
+                None => {
+                    return Err(format!(
+                        "no qualification receipt in {} shows {} {} passing every phase; run the qualification runner for this model first, or pass --assume-qualified-for-evaluation (recorded loudly in the result)",
+                        plan.receipts_dir.display(),
+                        plan.provider.as_str(),
+                        plan.model
+                    ));
+                }
+            }
+        }
+    };
+    ledger::precheck(&plan.ledger_path, &plan.comparison, plan.total_cap_usd, plan.run_cap_usd)?;
+    let parent = plan
+        .output_dir
+        .parent()
+        .ok_or("the output folder has no parent")?
+        .to_path_buf();
+    std::fs::create_dir_all(&parent)
+        .map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
+    if plan.output_dir.exists() {
+        return Err(format!("the output folder {} already exists", plan.output_dir.display()));
+    }
+
+    // The engagement: nothing is sent to a provider while it is built.
+    let e = engagement::prepare(&plan, &repo, &harness).await;
+
+    // The transport. A live adapter keeps the key only as a sensitive header.
+    let mut loopback = None;
+    let inner = match plan.mode {
+        Mode::Scripted => {
+            let provider = scripted::Loopback::answering(scripted::responder(
+                e.lookup.clone(),
+                e.task_id().to_string(),
+            ))
+            .await;
+            let adapter = NativeAdapter::test_loopback(Provider::OpenAi, &provider.endpoint, Duration::from_secs(60))
+                .map_err(|error| format!("the loopback adapter refused its configuration: {error}"))?;
+            loopback = Some(provider);
+            adapter
+        }
+        Mode::Live => {
+            let secret = key.take().ok_or("the provider key is missing")?;
+            let adapter = match plan.provider {
+                Provider::OpenAi => NativeAdapter::openai(&secret, &plan.account, &plan.destination),
+                Provider::Anthropic => NativeAdapter::anthropic(&secret, &plan.account, &plan.destination),
+            }
+            .map_err(|error| format!("the native adapter refused its configuration: {error}"))?;
+            drop(secret);
+            adapter
+        }
+    };
+
+    // Reserve the run's cap in the ledger, then meter every call against it.
+    std::fs::create_dir(&plan.output_dir)
+        .map_err(|e| format!("cannot create {}: {e}", plan.output_dir.display()))?;
+    let started_at = report::rfc3339(plan.started);
+    let entry = ledger::Entry {
+        entry_id: format!("{}-{}", plan.run.id, plan.stamp),
+        run_id: plan.run.id.clone(),
+        mode: plan.mode.as_str().into(),
+        provider: plan.provider.as_str().into(),
+        model: plan.model.clone(),
+        output_dir: plan.output_dir.display().to_string(),
+        started_at: started_at.clone(),
+        ended_at: None,
+        state: "reserved".into(),
+        run_cap_usd: plan.run_cap_usd,
+        spent_usd: 0.0,
+        calls_sent: 0,
+        input_tokens: 0,
+        output_tokens: 0,
+        unknown_usage_calls: 0,
+        stop_reason: None,
+    };
+    let ledger = ledger::Ledger::open_and_reserve(&plan.ledger_path, &plan.comparison, plan.total_cap_usd, entry)?;
+    let ledger_path = ledger.path().display().to_string();
+    let committed_before = ledger.committed_excluding_this_run();
+    let ledger = Arc::new(Mutex::new(ledger));
+    let rates = Rates {
+        input: plan.price.input_usd_per_million,
+        output: plan.price.output_usd_per_million,
+        cached_input: plan.price.cached_input_usd_per_million,
+    };
+    let meter = Arc::new(Meter::new(rates, plan.run_cap_usd, plan.max_model_calls, Some(ledger.clone())));
+    let transport = Arc::new(Metered {
+        inner,
+        meter: meter.clone(),
+    });
+    let qualifications: Arc<dyn ModelQualificationSource> = Arc::new(qualification::Qualified {
+        provider: plan.provider,
+        model: plan.model.clone(),
+        account: plan.account.clone(),
+        destination: plan.destination.clone(),
+        capability_revision: match plan.mode {
+            Mode::Scripted => FIXTURE_CAPABILITY_REVISION,
+            Mode::Live => LIVE_CAPABILITY_REVISION,
+        }
+        .into(),
+        qualification: match plan.mode {
+            Mode::Scripted => Qualification::Fixture,
+            Mode::Live => Qualification::Live,
+        },
+    });
+    let result_path = plan.output_dir.join("result.json");
+    report::write_json(
+        &result_path,
+        &json!({"state": "running", "run_id": plan.run.id, "mode": plan.mode.as_str(), "started_at": started_at, "qualification": qualification}),
+    )?;
+
+    // The real worker, driven to its end.
+    let (stop, worker) = engagement::start_worker(&e, &plan, transport, qualifications);
+    let drive = engagement::drive(&e, &plan, &meter).await;
+    let _ = stop.send(true);
+    let worker_stopped = tokio::time::timeout(Duration::from_secs(60), worker).await.is_ok();
+    drop(loopback);
+    let ended = SystemTime::now();
+    let ended_at = report::rfc3339(ended);
+    let usage = meter.snapshot();
+    let mut errors = drive.errors.clone();
+    if !worker_stopped {
+        errors.push("the worker did not stop within 60 s of shutdown".into());
+    }
+    // The ledger is final before any analysis that could fail.
+    {
+        let mut ledger = ledger.lock().map_err(|_| "the ledger lock is poisoned")?;
+        ledger.update(usage.spent, usage.sent, usage.input, usage.output, usage.unknown_usage)?;
+        ledger.finish(ended_at.clone(), drive.stop_reason.clone())?;
+    }
+    let committed_after = ledger.lock().map(|l| l.committed()).unwrap_or(f64::NAN);
+
+    // What happened, from the durable records, and the real API's exports.
+    let analysis = analysis::analyse(&e.lookup, e.task_id(), &drive.cycles, &truth).await;
+    errors.extend(analysis.errors.iter().cloned());
+    let api = match &analysis.latest {
+        Some(latest) => {
+            engagement::export_through_api(&e, &latest.product_id, &latest.id, latest.version, &plan.output_dir).await
+        }
+        None => engagement::ApiOutcome::default(),
+    };
+    errors.extend(api.errors.iter().cloned());
+    let limitations: Vec<String> = api
+        .view
+        .as_ref()
+        .and_then(|view| view["limitations"].as_array())
+        .map(|list| list.iter().filter_map(|l| l.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+    let recorded_drafts = analysis.drafts.iter().filter(|d| d.recorded).count();
+    let latest = analysis.latest.clone();
+    let duration = ended
+        .duration_since(plan.started)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let paid = plan.mode == Mode::Live;
+    let result = json!({
+        "schema": "zobba-model-comparison-result-v1",
+        "state": "finished",
+        "comparison": plan.comparison,
+        "run_id": plan.run.id,
+        "mode": plan.mode.as_str(),
+        "paid": paid,
+        "provider": plan.provider.as_str(),
+        "model": plan.model,
+        "effort": plan.run.effort,
+        "openai_reasoning_declared": plan.openai_reasoning,
+        "configured": {"provider": plan.configured_provider.as_str(), "model": plan.run.model, "notes": plan.run.notes},
+        "transport": if paid { "native provider transport (real network calls)" } else { "loopback fixture (no network, no cost)" },
+        "qualification": qualification,
+        "started_at": started_at,
+        "ended_at": ended_at,
+        "duration_seconds": duration,
+        "stop_reason": drive.stop_reason,
+        "limits": {
+            "max_cycles": plan.max_cycles, "max_model_calls": plan.max_model_calls,
+            "max_minutes": plan.max_minutes, "max_output_tokens": plan.max_output_tokens,
+            "run_cap_usd": plan.run_cap_usd, "total_cap_usd": plan.total_cap_usd,
+        },
+        "objective": engagement::OBJECTIVE,
+        "continuation_guidance": engagement::CONTINUE_GUIDANCE,
+        "rounds": drive.rounds,
+        "task_cycles": drive.cycles,
+        "commands": drive.commands,
+        "model_turns": analysis.model_turns,
+        "model_turns_by_status": analysis.model_turns_by_status,
+        "failed_turns": analysis.failed_turns,
+        "model_calls": {"sent": usage.sent, "refused_locally": usage.refused, "recorded_invocations": analysis.invocations},
+        "outcomes_by_completion": analysis.outcomes_by_completion,
+        "tokens": {
+            "input": usage.input, "output": usage.output,
+            "cached": null,
+            "cached_note": "The native adapter reports no cached-token count; every input token is charged at the full input price.",
+            "unknown_usage_calls": usage.unknown_usage,
+            "database_input": analysis.db_input_tokens, "database_output": analysis.db_output_tokens,
+            "database_unknown_usage": analysis.db_unknown_usage,
+        },
+        "cost_usd": usage.spent,
+        "cost_basis": if paid {
+            "provider usage receipts times the configured price table; unknown usage charged at its worst case"
+        } else {
+            "what the scripted token counts would cost at the configured (placeholder) prices; nothing was paid"
+        },
+        "prices": plan.price,
+        "ledger": {
+            "path": ledger_path,
+            "committed_before_usd": committed_before,
+            "committed_after_usd": committed_after,
+            "total_cap_usd": plan.total_cap_usd,
+        },
+        "drafts": {
+            "proposed": analysis.drafts.len(),
+            "recorded": recorded_drafts,
+            "until_first_recorded": analysis.drafts_until_first_recorded,
+            "with_unknown_refusal_reasons": analysis.drafts_with_unknown_refusals,
+            "attempts": analysis.drafts,
+        },
+        "refusals_by_reason": analysis.refusals_by_reason,
+        "work_product": {
+            "recorded": latest.is_some(),
+            "product_id": latest.as_ref().map(|v| v.product_id.clone()),
+            "latest_version": latest.as_ref().map(|v| v.version),
+            "latest_version_id": latest.as_ref().map(|v| v.id.clone()),
+            "claims": latest.as_ref().map(|v| v.claims),
+            "versions": analysis.versions,
+            "sections": analysis.sections,
+            "blocks": analysis.latest_blocks,
+            "limitations": limitations,
+            "limitation_mentions": analysis::limitation_mentions(&truth, &limitations),
+            "exports": api.exports,
+            "shelf": api.shelf,
+        },
+        "criteria": analysis.criteria,
+        "correctness": analysis.correctness,
+        "key_figures": analysis.key_figures,
+        "errors": errors,
+        "self_checks": self_checks,
+        "calls": usage.log,
+    });
+    report::write_json(&result_path, &result)?;
+    std::fs::write(plan.output_dir.join("summary.md"), report::summary_markdown(&result))
+        .map_err(|e| format!("cannot write summary.md: {e}"))?;
+    let _ = std::fs::remove_dir_all(&e.staging);
+    eprintln!("result: {}", result_path.display());
+    eprintln!("summary: {}", plan.output_dir.join("summary.md").display());
+    eprintln!(
+        "stop reason: {}; cost {:.4} USD{}; work product recorded: {}",
+        result["stop_reason"],
+        usage.spent,
+        if paid { "" } else { " (not paid)" },
+        latest.is_some()
+    );
+    if plan.mode == Mode::Scripted && !plan.skip_expectations {
+        let failures = report::scripted_expectations(&result, plan.run_cap_usd);
+        if failures.is_empty() {
+            eprintln!("scripted expectations: all passed");
+            return Ok(0);
+        }
+        for failure in &failures {
+            eprintln!("scripted expectation failed: {failure}");
+        }
+        return Ok(1);
+    }
+    Ok(if result["errors"].as_array().is_some_and(|e| e.is_empty()) { 0 } else { 1 })
+}

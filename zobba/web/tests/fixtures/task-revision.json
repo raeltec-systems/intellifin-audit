@@ -12,6 +12,8 @@
       },
       "criterion_id": "crit-3",
       "dispositions": [],
+      "dispositions_next_cursor": null,
+      "dispositions_total": "0",
       "execution": "completed",
       "id": "eval-1",
       "inputs": [
@@ -60,6 +62,8 @@
           "verdict": null
         }
       ],
+      "dispositions_next_cursor": null,
+      "dispositions_total": "1",
       "execution": "completed",
       "id": "rev-8",
       "inputs": [
@@ -102,6 +106,8 @@
       },
       "criterion_id": "crit-3",
       "dispositions": [],
+      "dispositions_next_cursor": null,
+      "dispositions_total": "0",
       "execution": "completed",
       "id": "rev-12",
       "inputs": [

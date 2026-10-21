@@ -37,9 +37,10 @@ use zobba_domain::{
     assessment::{Execution, Verdict},
     coverage::MAX_POPULATION_ROWS,
     exception::{
-        EFFECTIVE_AGGREGATION, ExceptionCounts, ExceptionDispositionKind, ExceptionEntry,
-        ExceptionFacts, ExceptionStatus, LatestObserved, OCCURRENCE_PAGE, Observation,
-        ObservationKind, Occurrence, OccurrenceSource, exception_status, valid_exception_id,
+        EFFECTIVE_AGGREGATION, EXCEPTION_DISPOSITION_PAGE, ExceptionCounts,
+        ExceptionDispositionKind, ExceptionEntry, ExceptionFacts, ExceptionStatus, LatestObserved,
+        OCCURRENCE_PAGE, Observation, ObservationKind, Occurrence, OccurrenceSource,
+        exception_status, valid_exception_id,
     },
     identity::{Scope, valid_scope_id},
     revision::{EffectiveOrigin, ReviewState, RevisionCause},
@@ -649,8 +650,6 @@ fn refused(message: &str) -> ExceptionDispositionError {
         ExceptionDispositionError::AlreadyClosed
     } else if message.contains("only a closed exception") {
         ExceptionDispositionError::NotClosed
-    } else if message.contains("at most 16") {
-        ExceptionDispositionError::Capacity
     } else if message.contains("reference") {
         // Rust verified each reference first: one changed meanwhile.
         ExceptionDispositionError::ReferenceUnverified(0)
@@ -849,14 +848,29 @@ pub struct ExceptionsView {
 }
 
 /// One exception's detail: its occurrences (one page, in their order) and
-/// every disposition with the person's public label.
+/// its first page of dispositions with the person's public label.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExceptionDetail {
     pub view: ExceptionView,
     pub occurrences: Vec<OccurrenceRecord>,
     /// The place after which the next page starts, when there is one.
     pub next: Option<u32>,
+    /// Its first `EXCEPTION_DISPOSITION_PAGE` dispositions, in their order
+    /// (the exact number is `view.dispositions`).
     pub dispositions: Vec<(ExceptionDispositionRecord, String)>,
+    /// The last listed disposition's place when more follow.
+    pub dispositions_next: Option<u32>,
+}
+
+/// One page of one exception's dispositions in their order (after a place),
+/// with their exact number. An exception holds any number of them.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExceptionDispositionPage {
+    pub exception_id: String,
+    pub total: u64,
+    pub dispositions: Vec<(ExceptionDispositionRecord, String)>,
+    /// The last listed disposition's place when more follow.
+    pub next: Option<u32>,
 }
 
 /// Why a viewer read refused.
@@ -1068,40 +1082,110 @@ impl AssessmentRepository {
         let more = occurrences.len() > OCCURRENCE_PAGE;
         occurrences.truncate(OCCURRENCE_PAGE);
         let next = more.then(|| occurrences.last().map(|o| o.seq)).flatten();
-        let dispositions: Vec<ExceptionDispositionRecord> = sqlx::query(&format!(
-            "{DISPOSITION_SELECT} WHERE task_id=$1 AND exception_id=$2 ORDER BY seq"
-        ))
-        .bind(task_id)
-        .bind(exception_id)
-        .fetch_all(&mut *tx)
-        .await
-        .map_err(|_| TaskError::Unavailable)?
-        .iter()
-        .map(exception_disposition_from)
-        .collect::<Result<_, _>>()
-        .map_err(viewer_error)?;
-        let labels = labels_of(&mut tx, dispositions.iter().map(|d| d.actor_id.clone())).await?;
-        let mut view = views_of(&mut tx, task_id, vec![entry])
+        let (dispositions, dispositions_next) =
+            disposition_page(&mut tx, task_id, exception_id, 0).await?;
+        // The newest disposition (`view.disposition`) and the exact count
+        // come from their own index reads, never from this bounded page.
+        let view = views_of(&mut tx, task_id, vec![entry])
             .await?
             .pop()
             .ok_or(TaskError::Unavailable)?;
         task::admission_fence(&mut tx, actor, s, None).await?;
         tx.commit().await.map_err(|_| TaskError::Unavailable)?;
-        let labelled: Vec<(ExceptionDispositionRecord, String)> = dispositions
-            .into_iter()
-            .map(|d| {
-                let label = labels.get(&d.actor_id).cloned().unwrap_or_default();
-                (d, label)
-            })
-            .collect();
-        view.disposition = labelled.last().cloned();
         Ok(Some(ExceptionDetail {
             view,
             occurrences,
             next,
-            dispositions: labelled,
+            dispositions,
+            dispositions_next,
         }))
     }
+
+    /// Viewer read: one page of one exception's dispositions in their order
+    /// after the place `after` (the previous page's last), with their exact
+    /// number. `None` when the exception is not this Task's.
+    pub async fn exception_dispositions(
+        &self,
+        actor: &str,
+        s: &Scope,
+        task_id: &str,
+        exception_id: &str,
+        after: u32,
+    ) -> Result<Option<ExceptionDispositionPage>, TaskError> {
+        if !valid_scope_id(task_id) || !valid_exception_id(exception_id) {
+            return Err(TaskError::Denied);
+        }
+        let mut tx = scoped(&self.pool, actor, s).await.map_err(viewer_error)?;
+        // Only a person of this engagement learns whether it exists.
+        task::admission_fence(&mut tx, actor, s, None).await?;
+        let found: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM public.assessment_exceptions WHERE task_id=$1 AND id=$2)",
+        )
+        .bind(task_id)
+        .bind(exception_id)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|_| TaskError::Unavailable)?;
+        if !found {
+            tx.commit().await.map_err(|_| TaskError::Unavailable)?;
+            return Ok(None);
+        }
+        let (dispositions, next) = disposition_page(&mut tx, task_id, exception_id, after).await?;
+        let total: i64 = sqlx::query_scalar("SELECT count(*) FROM public.assessment_exception_dispositions WHERE task_id=$1 AND exception_id=$2")
+            .bind(task_id).bind(exception_id)
+            .fetch_one(&mut *tx).await.map_err(|_| TaskError::Unavailable)?;
+        task::admission_fence(&mut tx, actor, s, None).await?;
+        tx.commit().await.map_err(|_| TaskError::Unavailable)?;
+        Ok(Some(ExceptionDispositionPage {
+            exception_id: exception_id.into(),
+            total: total as u64,
+            dispositions,
+            next,
+        }))
+    }
+}
+
+/// One page of an exception's dispositions after the place `after`, in
+/// their order (the unique (exception, seq) index), with labels, and the
+/// last listed place when more follow.
+#[allow(clippy::type_complexity)]
+async fn disposition_page(
+    tx: &mut Tx,
+    task_id: &str,
+    exception_id: &str,
+    after: u32,
+) -> Result<(Vec<(ExceptionDispositionRecord, String)>, Option<u32>), TaskError> {
+    let rows = sqlx::query(
+        "SELECT document,digest,created_us,seq FROM public.assessment_exception_dispositions WHERE task_id=$1 AND exception_id=$2 AND seq > $3 ORDER BY seq LIMIT $4",
+    )
+    .bind(task_id)
+    .bind(exception_id)
+    .bind(after as i32)
+    .bind(EXCEPTION_DISPOSITION_PAGE as i64 + 1)
+    .fetch_all(&mut **tx)
+    .await
+    .map_err(|_| TaskError::Unavailable)?;
+    let mut listed = Vec::with_capacity(rows.len());
+    for row in &rows {
+        let record = exception_disposition_from(row).map_err(viewer_error)?;
+        if record.request.exception_id != exception_id {
+            return Err(TaskError::Unavailable);
+        }
+        let seq: i32 = row.try_get("seq").map_err(|_| TaskError::Unavailable)?;
+        listed.push((record, seq as u32));
+    }
+    let more = listed.len() > EXCEPTION_DISPOSITION_PAGE;
+    listed.truncate(EXCEPTION_DISPOSITION_PAGE);
+    let next = more.then(|| listed.last().map(|(_, seq)| *seq)).flatten();
+    let labels = labels_of(tx, listed.iter().map(|(d, _)| d.actor_id.clone())).await?;
+    let dispositions = listed
+        .into_iter()
+        .map(|(d, _)| {
+            let label = labels.get(&d.actor_id).cloned().unwrap_or_default();
+            (d, label)
+        })
+        .collect();
+    Ok((dispositions, next))
 }
 
 async fn labels_of(
@@ -1137,10 +1221,6 @@ mod tests {
             (
                 "only a closed exception is reopened",
                 ExceptionDispositionError::NotClosed,
-            ),
-            (
-                "an exception holds at most 16 dispositions",
-                ExceptionDispositionError::Capacity,
             ),
             (
                 "an exception disposition reference is a verified quote of a registered original",

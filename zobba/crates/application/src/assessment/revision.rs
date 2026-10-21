@@ -509,9 +509,24 @@ pub struct HistoryEntry {
     pub causes: Vec<RevisionCause>,
     pub changes: Changes,
     pub recorded_us: Option<i64>,
-    /// Every disposition of this exact revision, oldest first, with the
-    /// person's public label.
+    /// The first `HISTORY_DISPOSITIONS` dispositions of this exact revision,
+    /// oldest first, with the person's public label.
     pub dispositions: Vec<(DispositionRecord, String)>,
+    /// The exact number of its dispositions.
+    pub dispositions_total: u64,
+    /// The last listed disposition's ID when more follow.
+    pub dispositions_next: Option<String>,
+}
+
+/// One page of one revision's dispositions, oldest first (by time, then ID),
+/// with the exact number of them.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DispositionPage {
+    pub revision_id: String,
+    pub total: u64,
+    pub dispositions: Vec<(DispositionRecord, String)>,
+    /// The last listed disposition's ID when more follow.
+    pub next: Option<String>,
 }
 
 /// One C-ordered page of a chain's history (by revision number), with the
@@ -547,7 +562,9 @@ impl HistoryEntry {
             causes: vec![],
             changes: Changes::default(),
             recorded_us: record.recorded_us,
+            dispositions_total: dispositions.len() as u64,
             dispositions,
+            dispositions_next: None,
         }
     }
     pub fn later(record: &RevisionRecord, dispositions: Vec<(DispositionRecord, String)>) -> Self {
@@ -564,7 +581,9 @@ impl HistoryEntry {
             causes: record.causes.clone(),
             changes: record.changes.clone(),
             recorded_us: record.recorded_us,
+            dispositions_total: dispositions.len() as u64,
             dispositions,
+            dispositions_next: None,
         }
     }
 }

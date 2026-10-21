@@ -77,6 +77,10 @@ struct State {
     readable: BTreeMap<String, (String, Option<String>)>,
     editors: Vec<String>,
     objects: BTreeMap<String, Vec<u8>>,
+    guide: Vec<GuideRequest>,
+    proposals: Vec<ProposalState>,
+    /// Object writes fail (an outage of the store).
+    objects_down: bool,
 }
 #[derive(Default)]
 struct Store {
@@ -114,6 +118,7 @@ impl Store {
                 subject: "INV-0042".into(),
                 supported: true,
                 superseded: false,
+                sources: vec![("ap-policy".into(), POLICY_SHA.into())],
             });
             s.records.exceptions.push(ExceptionNow {
                 id: hex("exc", '7'),
@@ -128,6 +133,7 @@ impl Store {
                 period: "2026-01-01/2026-12-31".into(),
                 limitations: vec!["The organisation chart is dated 2025.".into()],
                 exceptions: [1, 0, 0, 0],
+                superseded: false,
             });
             s.readable.insert(
                 "ap-policy".into(),
@@ -287,9 +293,14 @@ impl WorkProductStore for Store {
                         }
                         AssertionKind::Quote => {
                             row.registered =
-                                (pin.record_id == "ap-policy").then(|| POLICY_SHA.into())
+                                (pin.record_id == "ap-policy").then(|| POLICY_SHA.into());
+                            // Whether a replacement source corrects it.
+                            row.superseded = Some(s.records.corrected.contains(&pin.record_id));
                         }
-                        AssertionKind::Period => {}
+                        AssertionKind::Period => {
+                            // Whether a successor basis supersedes it.
+                            row.superseded = s.records.basis(&pin.record_id).map(|b| b.superseded)
+                        }
                     }
                     rows.push(row);
                 }
@@ -316,6 +327,103 @@ impl WorkProductStore for Store {
         let stored = Self::stored(version);
         s.versions.push(stored.clone());
         Ok(stored)
+    }
+    async fn labels(
+        &self,
+        _: &str,
+        _: &Scope,
+        ids: &[String],
+    ) -> Result<BTreeMap<String, String>, ReadingError> {
+        Ok(ids
+            .iter()
+            .map(|i| (i.clone(), format!("Person {i}")))
+            .collect())
+    }
+    async fn guide_requests(
+        &self,
+        _: &str,
+        _: &Scope,
+        _: &str,
+    ) -> Result<Vec<GuideRequest>, ReadingError> {
+        Ok(self.state.lock().unwrap().guide.clone())
+    }
+    async fn guide_request(
+        &self,
+        _: &str,
+        _: &Scope,
+        _: &str,
+        command_id: &str,
+    ) -> Result<Option<GuideRequest>, ReadingError> {
+        Ok(self
+            .state
+            .lock()
+            .unwrap()
+            .guide
+            .iter()
+            .find(|g| g.command_id == command_id)
+            .cloned())
+    }
+    async fn invocation_proposal(
+        &self,
+        _: &ClaimBasis,
+        invocation_id: &str,
+    ) -> Result<Option<ProposalRecord>, ReadingError> {
+        Ok(self
+            .state
+            .lock()
+            .unwrap()
+            .proposals
+            .iter()
+            .find(|p| p.proposal.invocation_id == invocation_id)
+            .map(|p| p.proposal.clone()))
+    }
+    async fn record_proposal(
+        &self,
+        _: &ClaimBasis,
+        proposal: &ProposalRecord,
+    ) -> Result<ProposalRecord, WriteError> {
+        assert!(
+            proposal.version.is_valid(),
+            "trusted code wrote an invalid proposal"
+        );
+        self.state.lock().unwrap().proposals.push(ProposalState {
+            proposal: proposal.clone(),
+            decision: None,
+        });
+        Ok(proposal.clone())
+    }
+    async fn proposals(
+        &self,
+        _: &str,
+        _: &Scope,
+        _: &str,
+        base: &str,
+    ) -> Result<Vec<ProposalState>, ReadingError> {
+        Ok(self
+            .state
+            .lock()
+            .unwrap()
+            .proposals
+            .iter()
+            .filter(|p| p.proposal.base_version_id == base)
+            .cloned()
+            .collect())
+    }
+    async fn proposal(
+        &self,
+        _: &str,
+        _: &Scope,
+        _: &str,
+        id: &str,
+    ) -> Result<Option<ProposalState>, ReadingError> {
+        Ok(self
+            .state
+            .lock()
+            .unwrap()
+            .proposals
+            .iter()
+            .find(|p| p.proposal.id == id)
+            .cloned())
     }
 }
 impl WorkProductPeople for Store {
@@ -419,16 +527,48 @@ impl WorkProductPeople for Store {
         self.state.lock().unwrap().exports.push(record.clone());
         Ok(record.clone())
     }
-    async fn labels(
+    async fn decision_by_key(
+        &self,
+        actor: &str,
+        _: &Scope,
+        _: &str,
+        key: &str,
+    ) -> Result<Option<DecisionRecord>, EditError> {
+        Ok(self
+            .state
+            .lock()
+            .unwrap()
+            .proposals
+            .iter()
+            .filter_map(|p| p.decision.clone())
+            .find(|d| d.actor_id == actor && d.key == key))
+    }
+    async fn record_decision(
         &self,
         _: &str,
         _: &Scope,
-        ids: &[String],
-    ) -> Result<BTreeMap<String, String>, ReadingError> {
-        Ok(ids
-            .iter()
-            .map(|i| (i.clone(), format!("Person {i}")))
-            .collect())
+        _: &str,
+        decision: &DecisionRecord,
+        version: Option<&Version>,
+    ) -> Result<(DecisionRecord, Option<VersionRecord>), EditError> {
+        let mut s = self.state.lock().unwrap();
+        let p = s
+            .proposals
+            .iter_mut()
+            .find(|p| p.proposal.id == decision.proposal_id)
+            .ok_or(EditError::NotFound)?;
+        if p.decision.is_some() {
+            return Err(EditError::Conflict);
+        }
+        p.decision = Some(decision.clone());
+        let stored = version.map(|v| {
+            assert!(v.is_valid(), "trusted code wrote an invalid version");
+            Self::stored(v)
+        });
+        if let Some(v) = &stored {
+            s.versions.push(v.clone());
+        }
+        Ok((decision.clone(), stored))
     }
     async fn readable(
         &self,
@@ -455,6 +595,9 @@ impl EvidenceObjects for Store {
     }
     async fn put_if_absent(&self, id: &str, bytes: Vec<u8>) -> Result<String, ObjectError> {
         let mut s = self.state.lock().unwrap();
+        if s.objects_down {
+            return Err(ObjectError::Unavailable);
+        }
         if s.objects.contains_key(id) {
             return Err(ObjectError::AlreadyExists);
         }
@@ -619,6 +762,7 @@ fn draft(base: Option<String>, blocks: Vec<ProposedBlock>) -> Draft {
         template_version: "v1".into(),
         base_version: base,
         blocks,
+        request: None,
     }
 }
 fn first_draft() -> Draft {
@@ -1231,8 +1375,18 @@ fn currency_is_derived_on_read_and_withheld_quotes_are_never_stale() {
         .collect();
     assert_eq!(numbers.len(), 4);
     assert!(numbers.windows(2).all(|w| w[0] < w[1]), "{numbers:?}");
-    assert_eq!(view.withheld, 1, "the viewer may not read the policy");
+    // The quote and the fact verified against the policy are both withheld
+    // from a viewer who may not read the policy, and so are their claims'
+    // sentences, which restate them.
+    assert_eq!(view.withheld, 2, "the viewer may not read the policy");
     assert!(view.withheld_originals.contains("ap-policy"));
+    assert_eq!(
+        view.claims
+            .values()
+            .filter(|c| c.statement_withheld)
+            .count(),
+        2
+    );
     assert!(view.claims.values().any(|c| {
         c.support
             .iter()
@@ -1244,12 +1398,12 @@ fn currency_is_derived_on_read_and_withheld_quotes_are_never_stale() {
         .remove(0);
     let line = product_line(&head, &view);
     assert!(
-        line.contains("4 need refresh") && line.contains("1 quotes withheld"),
+        line.contains("4 need refresh") && line.contains("1 platform blocks need refresh"),
         "{line}"
     );
     assert_eq!(store.state.lock().unwrap().versions[0], v1);
     // The message shows each block by ID with its author class.
-    let text = products_text(&[(head, view)]).unwrap();
+    let text = products_text(&[(head, view)], &[]).unwrap();
     assert!(
         text.contains("NEEDS REFRESH (evaluation_revised)"),
         "{text}"
@@ -1322,15 +1476,32 @@ fn exports_are_deterministic_and_bound_to_the_viewers_withheld_set() {
         .unwrap_err(),
         ExportError::Conflict
     );
-    let (record, bytes) =
-        run(download(&store, &store, "actor", &scope, "task", &first.id)).unwrap();
+    let (record, bytes) = run(download(
+        &store,
+        &store,
+        "actor",
+        &scope,
+        "task",
+        &v1.product_id,
+        &first.id,
+    ))
+    .unwrap();
     assert_eq!(record, first);
     assert_eq!(sha256_hex(&bytes), first.digest);
     // The viewer loses access to the policy: their withheld set is no
     // longer the export's.
     store.state.lock().unwrap().readable.clear();
     assert_eq!(
-        run(download(&store, &store, "actor", &scope, "task", &first.id)).unwrap_err(),
+        run(download(
+            &store,
+            &store,
+            "actor",
+            &scope,
+            "task",
+            &v1.product_id,
+            &first.id
+        ))
+        .unwrap_err(),
         ExportError::ScopeChanged
     );
     let theirs = run(export(
@@ -1347,7 +1518,13 @@ fn exports_are_deterministic_and_bound_to_the_viewers_withheld_set() {
     .unwrap();
     assert_ne!(theirs.withheld_digest, first.withheld_digest);
     let (_, bytes) = run(download(
-        &store, &store, "actor", &scope, "task", &theirs.id,
+        &store,
+        &store,
+        "actor",
+        &scope,
+        "task",
+        &v1.product_id,
+        &theirs.id,
     ))
     .unwrap();
     let parts = zobba_domain::work_product::export::unzip(&bytes).unwrap();
@@ -1361,23 +1538,65 @@ fn exports_are_deterministic_and_bound_to_the_viewers_withheld_set() {
     )
     .unwrap();
     assert!(document.contains("withheld for this viewer"));
+    // The export of another work product is not found under this one.
+    assert_eq!(
+        run(download(
+            &store,
+            &store,
+            "actor",
+            &scope,
+            "task",
+            &hex("wp", 'f'),
+            &theirs.id
+        ))
+        .unwrap_err(),
+        ExportError::NotFound
+    );
     // Altered stored bytes are refused.
+    let object = export_object(&scope, &theirs);
+    let kept = store.state.lock().unwrap().objects[&object].clone();
     store
         .state
         .lock()
         .unwrap()
         .objects
-        .insert(theirs.id.clone(), b"changed".to_vec());
+        .insert(object.clone(), b"changed".to_vec());
     assert_eq!(
         run(download(
-            &store, &store, "actor", &scope, "task", &theirs.id
+            &store,
+            &store,
+            "actor",
+            &scope,
+            "task",
+            &v1.product_id,
+            &theirs.id
         ))
         .unwrap_err(),
         ExportError::Integrity
     );
-    // Stale at export: the count is recorded.
+    // A new export of the same content whose stored object was altered is
+    // refused too: stored bytes are adopted only when they are the rendered
+    // ones.
+    assert_eq!(
+        run(export(
+            &store,
+            &store,
+            "actor",
+            &scope,
+            "s",
+            "task",
+            &v1.id,
+            ExportFormat::Docx,
+            "x5",
+        ))
+        .unwrap_err(),
+        ExportError::Integrity
+    );
+    store.state.lock().unwrap().objects.insert(object, kept);
+    // Frozen at the version: a summary superseded later changes nothing in
+    // the bytes (the app shows the claim as needing refresh).
     store.state.lock().unwrap().records.summaries[0].superseded = true;
-    let stale = run(export(
+    let later = run(export(
         &store,
         &store,
         "actor",
@@ -1385,11 +1604,32 @@ fn exports_are_deterministic_and_bound_to_the_viewers_withheld_set() {
         "s",
         "task",
         &v1.id,
-        ExportFormat::Xlsx,
+        ExportFormat::Docx,
         "x4",
     ))
     .unwrap();
-    assert_eq!(stale.refresh_count, 1);
+    assert_eq!(later.refresh_count, 0, "as recorded");
+    assert_eq!(later.digest, theirs.digest, "the same bytes");
+    // An object-store outage records nothing.
+    store.state.lock().unwrap().objects.clear();
+    store.state.lock().unwrap().objects_down = true;
+    let before = store.state.lock().unwrap().exports.len();
+    assert_eq!(
+        run(export(
+            &store,
+            &store,
+            "actor",
+            &scope,
+            "s",
+            "task",
+            &v1.id,
+            ExportFormat::Xlsx,
+            "x6",
+        ))
+        .unwrap_err(),
+        ExportError::Unavailable
+    );
+    assert_eq!(store.state.lock().unwrap().exports.len(), before);
 }
 
 #[test]
@@ -1405,5 +1645,482 @@ fn binding_templates_carry_their_neutral_standing() {
         t.neutral
             && t.label()
                 .ends_with("Neutral starter (not firm methodology)")
+    );
+}
+
+// ---------------------------------------------------------- review round 1
+
+/// A person's edit of the narrative, as a version on the latest.
+fn person_edit(store: &Store, v: &Version, key: &str, text: &str) -> Version {
+    let narrative_id = v.blocks[0].id.clone();
+    run(save_edit(
+        store,
+        &Reader,
+        "actor",
+        &basis("p1").scope,
+        "s",
+        "task",
+        &v.product_id,
+        &EditRequest {
+            key: key.into(),
+            base_version: v.id.clone(),
+            blocks: v
+                .blocks
+                .iter()
+                .map(|b| EditBlock {
+                    block: b.id.clone(),
+                    text: (b.id == narrative_id).then(|| text.into()),
+                })
+                .collect(),
+        },
+    ))
+    .unwrap()
+    .version
+}
+
+#[test]
+fn a_bad_quote_is_refused_by_block_and_never_fails_the_cycle() {
+    let store = Store::new();
+    for source in [
+        // An original the Task does not hold.
+        CitationSource {
+            original_id: "missing".into(),
+            locator: Locator::parse("bytes:0-48"),
+            quote: POLICY.into(),
+        },
+        // A locator past the end of the original.
+        CitationSource {
+            original_id: "ap-policy".into(),
+            locator: Locator::parse("bytes:4000-4048"),
+            quote: POLICY.into(),
+        },
+        // No locator at all, and an empty quote.
+        CitationSource {
+            original_id: "ap-policy".into(),
+            locator: None,
+            quote: String::new(),
+        },
+    ] {
+        let mut d = first_draft();
+        d.blocks.push(claim(
+            "results",
+            "The policy says so.",
+            vec![ProposedAssertion::Quote { source }],
+        ));
+        // Ok(false), never Err: the cycle continues with per-block feedback.
+        let (recorded, feedback) = record(&store, "turn-q", &d);
+        assert!(!recorded, "{feedback:?}");
+        assert!(
+            feedback
+                .iter()
+                .any(|l| l.contains("quote_unverified") || l.contains("unknown_record")),
+            "{feedback:?}"
+        );
+    }
+    assert!(store.state.lock().unwrap().versions.is_empty());
+}
+
+#[test]
+fn a_claims_verdict_words_agree_with_its_own_records() {
+    let store = Store::new();
+    // The evaluation is not_met: a sentence saying it was met is refused,
+    // and so is a positive word over a failing count.
+    for (statement, assertions) in [
+        (
+            "INV-0042 met the criterion.",
+            vec![outcome(Some(Verdict::NotMet))],
+        ),
+        ("INV-0042 passed.", vec![outcome(Some(Verdict::NotMet))]),
+        (
+            "15 of 1,000 applicable invoices passed.",
+            vec![
+                count(CountMeasure::NotMet, 15),
+                count(CountMeasure::Applicable, 1_000),
+            ],
+        ),
+    ] {
+        let mut d = first_draft();
+        d.blocks.push(claim("results", statement, assertions));
+        let (recorded, feedback) = record(&store, "turn-v", &d);
+        assert!(!recorded, "{statement}: {feedback:?}");
+    }
+    // The agreeing words pass.
+    let mut d = first_draft();
+    d.blocks.push(claim(
+        "results",
+        "INV-0042 did not meet the criterion.",
+        vec![outcome(Some(Verdict::NotMet))],
+    ));
+    let (recorded, feedback) = record(&store, "turn-v2", &d);
+    assert!(recorded, "{feedback:?}");
+}
+
+#[test]
+fn hidden_display_characters_are_refused_in_titles_and_blocks() {
+    let store = Store::new();
+    let mut d = first_draft();
+    d.title = "AP approvals\u{202e} paper".into();
+    let (recorded, feedback) = record(&store, "turn-h1", &d);
+    assert!(
+        !recorded && feedback.join("\n").contains("hidden_character"),
+        "{feedback:?}"
+    );
+    let mut d = first_draft();
+    d.blocks.push(narrative(
+        "results",
+        NarrativeLabel::Narrative,
+        "Approvals\u{200b} were tested.",
+    ));
+    let (recorded, feedback) = record(&store, "turn-h2", &d);
+    assert!(
+        !recorded && feedback.join("\n").contains("hidden_character"),
+        "{feedback:?}"
+    );
+    assert!(store.state.lock().unwrap().versions.is_empty());
+}
+
+#[test]
+fn claims_are_numbered_in_section_order_whatever_their_version_order() {
+    let store = Store::new();
+    let mut d = first_draft();
+    // A conclusion claim drafted first, an objective claim drafted last.
+    d.blocks.insert(
+        0,
+        claim(
+            "conclusion",
+            "Segregation was not met for INV-0042.",
+            vec![outcome(Some(Verdict::NotMet))],
+        ),
+    );
+    d.blocks.push(claim(
+        "objective",
+        "The basis covers 2026-01-01 to 2026-12-31.",
+        vec![ProposedAssertion::Period {
+            basis_id: hex("basis", '1'),
+        }],
+    ));
+    assert!(record(&store, "turn-n", &d).0);
+    let v = latest(&store);
+    let view = run(views(
+        &store,
+        "actor",
+        &basis("p1").scope,
+        "task",
+        &[Store::stored(&v)],
+        None,
+    ))
+    .unwrap()
+    .remove(0);
+    let numbered: Vec<(String, usize)> = claim_order(&v)
+        .iter()
+        .map(|b| (b.section.clone(), view.claims[&b.id].number))
+        .collect();
+    assert_eq!(numbered.first().unwrap(), &("objective".to_string(), 1));
+    assert_eq!(numbered.last().unwrap().0, "conclusion");
+    assert!(numbered.windows(2).all(|w| w[0].1 + 1 == w[1].1));
+    // The version keeps the order the agent drafted.
+    assert_eq!(v.blocks[0].section, "conclusion");
+}
+
+#[test]
+fn a_heading_alone_completes_no_required_section() {
+    let store = Store::new();
+    let mut d = first_draft();
+    d.blocks.push(ProposedBlock::New {
+        section: "conclusion".into(),
+        content: ProposedContent::Heading {
+            text: "Conclusion".into(),
+        },
+    });
+    assert!(record(&store, "turn-r", &d).0);
+    assert_eq!(latest(&store).missing_required, ["conclusion"]);
+}
+
+#[test]
+fn the_agent_changes_a_persons_block_only_at_their_request_and_confirmation() {
+    let store = Store::new();
+    assert!(record(&store, "turn-1", &first_draft()).0);
+    let v1 = latest(&store);
+    let v2 = person_edit(&store, &v1, "e1", "Test every invoice, as Alex wrote it.");
+    let person_block = v2.blocks[0].id.clone();
+    let change = |request: Option<&str>| {
+        let mut blocks = keep_all(&v2);
+        blocks[0] = ProposedBlock::Change {
+            block: person_block.clone(),
+            text: "Test every invoice above the threshold, as Alex asked.".into(),
+            assertions: vec![],
+        };
+        Draft {
+            request: request.map(String::from),
+            ..draft(Some(v2.id.clone()), blocks)
+        }
+    };
+    // Without a request: refused, nothing recorded.
+    let (recorded, feedback) = record(&store, "turn-2", &change(None));
+    assert!(
+        !recorded && feedback.join("\n").contains("change_not_requested"),
+        "{feedback:?}"
+    );
+    // A request from another person: refused.
+    store.state.lock().unwrap().guide.push(GuideRequest {
+        command_id: "cmd-other".into(),
+        author_id: "someone-else".into(),
+        label: None,
+        content: "Rewrite the objective.".into(),
+    });
+    let (recorded, feedback) = record(&store, "turn-3", &change(Some("cmd-other")));
+    assert!(
+        !recorded && feedback.join("\n").contains("change_not_requested"),
+        "{feedback:?}"
+    );
+    // At the person's own applied request: a proposal, never a version.
+    store.state.lock().unwrap().guide.push(GuideRequest {
+        command_id: "cmd-alex".into(),
+        author_id: "actor".into(),
+        label: Some("Alex".into()),
+        content: "Please reword my objective.".into(),
+    });
+    let versions = store.state.lock().unwrap().versions.len();
+    let (recorded, feedback) = record(&store, "turn-4", &change(Some("cmd-alex")));
+    assert!(recorded, "{feedback:?}");
+    assert!(
+        feedback.iter().any(|l| l.contains("must confirm it")),
+        "{feedback:?}"
+    );
+    assert_eq!(store.state.lock().unwrap().versions.len(), versions);
+    let proposal = store.state.lock().unwrap().proposals[0].proposal.clone();
+    assert_eq!(
+        proposal.changes,
+        vec![(person_block.clone(), ChangeKind::Changed)]
+    );
+    assert_eq!(proposal.requested_by, "actor");
+    let scope = basis("p1").scope;
+    // Another person may not decide on it.
+    store.state.lock().unwrap().editors.push("other".into());
+    assert_eq!(
+        run(decide(
+            &store,
+            &Reader,
+            "other",
+            &scope,
+            "s",
+            "task",
+            &v2.product_id,
+            &proposal.id,
+            "d0",
+            true
+        ))
+        .unwrap_err(),
+        EditError::Denied
+    );
+    // The person confirms: the agent's version, at their request.
+    let outcome = run(decide(
+        &store,
+        &Reader,
+        "actor",
+        &scope,
+        "s",
+        "task",
+        &v2.product_id,
+        &proposal.id,
+        "d1",
+        true,
+    ))
+    .unwrap();
+    let v3 = outcome.version.unwrap().version;
+    assert!(outcome.decision.confirmed);
+    let request = v3.change.clone().unwrap();
+    assert_eq!(
+        (
+            request.requested_by.as_str(),
+            request.request_id.as_str(),
+            request.proposal_id.as_str()
+        ),
+        ("actor", "cmd-alex", proposal.id.as_str())
+    );
+    assert_eq!(request.confirmation_id, outcome.decision.id);
+    assert!(matches!(v3.author, Author::Agent { .. }));
+    assert_eq!(v3.predecessor.as_deref(), Some(v2.id.as_str()));
+    assert_eq!(
+        v3.blocks
+            .iter()
+            .find(|b| b.id == person_block)
+            .unwrap()
+            .text(),
+        Some("Test every invoice above the threshold, as Alex asked.")
+    );
+    assert!(v3.is_valid());
+    // An exact retry returns the original; a second decision is refused.
+    let again = run(decide(
+        &store,
+        &Reader,
+        "actor",
+        &scope,
+        "s",
+        "task",
+        &v2.product_id,
+        &proposal.id,
+        "d1",
+        true,
+    ))
+    .unwrap();
+    assert_eq!(again.decision, outcome.decision);
+    assert_eq!(
+        run(decide(
+            &store,
+            &Reader,
+            "actor",
+            &scope,
+            "s",
+            "task",
+            &v2.product_id,
+            &proposal.id,
+            "d2",
+            false
+        ))
+        .unwrap_err(),
+        EditError::Conflict
+    );
+}
+
+#[test]
+fn a_declined_proposal_records_nothing_and_a_removal_names_its_block() {
+    let store = Store::new();
+    assert!(record(&store, "turn-1", &first_draft()).0);
+    let v1 = latest(&store);
+    let v2 = person_edit(&store, &v1, "e1", "Alex's objective.");
+    store.state.lock().unwrap().guide.push(GuideRequest {
+        command_id: "cmd-alex".into(),
+        author_id: "actor".into(),
+        label: Some("Alex".into()),
+        content: "Remove my objective.".into(),
+    });
+    let mut blocks = keep_all(&v2);
+    blocks[0] = ProposedBlock::Remove(v2.blocks[0].id.clone());
+    let d = Draft {
+        request: Some("cmd-alex".into()),
+        ..draft(Some(v2.id.clone()), blocks)
+    };
+    assert!(record(&store, "turn-2", &d).0);
+    let proposal = store.state.lock().unwrap().proposals[0].proposal.clone();
+    assert_eq!(
+        proposal.changes,
+        vec![(v2.blocks[0].id.clone(), ChangeKind::Removed)]
+    );
+    let versions = store.state.lock().unwrap().versions.len();
+    let outcome = run(decide(
+        &store,
+        &Reader,
+        "actor",
+        &basis("p1").scope,
+        "s",
+        "task",
+        &v2.product_id,
+        &proposal.id,
+        "d1",
+        false,
+    ))
+    .unwrap();
+    assert!(!outcome.decision.confirmed && outcome.version.is_none());
+    assert_eq!(store.state.lock().unwrap().versions.len(), versions);
+}
+
+#[test]
+fn the_agent_context_lists_every_product_with_peoples_blocks_and_requests() {
+    let store = Store::new();
+    assert!(record(&store, "turn-1", &first_draft()).0);
+    let v1 = latest(&store);
+    person_edit(&store, &v1, "e1", "Alex's objective.");
+    let scope = basis("p1").scope;
+    let heads = run(store.products("actor", &scope, "task")).unwrap();
+    let latest_versions: Vec<VersionRecord> = heads.iter().map(|h| h.head.clone()).collect();
+    let views = run(views(
+        &store,
+        "actor",
+        &scope,
+        "task",
+        &latest_versions,
+        None,
+    ))
+    .unwrap();
+    let requests = vec![GuideRequest {
+        command_id: "cmd-alex".into(),
+        author_id: "actor".into(),
+        label: Some("Alex".into()),
+        content: "Please reword my objective.".into(),
+    }];
+    let paired: Vec<_> = heads.into_iter().zip(views).collect();
+    let text = products_text(&paired, &requests).unwrap();
+    // The person's block is listed by ID with its author, and their request
+    // by its ID.
+    let person = &paired[0].0.head.version.blocks[0];
+    assert!(text.contains(&person.id), "{text}");
+    assert!(text.contains("cmd-alex"), "{text}");
+}
+
+#[test]
+fn corrected_originals_superseded_bases_and_summaries_need_refresh() {
+    let store = Store::new();
+    assert!(record(&store, "turn-1", &first_draft()).0);
+    let v1 = store.state.lock().unwrap().versions[0].clone();
+    let scope = basis("p1").scope;
+    {
+        let mut s = store.state.lock().unwrap();
+        s.records.corrected.insert("ap-policy".into());
+        s.records.bases[0].superseded = true;
+        s.records.summaries[0].superseded = true;
+    }
+    let view = run(views(
+        &store,
+        "actor",
+        &scope,
+        "task",
+        std::slice::from_ref(&v1),
+        None,
+    ))
+    .unwrap()
+    .remove(0);
+    let reasons: Vec<Vec<RefreshReason>> = view
+        .claims
+        .values()
+        .map(|c| c.currency.reasons.clone())
+        .collect();
+    assert!(
+        reasons.contains(&vec![RefreshReason::SourceWithdrawn]),
+        "{reasons:?}"
+    );
+    assert!(
+        reasons.contains(&vec![RefreshReason::BasisSuperseded]),
+        "{reasons:?}"
+    );
+    // The coverage block of the superseded summary and the exceptions block
+    // of the superseded basis need refresh as blocks.
+    let platform: Vec<&Vec<RefreshReason>> = view.platform.values().collect();
+    assert!(
+        platform.contains(&&vec![RefreshReason::SummarySuperseded]),
+        "{platform:?}"
+    );
+    assert!(
+        platform
+            .iter()
+            .any(|r| r.contains(&RefreshReason::BasisSuperseded)),
+        "{platform:?}"
+    );
+    assert_eq!(view.platform_refresh, 2);
+    // A new draft may not cite them: a coverage block on a superseded
+    // summary is refused.
+    let mut d = first_draft();
+    d.base_version = Some(v1.version.id.clone());
+    d.blocks = keep_all(&v1.version);
+    d.blocks.push(ProposedBlock::New {
+        section: "results".into(),
+        content: ProposedContent::Coverage {
+            summary_id: hex("summary", '5'),
+        },
+    });
+    let (recorded, feedback) = record(&store, "turn-2", &d);
+    assert!(
+        !recorded && feedback.join("\n").contains("superseded_support"),
+        "{feedback:?}"
     );
 }

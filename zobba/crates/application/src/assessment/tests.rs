@@ -897,6 +897,63 @@ macro_rules! no_work_products {
             ) -> Result<crate::work_product::VersionRecord, crate::work_product::WriteError> {
                 Err(crate::work_product::WriteError::Refused)
             }
+            async fn labels(
+                &self,
+                _: &str,
+                _: &zobba_domain::identity::Scope,
+                _: &[String],
+            ) -> Result<BTreeMap<String, String>, ReadingError> {
+                Ok(BTreeMap::new())
+            }
+            async fn guide_requests(
+                &self,
+                _: &str,
+                _: &zobba_domain::identity::Scope,
+                _: &str,
+            ) -> Result<Vec<crate::work_product::GuideRequest>, ReadingError> {
+                Ok(Vec::new())
+            }
+            async fn guide_request(
+                &self,
+                _: &str,
+                _: &zobba_domain::identity::Scope,
+                _: &str,
+                _: &str,
+            ) -> Result<Option<crate::work_product::GuideRequest>, ReadingError> {
+                Ok(None)
+            }
+            async fn invocation_proposal(
+                &self,
+                _: &ClaimBasis,
+                _: &str,
+            ) -> Result<Option<crate::work_product::ProposalRecord>, ReadingError> {
+                Ok(None)
+            }
+            async fn record_proposal(
+                &self,
+                _: &ClaimBasis,
+                _: &crate::work_product::ProposalRecord,
+            ) -> Result<crate::work_product::ProposalRecord, crate::work_product::WriteError> {
+                Err(crate::work_product::WriteError::Refused)
+            }
+            async fn proposals(
+                &self,
+                _: &str,
+                _: &zobba_domain::identity::Scope,
+                _: &str,
+                _: &str,
+            ) -> Result<Vec<crate::work_product::ProposalState>, ReadingError> {
+                Ok(Vec::new())
+            }
+            async fn proposal(
+                &self,
+                _: &str,
+                _: &zobba_domain::identity::Scope,
+                _: &str,
+                _: &str,
+            ) -> Result<Option<crate::work_product::ProposalState>, ReadingError> {
+                Ok(None)
+            }
         }
     };
 }
