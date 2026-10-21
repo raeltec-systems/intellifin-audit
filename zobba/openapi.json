@@ -7202,6 +7202,1126 @@
         ]
       }
     },
+    "/engagements/{engagement_id}/tasks/{task_id}/work-products": {
+      "get": {
+        "tags": [
+          "work_products"
+        ],
+        "operationId": "list_task_work_products",
+        "parameters": [
+          {
+            "name": "X-Expected-Session",
+            "in": "header",
+            "description": "Optional session-bound read precondition",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 128,
+              "minLength": 1
+            }
+          },
+          {
+            "name": "engagement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organisation_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "next_cursor of the previous page",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^wp-[0-9a-f]{40}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The Task's work products (a Task holds at most 16) with an exact total",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkProductShelfResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Session changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
+    "/engagements/{engagement_id}/tasks/{task_id}/work-products/{product_id}/exports/{export_id}/content": {
+      "get": {
+        "tags": [
+          "work_products"
+        ],
+        "operationId": "download_work_product_export",
+        "parameters": [
+          {
+            "name": "X-Expected-Session",
+            "in": "header",
+            "description": "Optional session-bound read precondition",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 128,
+              "minLength": 1
+            }
+          },
+          {
+            "name": "engagement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "product_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "export_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organisation_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The export's exact bytes, their size and digest checked again",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkProductErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkProductErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "export_scope_changed: the viewer's withheld set is not the export's; request your own export",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkProductErrorResponse"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Session changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkProductErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
+    "/engagements/{engagement_id}/tasks/{task_id}/work-products/{product_id}/versions": {
+      "post": {
+        "tags": [
+          "work_products"
+        ],
+        "operationId": "save_work_product_version",
+        "parameters": [
+          {
+            "name": "engagement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "product_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organisation_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "description": "Exact configured HTTPS application origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "description": "Current session-bound token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Expected-Actor",
+            "in": "header",
+            "description": "Required refusal fence for the current session actor",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkProductEditRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The recorded version (an exact retry returns the original); every kept block is unchanged with its author, every edited claim's assertions were checked again",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkProductVersionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkProductErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "access_denied: not a currently assigned Auditor or Audit manager in their own session (Admin alone is refused)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkProductErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkProductErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "stale_base naming the latest version, a closed refusal reason per block, or work_product_edit_conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkProductErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkProductErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
+    "/engagements/{engagement_id}/tasks/{task_id}/work-products/{product_id}/versions/{version_id}": {
+      "get": {
+        "tags": [
+          "work_products"
+        ],
+        "operationId": "get_work_product_version",
+        "parameters": [
+          {
+            "name": "X-Expected-Session",
+            "in": "header",
+            "description": "Optional session-bound read precondition",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 128,
+              "minLength": 1
+            }
+          },
+          {
+            "name": "engagement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "product_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organisation_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One exact version by template section, each claim's currency derived now, its limitations, and the latest version's ID when this is not the latest",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkProductVersionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkProductErrorResponse"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Session changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
+    "/engagements/{engagement_id}/tasks/{task_id}/work-products/{product_id}/versions/{version_id}/claims/{block_id}/support": {
+      "get": {
+        "tags": [
+          "work_products"
+        ],
+        "operationId": "get_work_product_claim_support",
+        "parameters": [
+          {
+            "name": "X-Expected-Session",
+            "in": "header",
+            "description": "Optional session-bound read precondition",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 128,
+              "minLength": 1
+            }
+          },
+          {
+            "name": "engagement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "product_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "block_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organisation_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One claim's pinned records and their currency now; a quote this viewer may not read now is withheld",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkProductSupportResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkProductErrorResponse"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Session changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
+    "/engagements/{engagement_id}/tasks/{task_id}/work-products/{product_id}/versions/{version_id}/exports": {
+      "post": {
+        "tags": [
+          "work_products"
+        ],
+        "operationId": "export_work_product_version",
+        "parameters": [
+          {
+            "name": "engagement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "product_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organisation_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "description": "Exact configured HTTPS application origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "description": "Current session-bound token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Expected-Actor",
+            "in": "header",
+            "description": "Required refusal fence for the current session actor",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkProductExportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The stored export of this exact version for the requesting viewer's withheld set (an exact retry returns the original; the same version, format and withheld set give identical bytes)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkProductExportResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkProductErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkProductErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkProductErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "work_product_export_conflict for a key used for another request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkProductErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The object store is unavailable: nothing was recorded; retry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkProductErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
+    "/engagements/{engagement_id}/work-products": {
+      "get": {
+        "tags": [
+          "work_products"
+        ],
+        "operationId": "list_work_products",
+        "parameters": [
+          {
+            "name": "X-Expected-Session",
+            "in": "header",
+            "description": "Optional session-bound read precondition",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 128,
+              "minLength": 1
+            }
+          },
+          {
+            "name": "engagement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organisation_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "next_cursor of the previous page",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^wp-[0-9a-f]{40}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page (50, C-ordered) of the engagement's work products with an exact total, each with its latest version, review state Draft, claims needing refresh and missing required sections",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkProductShelfResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Session changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
     "/health/live": {
       "get": {
         "tags": [],
@@ -21261,6 +22381,754 @@
           },
           "rule": {
             "type": "string"
+          }
+        }
+      },
+      "WorkProductAssertionResponse": {
+        "type": "object",
+        "description": "One checked assertion of a claim. A quote's value is withheld from a\nviewer who may not read its original now.",
+        "required": [
+          "kind",
+          "record_kind",
+          "record_id",
+          "record_digest",
+          "measure",
+          "criterion_id",
+          "value",
+          "withheld",
+          "origin",
+          "review",
+          "locator",
+          "unit",
+          "subject"
+        ],
+        "properties": {
+          "criterion_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": "string"
+          },
+          "locator": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "measure": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "origin": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "record_digest": {
+            "type": "string"
+          },
+          "record_id": {
+            "type": "string"
+          },
+          "record_kind": {
+            "type": "string"
+          },
+          "review": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subject": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "unit": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "value": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "withheld": {
+            "type": "boolean"
+          }
+        }
+      },
+      "WorkProductBlockResponse": {
+        "type": "object",
+        "description": "One block of a version.",
+        "required": [
+          "id",
+          "section_id",
+          "kind",
+          "label",
+          "label_words",
+          "text",
+          "record_id",
+          "author_kind",
+          "author_id",
+          "author_label",
+          "authored_in_version",
+          "claim",
+          "lines"
+        ],
+        "properties": {
+          "author_id": {
+            "type": "string"
+          },
+          "author_kind": {
+            "type": "string"
+          },
+          "author_label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "authored_in_version": {
+            "type": "string"
+          },
+          "claim": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkProductClaimResponse"
+              }
+            ]
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^blk-[0-9a-f]{40}$"
+          },
+          "kind": {
+            "type": "string",
+            "description": "`heading`, `narrative`, `claim`, `coverage`, `exceptions` or\n`limitations`."
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A narrative's `judgment` or `narrative`."
+          },
+          "label_words": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "\"Zobba's judgment — not checked against records\" on a judgment block."
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Platform lines of a coverage, exceptions or limitations block.",
+            "maxItems": 256
+          },
+          "record_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "section_id": {
+            "type": "string"
+          },
+          "text": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A heading's or narrative's text, or a claim's sentence."
+          }
+        }
+      },
+      "WorkProductClaimResponse": {
+        "type": "object",
+        "description": "A claim's currency, derived now (never stored).",
+        "required": [
+          "number",
+          "current",
+          "refresh",
+          "refresh_words",
+          "withheld",
+          "coverage",
+          "support",
+          "assertions"
+        ],
+        "properties": {
+          "assertions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkProductAssertionResponse"
+            },
+            "maxItems": 8
+          },
+          "coverage": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The platform coverage line of its summary or basis."
+          },
+          "current": {
+            "type": "boolean"
+          },
+          "number": {
+            "type": "string",
+            "description": "Its 1-based number in the version.",
+            "pattern": "^[0-9]+$"
+          },
+          "refresh": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Closed reasons it needs refresh.",
+            "maxItems": 6
+          },
+          "refresh_words": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 6
+          },
+          "support": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "What each record says, in the platform's words.",
+            "maxItems": 8
+          },
+          "withheld": {
+            "type": "boolean",
+            "description": "A quote this viewer may not read now (withheld, never stale)."
+          }
+        }
+      },
+      "WorkProductEditBlockRequest": {
+        "type": "object",
+        "description": "One block a person keeps, in order: a base block by ID, with new text\nfor a heading, a narrative or a claim's sentence (absent keeps it).",
+        "required": [
+          "block"
+        ],
+        "properties": {
+          "block": {
+            "type": "string",
+            "pattern": "^blk-[0-9a-f]{40}$"
+          },
+          "text": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "At most 4,000 UTF-8 bytes (a claim's sentence 1,000, a heading 500).",
+            "maxLength": 4000
+          }
+        },
+        "additionalProperties": false
+      },
+      "WorkProductEditRequest": {
+        "type": "object",
+        "description": "A person's edit of a work product's latest version.",
+        "required": [
+          "key",
+          "base_version",
+          "blocks"
+        ],
+        "properties": {
+          "base_version": {
+            "type": "string",
+            "description": "The version it edits: the latest.",
+            "pattern": "^wpv-[0-9a-f]{40}$"
+          },
+          "blocks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkProductEditBlockRequest"
+            },
+            "description": "The blocks to keep, in order (the limitations block is kept anyway).",
+            "maxItems": 64
+          },
+          "key": {
+            "type": "string",
+            "description": "Request key, idempotent per actor and bound to the session.",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "WorkProductErrorResponse": {
+        "type": "object",
+        "required": [
+          "error",
+          "head",
+          "refusals"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "head": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The work product's latest version, for `stale_base`."
+          },
+          "refusals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkProductRefusalItemResponse"
+            },
+            "maxItems": 256
+          }
+        }
+      },
+      "WorkProductExportRequest": {
+        "type": "object",
+        "description": "An export request: the format and a request key idempotent per actor.",
+        "required": [
+          "key",
+          "format"
+        ],
+        "properties": {
+          "format": {
+            "type": "string",
+            "description": "`docx` or `xlsx`."
+          },
+          "key": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "WorkProductExportResponse": {
+        "type": "object",
+        "description": "A stored export of one exact version.",
+        "required": [
+          "id",
+          "version_id",
+          "format",
+          "media_type",
+          "renderer",
+          "digest",
+          "size",
+          "withheld_digest",
+          "refresh_count",
+          "recorded_us"
+        ],
+        "properties": {
+          "digest": {
+            "type": "string"
+          },
+          "format": {
+            "type": "string",
+            "description": "`docx` or `xlsx`."
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^wpx-[0-9a-f]{40}$"
+          },
+          "media_type": {
+            "type": "string"
+          },
+          "recorded_us": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9]+$"
+          },
+          "refresh_count": {
+            "type": "string",
+            "description": "Claims needing refresh at export time.",
+            "pattern": "^[0-9]+$"
+          },
+          "renderer": {
+            "type": "string"
+          },
+          "size": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "version_id": {
+            "type": "string"
+          },
+          "withheld_digest": {
+            "type": "string",
+            "description": "The digest of the requesting viewer's withheld set."
+          }
+        }
+      },
+      "WorkProductRefusalItemResponse": {
+        "type": "object",
+        "description": "A refusal of a person's edit, per block (or the edit as a whole).",
+        "required": [
+          "block",
+          "reason",
+          "words",
+          "detail"
+        ],
+        "properties": {
+          "block": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "detail": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "words": {
+            "type": "string"
+          }
+        }
+      },
+      "WorkProductSectionResponse": {
+        "type": "object",
+        "description": "One template section with its blocks.",
+        "required": [
+          "id",
+          "title",
+          "required",
+          "not_completed",
+          "blocks"
+        ],
+        "properties": {
+          "blocks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkProductBlockResponse"
+            },
+            "maxItems": 64
+          },
+          "id": {
+            "type": "string"
+          },
+          "not_completed": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "\"Not completed in this version.\" when required and empty."
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "title": {
+            "type": "string"
+          }
+        }
+      },
+      "WorkProductShelfResponse": {
+        "type": "object",
+        "description": "One page of a shelf (50, C-ordered by work product ID).",
+        "required": [
+          "products",
+          "total",
+          "next_cursor"
+        ],
+        "properties": {
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^wp-[0-9a-f]{40}$"
+          },
+          "products": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkProductSummaryResponse"
+            },
+            "maxItems": 50
+          },
+          "total": {
+            "type": "string",
+            "description": "Exact count over the whole shelf, never over the page.",
+            "pattern": "^[0-9]+$"
+          }
+        }
+      },
+      "WorkProductSummaryResponse": {
+        "type": "object",
+        "description": "One work product on a shelf: its latest version, the review state word,\nthe exact number of its claims needing refresh and its required sections\nnot completed.",
+        "required": [
+          "id",
+          "task_id",
+          "title",
+          "kind",
+          "template",
+          "template_id",
+          "template_version",
+          "neutral",
+          "version_id",
+          "version",
+          "author_kind",
+          "review_state",
+          "claims",
+          "refresh",
+          "missing_required",
+          "recorded_us"
+        ],
+        "properties": {
+          "author_kind": {
+            "type": "string",
+            "description": "`agent` or `human`."
+          },
+          "claims": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "description": "`working_paper`, `analysis`, `finding_summary` or `report_draft`."
+          },
+          "missing_required": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Required template sections with no content, in template order.",
+            "maxItems": 64
+          },
+          "neutral": {
+            "type": "boolean",
+            "description": "The built-in neutral starter or a neutral source: \"Neutral starter\n(not firm methodology)\"."
+          },
+          "recorded_us": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9]+$"
+          },
+          "refresh": {
+            "type": "string",
+            "description": "Exact count of claims needing refresh now.",
+            "pattern": "^[0-9]+$"
+          },
+          "review_state": {
+            "type": "string",
+            "description": "Always \"Draft\" in this story."
+          },
+          "task_id": {
+            "type": "string",
+            "description": "The originating Task."
+          },
+          "template": {
+            "type": "string",
+            "description": "The template's name; a neutral starter says so."
+          },
+          "template_id": {
+            "type": "string"
+          },
+          "template_version": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "version_id": {
+            "type": "string",
+            "pattern": "^wpv-[0-9a-f]{40}$"
+          }
+        }
+      },
+      "WorkProductSupportItemResponse": {
+        "type": "object",
+        "description": "One assertion of a claim as pinned, and what its record says now.",
+        "required": [
+          "pinned",
+          "support"
+        ],
+        "properties": {
+          "pinned": {
+            "$ref": "#/components/schemas/WorkProductAssertionResponse"
+          },
+          "support": {
+            "type": "string",
+            "description": "The platform's words for the pinned record."
+          }
+        }
+      },
+      "WorkProductSupportResponse": {
+        "type": "object",
+        "description": "A claim's support: its sentence, each pinned record and its currency.",
+        "required": [
+          "block_id",
+          "statement",
+          "claim",
+          "items"
+        ],
+        "properties": {
+          "block_id": {
+            "type": "string"
+          },
+          "claim": {
+            "$ref": "#/components/schemas/WorkProductClaimResponse"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkProductSupportItemResponse"
+            },
+            "maxItems": 8
+          },
+          "statement": {
+            "type": "string"
+          }
+        }
+      },
+      "WorkProductVersionResponse": {
+        "type": "object",
+        "description": "One exact version of a work product with its claims' currency now.",
+        "required": [
+          "product",
+          "id",
+          "version",
+          "digest",
+          "predecessor_id",
+          "author_kind",
+          "author_label",
+          "title",
+          "kind",
+          "template",
+          "figure_rule",
+          "review_state",
+          "sections",
+          "limitations",
+          "refresh",
+          "withheld",
+          "missing_required",
+          "newer_version_id",
+          "recorded_us"
+        ],
+        "properties": {
+          "author_kind": {
+            "type": "string"
+          },
+          "author_label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "digest": {
+            "type": "string",
+            "description": "SHA-256 of the version's canonical document."
+          },
+          "figure_rule": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^wpv-[0-9a-f]{40}$"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "limitations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 512
+          },
+          "missing_required": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 64
+          },
+          "newer_version_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The latest version's ID when this is not the latest (a newer version\nis announced, never swapped in)."
+          },
+          "predecessor_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "product": {
+            "$ref": "#/components/schemas/WorkProductSummaryResponse"
+          },
+          "recorded_us": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9]+$"
+          },
+          "refresh": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "review_state": {
+            "type": "string"
+          },
+          "sections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkProductSectionResponse"
+            },
+            "maxItems": 64
+          },
+          "template": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "withheld": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
           }
         }
       }

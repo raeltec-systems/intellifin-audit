@@ -878,3 +878,72 @@ impl WorkProductPeople for AssessmentRepository {
         Ok(out)
     }
 }
+
+/// One page of a shelf: products (C-ordered by ID) with their latest
+/// versions, the exact total and the next cursor.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ShelfPage {
+    pub products: Vec<ProductHead>,
+    pub total: u64,
+    pub next: Option<String>,
+}
+
+impl AssessmentRepository {
+    /// A viewer who may read work products: a currently assigned Auditor or
+    /// Audit manager of the engagement (Admin alone is not one).
+    pub async fn work_product_viewer(&self, actor: &str, scope: &Scope) -> Result<(), TaskError> {
+        let mut tx = scoped(&self.pool, actor, scope)
+            .await
+            .map_err(|e| match e {
+                ReadingError::Denied | ReadingError::Fenced => TaskError::Denied,
+                _ => TaskError::Unavailable,
+            })?;
+        task::admission_fence(&mut tx, actor, scope, None).await?;
+        tx.commit().await.map_err(|_| TaskError::Unavailable)?;
+        Ok(())
+    }
+    /// The engagement's (or one Task's) work products: an exact count and
+    /// one C-ordered page of 50 after `after` (a product ID).
+    pub async fn work_product_shelf(
+        &self,
+        actor: &str,
+        scope: &Scope,
+        task_id: Option<&str>,
+        after: Option<&str>,
+    ) -> Result<ShelfPage, ReadingError> {
+        if task_id.is_some_and(|t| !valid_scope_id(t)) || after.is_some_and(|a| !valid_product_id(a)) {
+            return Err(ReadingError::Invalid);
+        }
+        let mut tx = scoped(&self.pool, actor, scope).await?;
+        let total: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM public.work_products p WHERE ($1::text IS NULL OR p.task_id=$1)",
+        )
+        .bind(task_id)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(unavailable)?;
+        let page = zobba_domain::work_product::SHELF_PAGE as i64;
+        let rows = sqlx::query(&format!(
+            "SELECT {PRODUCT_COLUMNS} {PRODUCT_FROM} WHERE ($1::text IS NULL OR p.task_id=$1) AND ($2::text IS NULL OR p.id COLLATE \"C\" > $2::text COLLATE \"C\") ORDER BY p.id COLLATE \"C\" LIMIT $3"
+        ))
+        .bind(task_id)
+        .bind(after)
+        .bind(page + 1)
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(unavailable)?;
+        let mut products: Vec<ProductHead> = rows.iter().map(head_from).collect::<Result<_, _>>()?;
+        let next = if products.len() as i64 > page {
+            products.truncate(page as usize);
+            products.last().map(|p| p.product.id.clone())
+        } else {
+            None
+        };
+        tx.commit().await.map_err(unavailable)?;
+        Ok(ShelfPage {
+            products,
+            total: total as u64,
+            next,
+        })
+    }
+}

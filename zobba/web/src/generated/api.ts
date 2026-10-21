@@ -805,6 +805,118 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/engagements/{engagement_id}/tasks/{task_id}/work-products": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_task_work_products"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagements/{engagement_id}/tasks/{task_id}/work-products/{product_id}/exports/{export_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["download_work_product_export"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagements/{engagement_id}/tasks/{task_id}/work-products/{product_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["save_work_product_version"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagements/{engagement_id}/tasks/{task_id}/work-products/{product_id}/versions/{version_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_work_product_version"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagements/{engagement_id}/tasks/{task_id}/work-products/{product_id}/versions/{version_id}/claims/{block_id}/support": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_work_product_claim_support"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagements/{engagement_id}/tasks/{task_id}/work-products/{product_id}/versions/{version_id}/exports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["export_work_product_version"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagements/{engagement_id}/work-products": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_work_products"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health/live": {
         parameters: {
             query?: never;
@@ -3772,6 +3884,209 @@ export interface components {
             measure_column: string | null;
             name: string;
             rule: string;
+        };
+        /**
+         * @description One checked assertion of a claim. A quote's value is withheld from a
+         *     viewer who may not read its original now.
+         */
+        WorkProductAssertionResponse: {
+            criterion_id: string | null;
+            kind: string;
+            locator: string | null;
+            measure: string | null;
+            origin: string | null;
+            record_digest: string;
+            record_id: string;
+            record_kind: string;
+            review: string | null;
+            subject: string | null;
+            unit: string | null;
+            value: string | null;
+            withheld: boolean;
+        };
+        /** @description One block of a version. */
+        WorkProductBlockResponse: {
+            author_id: string;
+            author_kind: string;
+            author_label: string | null;
+            authored_in_version: string;
+            claim: null | components["schemas"]["WorkProductClaimResponse"];
+            id: string;
+            /**
+             * @description `heading`, `narrative`, `claim`, `coverage`, `exceptions` or
+             *     `limitations`.
+             */
+            kind: string;
+            /** @description A narrative's `judgment` or `narrative`. */
+            label: string | null;
+            /** @description "Zobba's judgment — not checked against records" on a judgment block. */
+            label_words: string | null;
+            /** @description Platform lines of a coverage, exceptions or limitations block. */
+            lines: string[];
+            record_id: string | null;
+            section_id: string;
+            /** @description A heading's or narrative's text, or a claim's sentence. */
+            text: string | null;
+        };
+        /** @description A claim's currency, derived now (never stored). */
+        WorkProductClaimResponse: {
+            assertions: components["schemas"]["WorkProductAssertionResponse"][];
+            /** @description The platform coverage line of its summary or basis. */
+            coverage: string | null;
+            current: boolean;
+            /** @description Its 1-based number in the version. */
+            number: string;
+            /** @description Closed reasons it needs refresh. */
+            refresh: string[];
+            refresh_words: string[];
+            /** @description What each record says, in the platform's words. */
+            support: string[];
+            /** @description A quote this viewer may not read now (withheld, never stale). */
+            withheld: boolean;
+        };
+        /**
+         * @description One block a person keeps, in order: a base block by ID, with new text
+         *     for a heading, a narrative or a claim's sentence (absent keeps it).
+         */
+        WorkProductEditBlockRequest: {
+            block: string;
+            /** @description At most 4,000 UTF-8 bytes (a claim's sentence 1,000, a heading 500). */
+            text?: string | null;
+        };
+        /** @description A person's edit of a work product's latest version. */
+        WorkProductEditRequest: {
+            /** @description The version it edits: the latest. */
+            base_version: string;
+            /** @description The blocks to keep, in order (the limitations block is kept anyway). */
+            blocks: components["schemas"]["WorkProductEditBlockRequest"][];
+            /** @description Request key, idempotent per actor and bound to the session. */
+            key: string;
+        };
+        WorkProductErrorResponse: {
+            error: string;
+            /** @description The work product's latest version, for `stale_base`. */
+            head: string | null;
+            refusals: components["schemas"]["WorkProductRefusalItemResponse"][];
+        };
+        /** @description An export request: the format and a request key idempotent per actor. */
+        WorkProductExportRequest: {
+            /** @description `docx` or `xlsx`. */
+            format: string;
+            key: string;
+        };
+        /** @description A stored export of one exact version. */
+        WorkProductExportResponse: {
+            digest: string;
+            /** @description `docx` or `xlsx`. */
+            format: string;
+            id: string;
+            media_type: string;
+            recorded_us: string | null;
+            /** @description Claims needing refresh at export time. */
+            refresh_count: string;
+            renderer: string;
+            size: string;
+            version_id: string;
+            /** @description The digest of the requesting viewer's withheld set. */
+            withheld_digest: string;
+        };
+        /** @description A refusal of a person's edit, per block (or the edit as a whole). */
+        WorkProductRefusalItemResponse: {
+            /** Format: int32 */
+            block: number | null;
+            detail: string;
+            reason: string;
+            words: string;
+        };
+        /** @description One template section with its blocks. */
+        WorkProductSectionResponse: {
+            blocks: components["schemas"]["WorkProductBlockResponse"][];
+            id: string;
+            /** @description "Not completed in this version." when required and empty. */
+            not_completed: string | null;
+            required: boolean;
+            title: string;
+        };
+        /** @description One page of a shelf (50, C-ordered by work product ID). */
+        WorkProductShelfResponse: {
+            next_cursor: string | null;
+            products: components["schemas"]["WorkProductSummaryResponse"][];
+            /** @description Exact count over the whole shelf, never over the page. */
+            total: string;
+        };
+        /**
+         * @description One work product on a shelf: its latest version, the review state word,
+         *     the exact number of its claims needing refresh and its required sections
+         *     not completed.
+         */
+        WorkProductSummaryResponse: {
+            /** @description `agent` or `human`. */
+            author_kind: string;
+            claims: string;
+            id: string;
+            /** @description `working_paper`, `analysis`, `finding_summary` or `report_draft`. */
+            kind: string;
+            /** @description Required template sections with no content, in template order. */
+            missing_required: string[];
+            /**
+             * @description The built-in neutral starter or a neutral source: "Neutral starter
+             *     (not firm methodology)".
+             */
+            neutral: boolean;
+            recorded_us: string | null;
+            /** @description Exact count of claims needing refresh now. */
+            refresh: string;
+            /** @description Always "Draft" in this story. */
+            review_state: string;
+            /** @description The originating Task. */
+            task_id: string;
+            /** @description The template's name; a neutral starter says so. */
+            template: string;
+            template_id: string;
+            template_version: string;
+            title: string;
+            version: string;
+            version_id: string;
+        };
+        /** @description One assertion of a claim as pinned, and what its record says now. */
+        WorkProductSupportItemResponse: {
+            pinned: components["schemas"]["WorkProductAssertionResponse"];
+            /** @description The platform's words for the pinned record. */
+            support: string;
+        };
+        /** @description A claim's support: its sentence, each pinned record and its currency. */
+        WorkProductSupportResponse: {
+            block_id: string;
+            claim: components["schemas"]["WorkProductClaimResponse"];
+            items: components["schemas"]["WorkProductSupportItemResponse"][];
+            statement: string;
+        };
+        /** @description One exact version of a work product with its claims' currency now. */
+        WorkProductVersionResponse: {
+            author_kind: string;
+            author_label: string | null;
+            /** @description SHA-256 of the version's canonical document. */
+            digest: string;
+            figure_rule: string;
+            id: string;
+            kind: string;
+            limitations: string[];
+            missing_required: string[];
+            /**
+             * @description The latest version's ID when this is not the latest (a newer version
+             *     is announced, never swapped in).
+             */
+            newer_version_id: string | null;
+            predecessor_id: string | null;
+            product: components["schemas"]["WorkProductSummaryResponse"];
+            recorded_us: string | null;
+            refresh: string;
+            review_state: string;
+            sections: components["schemas"]["WorkProductSectionResponse"][];
+            template: string;
+            title: string;
+            version: string;
+            withheld: string;
         };
     };
     responses: never;
@@ -7710,6 +8025,616 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TaskWorkResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Session changed */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_task_work_products: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+                /** @description next_cursor of the previous page */
+                cursor?: string;
+            };
+            header?: {
+                /** @description Optional session-bound read precondition */
+                "X-Expected-Session"?: string | null;
+            };
+            path: {
+                engagement_id: string;
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The Task's work products (a Task holds at most 16) with an exact total */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkProductShelfResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Session changed */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    download_work_product_export: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+            };
+            header?: {
+                /** @description Optional session-bound read precondition */
+                "X-Expected-Session"?: string | null;
+            };
+            path: {
+                engagement_id: string;
+                task_id: string;
+                product_id: string;
+                export_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The export's exact bytes, their size and digest checked again */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": number[];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkProductErrorResponse"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkProductErrorResponse"];
+                };
+            };
+            /** @description export_scope_changed: the viewer's withheld set is not the export's; request your own export */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkProductErrorResponse"];
+                };
+            };
+            /** @description Session changed */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkProductErrorResponse"];
+                };
+            };
+        };
+    };
+    save_work_product_version: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+            };
+            header: {
+                /** @description Exact configured HTTPS application origin */
+                Origin: string;
+                /** @description Current session-bound token */
+                "X-CSRF-Token": string;
+                /** @description Required refusal fence for the current session actor */
+                "X-Expected-Actor": string;
+            };
+            path: {
+                engagement_id: string;
+                task_id: string;
+                product_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkProductEditRequest"];
+            };
+        };
+        responses: {
+            /** @description The recorded version (an exact retry returns the original); every kept block is unchanged with its author, every edited claim's assertions were checked again */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkProductVersionResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkProductErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description access_denied: not a currently assigned Auditor or Audit manager in their own session (Admin alone is refused) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkProductErrorResponse"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkProductErrorResponse"];
+                };
+            };
+            /** @description stale_base naming the latest version, a closed refusal reason per block, or work_product_edit_conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkProductErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkProductErrorResponse"];
+                };
+            };
+        };
+    };
+    get_work_product_version: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+            };
+            header?: {
+                /** @description Optional session-bound read precondition */
+                "X-Expected-Session"?: string | null;
+            };
+            path: {
+                engagement_id: string;
+                task_id: string;
+                product_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One exact version by template section, each claim's currency derived now, its limitations, and the latest version's ID when this is not the latest */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkProductVersionResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkProductErrorResponse"];
+                };
+            };
+            /** @description Session changed */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_work_product_claim_support: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+            };
+            header?: {
+                /** @description Optional session-bound read precondition */
+                "X-Expected-Session"?: string | null;
+            };
+            path: {
+                engagement_id: string;
+                task_id: string;
+                product_id: string;
+                version_id: string;
+                block_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One claim's pinned records and their currency now; a quote this viewer may not read now is withheld */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkProductSupportResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkProductErrorResponse"];
+                };
+            };
+            /** @description Session changed */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    export_work_product_version: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+            };
+            header: {
+                /** @description Exact configured HTTPS application origin */
+                Origin: string;
+                /** @description Current session-bound token */
+                "X-CSRF-Token": string;
+                /** @description Required refusal fence for the current session actor */
+                "X-Expected-Actor": string;
+            };
+            path: {
+                engagement_id: string;
+                task_id: string;
+                product_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkProductExportRequest"];
+            };
+        };
+        responses: {
+            /** @description The stored export of this exact version for the requesting viewer's withheld set (an exact retry returns the original; the same version, format and withheld set give identical bytes) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkProductExportResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkProductErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkProductErrorResponse"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkProductErrorResponse"];
+                };
+            };
+            /** @description work_product_export_conflict for a key used for another request */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkProductErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The object store is unavailable: nothing was recorded; retry */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkProductErrorResponse"];
+                };
+            };
+        };
+    };
+    list_work_products: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+                /** @description next_cursor of the previous page */
+                cursor?: string;
+            };
+            header?: {
+                /** @description Optional session-bound read precondition */
+                "X-Expected-Session"?: string | null;
+            };
+            path: {
+                engagement_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page (50, C-ordered) of the engagement's work products with an exact total, each with its latest version, review state Draft, claims needing refresh and missing required sections */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkProductShelfResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             401: {

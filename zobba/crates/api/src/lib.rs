@@ -7,6 +7,7 @@ pub mod engagement_setup;
 pub mod engagements;
 pub mod evidence;
 pub mod exceptions;
+pub mod work_products;
 pub mod knowledge;
 pub mod membership;
 pub mod methodology;
@@ -145,6 +146,8 @@ pub fn authenticated_router_with_proposals(
         revisions::router(database.pool().clone(), identity.clone(), objects.clone());
     let exception_routes =
         exceptions::router(database.pool().clone(), identity.clone(), objects.clone());
+    let work_product_routes =
+        work_products::router(database.pool().clone(), identity.clone(), objects.clone());
     let evidence_routes = evidence::router(database.pool().clone(), identity.clone(), objects);
     router(database)
         .merge(auth::router(identity))
@@ -158,11 +161,13 @@ pub fn authenticated_router_with_proposals(
         .merge(evidence_routes)
         .merge(revision_routes)
         .merge(exception_routes)
+        .merge(work_product_routes)
         .layer(axum::middleware::from_fn(
             |request: axum::extract::Request, next: axum::middleware::Next| async move {
                 let login_document =
                     request.uri().path() == "/auth/login" && auth::wants_html(request.headers());
-                let evidence_io = evidence::is_io_request(&request);
+                let evidence_io = evidence::is_io_request(&request)
+                    || work_products::is_io_request(&request);
                 let deadline = if evidence_io { 120 } else { 15 };
                 let mut response = match tokio::time::timeout(
                     std::time::Duration::from_secs(deadline),
@@ -234,6 +239,13 @@ pub fn authenticated_router_with_proposals(
         exceptions::list,
         exceptions::detail,
         exceptions::dispose,
+        work_products::shelf,
+        work_products::task_shelf,
+        work_products::version,
+        work_products::support,
+        work_products::edit,
+        work_products::request_export,
+        work_products::content,
         answers::get_answers,
         work::direct,
         work::questions,
