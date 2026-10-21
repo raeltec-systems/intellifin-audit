@@ -56,3 +56,22 @@ Also on the path: UI polish (after the core work) and one live provider qualific
 
 Remaining critical path: Milestone A — 24.2 (in progress), 24.3a, 24.3b, 24.4, 24.5,
 24.6, 25.1, 25.2, 25.3; Milestone B — 22.7, 21.5, 23.1–23.6, then 25.4.
+
+## Owner decisions 2026-10-21
+
+- **New Story 21.7 "Import firm templates from documents"** is added to Milestone A,
+  before the demo: a firm's existing working-paper template (for example a .docx) is
+  imported and turned into a versioned methodology template, instead of an Admin
+  typing every section by hand. Plan it after 24.4, before 25.1.
+- **Requirement for Story 25.2 (and 25.3 digest):** when anything the user decided on
+  changes (for example a work-product claim needs refresh because its evaluation,
+  disposition, summary, exception or fact changed), the agent says so in the
+  conversation, asks whether to update, keeps the question open as a durable
+  question, and reminds the user (digest) until it is answered. A badge alone is
+  never enough. Until 25.2 exists, the 24.4 "needs refresh" badge stays.
+- 24.4: the agent may edit a person's block only at that person's explicit request,
+  with before/after confirmation (see the 24.4 spec).
+- No hard cap on dispositions per exception or revision (24.3b follow-up, migration 0023).
+
+Remaining critical path: Milestone A — 24.4 (in review), 24.5, 24.6, 21.7, 25.1,
+25.2, 25.3; Milestone B — 22.7, 21.5, 23.1–23.6, then 25.4.

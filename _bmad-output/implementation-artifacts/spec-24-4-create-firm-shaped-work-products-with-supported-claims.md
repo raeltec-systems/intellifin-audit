@@ -128,6 +128,8 @@ Size: about 6,900 tokens, far above the 1,600 target (24.1–24.3 were also larg
 
 ## Open Questions (owner decisions)
 
+**Owner decision (2026-10-21, changes decision 6):** the agent may change or remove a person's block ONLY when that person explicitly asks for it in the conversation (Guide). The change is shown to the person as a before/after proposal and is recorded only after the same person confirms it; the version records it as "changed by the agent at <person>'s request" with the request and confirmation IDs. Without such a request the agent still may never change or drop a human block. Implement in the 24.4 review fix round.
+
 **Owner decisions (2026-10-15):** kept as ONE story (K, owner's choice; single migration 0022/v22). Decisions 2–7 approved as recommended (independent advisor agreed): in-house Rust DOCX/XLSX writer in the API process, no new crate, byte-identical; no PDF in 24.4 (named follow-up); no digits in narrative/judgment blocks, EXCEPT closed identifier tokens that resolve to a record or template section (e.g. criterion labels `A1`, standard references `ISA 315`, `FY2025` in a heading); human edits text and claim sentences (rechecked), removes/reorders blocks, new assertions come from the agent via Guide; the agent may never change or drop a human block; an export is downloadable only by a viewer whose current withheld set matches the export's. Condition: CI must open the fixture DOCX and XLSX in LibreOffice headless (not only unzip/grep).
 
 1. **Split.** (a) Recommended **S**: 24.4a then 24.4b, as above. (b) **K**: one story.
