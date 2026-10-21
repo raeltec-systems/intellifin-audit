@@ -2170,8 +2170,11 @@ async fn database_guards_refuse_altered_work_product_records(
         "quote",
         "period",
     ] {
+        // A claim written in its version (a kept claim is checked against
+        // its version's document below); version IDs are random, so the
+        // order names the versions, not their IDs.
         let found: Option<(String, String)> = sqlx::query_as(
-            "SELECT version_id, block_id FROM public.work_product_assertions WHERE kind=$1 AND version_id IN ($2,$3) ORDER BY version_id, block_id LIMIT 1",
+            "SELECT a.version_id, a.block_id FROM public.work_product_assertions a JOIN public.work_product_blocks b USING (organisation_id,client_id,engagement_id,version_id,block_id) WHERE a.kind=$1 AND a.version_id IN ($2,$3) AND b.authored_in_version=a.version_id ORDER BY a.version_id=$2 DESC, a.block_id LIMIT 1",
         )
         .bind(kind)
         .bind(v1)
@@ -2209,6 +2212,52 @@ async fn database_guards_refuse_altered_work_product_records(
             "a forged {kind} is refused by the record check, not a shape check: {message}"
         );
     }
+
+    // A kept claim (written before its version): the record check leaves it
+    // to its predecessor, and the document check refuses an altered row of
+    // it, an assertion added to it later and a block added to a recorded
+    // version later.
+    let (kept_version, kept_block, kept_ordinal): (String, String, i32) = sqlx::query_as(
+        "SELECT a.version_id, a.block_id, a.ordinal FROM public.work_product_assertions a JOIN public.work_product_blocks b USING (organisation_id,client_id,engagement_id,version_id,block_id) WHERE a.version_id IN ($1,$2) AND b.authored_in_version<>a.version_id AND NOT EXISTS(SELECT 1 FROM public.work_product_assertions z WHERE z.version_id=a.version_id AND z.block_id=a.block_id AND z.ordinal=7) ORDER BY a.version_id=$1 DESC, a.block_id, a.ordinal LIMIT 1",
+    )
+    .bind(v2)
+    .bind(v5)
+    .fetch_one(&mut *admin)
+    .await
+    .expect("a kept claim");
+    let setup = [
+        RESET.to_string(),
+        format!(
+            "CREATE TEMP TABLE kept_assertion ON COMMIT DROP AS SELECT * FROM public.work_product_assertions WHERE version_id='{kept_version}' AND block_id='{kept_block}' AND ordinal={kept_ordinal}"
+        ),
+        format!(
+            "DELETE FROM public.work_product_assertions WHERE version_id='{kept_version}' AND block_id='{kept_block}' AND ordinal={kept_ordinal}"
+        ),
+    ];
+    let forged = ASSERTION_COLUMNS.replace(",record_digest,", &format!(",'{}',", "b".repeat(64)));
+    assert_refused(
+        &refused_in(admin, &setup, &format!("INSERT INTO public.work_product_assertions({ASSERTION_COLUMNS}) SELECT {forged} FROM kept_assertion")).await,
+        &format!("a work-product assertion is the one its version's document lists: {kept_version}/{kept_block}/{kept_ordinal}"),
+        "an altered assertion of a kept claim",
+    );
+    let late = ASSERTION_COLUMNS.replace(",ordinal,", ",7,");
+    assert_refused(
+        &refused(admin, &format!("INSERT INTO public.work_product_assertions({ASSERTION_COLUMNS}) SELECT {late} FROM public.work_product_assertions WHERE version_id='{kept_version}' AND block_id='{kept_block}' AND ordinal={kept_ordinal}")).await,
+        &format!("a work-product assertion is the one its version's document lists: {kept_version}/{kept_block}/7"),
+        "an assertion added to a recorded version",
+    );
+    const BLOCK_COLUMNS: &str = "organisation_id,client_id,engagement_id,task_id,actor_id,version_id,ordinal,block_id,section_id,kind,label,body,record_id,author_kind,author_id,authored_in_version";
+    let late_block = BLOCK_COLUMNS
+        .replace(
+            ",ordinal,",
+            ",(SELECT blocks FROM public.work_product_versions WHERE id=b.version_id),",
+        )
+        .replace(",block_id,", &format!(",'blk-{}',", "a".repeat(40)));
+    assert_refused(
+        &refused(admin, &format!("INSERT INTO public.work_product_blocks({BLOCK_COLUMNS}) SELECT {late_block} FROM public.work_product_blocks b WHERE version_id='{v1}' AND kind='limitations'")).await,
+        &format!("a work-product block is the one its version's document lists: {v1}/blk-{}", "a".repeat(40)),
+        "a block added to a recorded version",
+    );
 
     // Currency on read (SQL): a replacement source that corrects the quoted
     // original makes the quote need refresh.

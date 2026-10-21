@@ -2463,6 +2463,11 @@ keep rule `statement_figures_v1` and renderer `zobba-export-v1`.
   the same bytes, stored once under their content's object ID (read back and
   checked before they are recorded). Export IDs are engagement-scoped. The XLSX
   says whether each count is exact or "at least".
+- **Nothing is added to a recorded version.** Every block and assertion is
+  checked against its version's document when it is written, so an altered
+  row of a kept claim, or a block or assertion added to a recorded version
+  later, is refused at once (the record check covers blocks written in the
+  version; a kept claim equals its predecessor's).
 
 ## Establishing an engagement conversationally (Story 22.2 AC4)
 

@@ -291,7 +291,9 @@ CREATE TRIGGER work_product_guard BEFORE INSERT ON public.work_product_proposal_
 -- basis that is current; for assertions written in a version: a quote's
 -- original no replacement source corrects, a period's basis no successor
 -- supersedes, and an outcome of a claim a person only edits keeps its
--- recorded review state (its verdict and origin still agree now).
+-- recorded review state (its verdict and origin still agree now); and every
+-- block and assertion is the one its version's document lists, so nothing
+-- is added to or altered in a recorded version, a kept claim included.
 CREATE OR REPLACE FUNCTION public.work_product_batch() RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,public SET enable_nestloop=off AS $body$
 DECLARE bad record; task text; org text; client text; engagement text;
@@ -308,6 +310,23 @@ BEGIN
    LIMIT 1;
   IF FOUND THEN
    RAISE EXCEPTION 'a work-product block is of its version, its Task, its template and its author: %/%', bad.version_id, bad.block_id USING ERRCODE='23514';
+  END IF;
+  -- Every block is the one its version's document lists, when it is
+  -- written: a block added to a recorded version later is refused.
+  SELECT a.version_id, a.block_id INTO bad FROM added a
+   JOIN public.work_product_versions v ON (v.organisation_id,v.client_id,v.engagement_id,v.id)=(a.organisation_id,a.client_id,a.engagement_id,a.version_id)
+   WHERE NOT coalesce(v.document->'blocks'->a.ordinal->>'block_id' = a.block_id
+     AND v.document->'blocks'->a.ordinal->>'section_id' = a.section_id
+     AND v.document->'blocks'->a.ordinal->>'kind' = a.kind
+     AND v.document->'blocks'->a.ordinal->>'label' IS NOT DISTINCT FROM a.label
+     AND coalesce(v.document->'blocks'->a.ordinal->>'text', v.document->'blocks'->a.ordinal->>'statement') IS NOT DISTINCT FROM a.body
+     AND v.document->'blocks'->a.ordinal->>'record_id' IS NOT DISTINCT FROM a.record_id
+     AND v.document->'blocks'->a.ordinal->>'author_kind' = a.author_kind
+     AND v.document->'blocks'->a.ordinal->>'author_id' = a.author_id
+     AND v.document->'blocks'->a.ordinal->>'authored_in_version' = a.authored_in_version, false)
+   LIMIT 1;
+  IF FOUND THEN
+   RAISE EXCEPTION 'a work-product block is the one its version''s document lists: %/%', bad.version_id, bad.block_id USING ERRCODE='23514';
   END IF;
   FOR org, client, engagement, task IN SELECT DISTINCT a.organisation_id, a.client_id, a.engagement_id, a.task_id FROM added a LOOP
    WITH placed AS MATERIALIZED (SELECT a.* FROM added a JOIN public.work_product_versions v ON (v.organisation_id,v.client_id,v.engagement_id,v.id)=(a.organisation_id,a.client_id,a.engagement_id,a.version_id)
@@ -375,6 +394,19 @@ BEGIN
    RAISE EXCEPTION 'a work-product assertion does not agree with its record now: %/%/%', bad.version_id, bad.block_id, bad.ordinal USING ERRCODE='23514';
   END IF;
  END LOOP;
+ -- Every assertion is the one its version's document lists, when it is
+ -- written: an altered assertion of a kept claim (which the record check
+ -- above leaves to its predecessor) or one added to a recorded version
+ -- later is refused.
+ SELECT a.version_id, a.block_id, a.ordinal INTO bad FROM added a
+  JOIN public.work_product_blocks b ON (b.organisation_id,b.client_id,b.engagement_id,b.version_id,b.block_id)=(a.organisation_id,a.client_id,a.engagement_id,a.version_id,a.block_id)
+  JOIN public.work_product_versions v ON (v.organisation_id,v.client_id,v.engagement_id,v.id)=(a.organisation_id,a.client_id,a.engagement_id,a.version_id)
+  WHERE NOT coalesce(v.document->'blocks'->b.ordinal->'assertions'->a.ordinal = jsonb_build_object('kind',a.kind,'record_kind',a.record_kind,'record_id',a.record_id,'record_digest',a.record_digest,
+    'measure',a.measure,'criterion_id',a.criterion_id,'value',a.value,'origin',a.origin,'review',a.review,'locator',a.locator,'unit',a.unit,'subject',a.subject), false)
+  LIMIT 1;
+ IF FOUND THEN
+  RAISE EXCEPTION 'a work-product assertion is the one its version''s document lists: %/%/%', bad.version_id, bad.block_id, bad.ordinal USING ERRCODE='23514';
+ END IF;
  RETURN NULL;
 END $body$;
 
