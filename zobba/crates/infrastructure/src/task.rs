@@ -905,8 +905,23 @@ impl TaskRepository {
         })
     }
     pub async fn current(&self, basis: &ClaimBasis) -> Result<bool, TaskError> {
-        let mut tx = lock(&self.pool, &basis.actor_id, &basis.scope).await?;
-        let row = task(&mut tx, &basis.task_id).await?;
+        // The lease renewal reads and writes only the Task row (and reads its
+        // claim), so it takes only that row's lock, never the organisation and
+        // engagement locks a cycle's own write transaction holds: a long
+        // bounded write (an evaluation over a 20,000-row population) must not
+        // starve its own lease (24.3b review A/B). A writer that fences the
+        // Task updates this row under its own locks; FOR UPDATE then reads its
+        // committed version.
+        let mut tx = begin(&self.pool, &basis.actor_id, &basis.scope).await?;
+        // FOR NO KEY UPDATE: owner_until is not a key column, and the key
+        // share locks the cycle's own inserts hold on this row (their
+        // foreign keys) must not block the renewal.
+        let row = sqlx::query("SELECT *,owner_until>clock_timestamp() AS owner_live FROM public.tasks WHERE id=$1 FOR NO KEY UPDATE")
+            .bind(&basis.task_id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(unavailable)?
+            .ok_or(TaskError::Denied)?;
         if !continuation_current(&row, basis)? {
             return Ok(false);
         }

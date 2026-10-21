@@ -802,6 +802,7 @@ async fn every_not_met_result_is_an_exception_whose_status_is_derived_and_recoun
     };
     let objects = Arc::new(store());
     register(&mut admin, &objects, "ap-invoices", "AP invoices.xlsx").await;
+    register(&mut admin, &objects, "ap-bulk", "AP invoices bulk.xlsx").await;
     register(&mut admin, &objects, "ap-policy", "AP policy.txt").await;
 
     let operations = OperationRepository::new(pool.clone());
@@ -1004,6 +1005,31 @@ async fn every_not_met_result_is_an_exception_whose_status_is_derived_and_recoun
                     text_reply(&answer(serde_json::json!({
                         "summarise_effective": [{"basis": b, "population": p, "sample": ""}],
                         "segments": [{"text": "The exceptions are listed with their status.", "sources": []}],
+                    })))
+                }
+                // Turn 8 (scale): the 20,000-invoice population and the rule
+                // criterion over it (19,000 rule results not met), and the judgment
+                // criterion (its recorded judgments name no bulk invoice).
+                7 => {
+                    let (b, history, segregation) = ids().await;
+                    let mut bulk = invoices("bulk", &b);
+                    bulk["original_id"] = serde_json::json!("ap-bulk");
+                    bulk["selection"] = serde_json::json!("Every invoice row of the bulk export");
+                    text_reply(&answer(serde_json::json!({
+                        "propose_population": [bulk],
+                        "evaluate_population": [{"criterion": history, "population": "bulk"}, {"criterion": segregation, "population": "bulk"}],
+                    })))
+                }
+                // Turn 9: its effective summary (the answer follows).
+                8 => {
+                    let (b, _, _) = ids().await;
+                    let p: String = sqlx::query_scalar("SELECT id FROM public.assessment_populations WHERE task_id=$1 AND document->>'key'='bulk'")
+                        .bind(&task_id)
+                        .fetch_one(&lookup)
+                        .await
+                        .unwrap();
+                    text_reply(&answer(serde_json::json!({
+                        "summarise_effective": [{"basis": b, "population": p, "sample": ""}],
                     })))
                 }
                 _ => text_reply(&answer(serde_json::json!({
@@ -1761,6 +1787,87 @@ async fn every_not_met_result_is_an_exception_whose_status_is_derived_and_recoun
         "3"
     );
     exceptions_fixture(&list);
+
+    // Scale (24.3b review A): a population at the 20,000-row ceiling whose
+    // rule criterion fails 19,000 times. The writer, the derived statuses,
+    // the effective summary's recount and every read stay within the
+    // runtime's statement bound; nothing halts a cycle.
+    let reconsider_0051 = head_of("INV-0051").await;
+    let (status, saved) = accountable
+        .dispose(
+            task,
+            &reconsider_0051,
+            &disposition(
+                "reconsider-0051",
+                "needs_reconsideration",
+                None,
+                Some("facts"),
+                "The currency may be wrong.",
+                serde_json::json!([]),
+            ),
+        )
+        .await;
+    assert_eq!(status, 200, "{saved}");
+    let started = Instant::now();
+    settle(&tasks, &provider, &receipt.task_id, 10).await;
+    let cycle = started.elapsed();
+    let bodies = provider.bodies.lock().unwrap().clone();
+    assert!(
+        bodies[8].contains("19000 opportunities")
+            || bodies[8].contains("19,000")
+            || bodies[8].contains("20000"),
+        "the bulk population was read: {}",
+        &bodies[8][bodies[8].len().saturating_sub(3000)..]
+    );
+    let bulk: (i64, i64) = sqlx::query_as("SELECT count(*), count(DISTINCT subject) FROM public.assessment_exceptions WHERE subject LIKE 'BLK-%'")
+        .fetch_one(&mut admin)
+        .await
+        .unwrap();
+    assert_eq!(bulk, (19_000, 19_000), "one exception per failing invoice");
+    let bulk_summary: String = sqlx::query_scalar("SELECT s.id FROM public.assessment_effective_summaries s JOIN public.assessment_populations p ON p.id=s.population_id WHERE p.document->>'key'='bulk'")
+        .fetch_one(&mut admin)
+        .await
+        .unwrap();
+    let effective = effective_rows(&mut admin).await;
+    let (_, conclusion, counts, _, _) = effective.iter().find(|e| e.0 == bulk_summary).unwrap();
+    // The judgment criterion has no judgment of a bulk invoice: the 1,000
+    // invoices in the history are unresolved, so the conclusion is
+    // inconclusive; every failing invoice is one open exception.
+    assert_eq!(conclusion, "exceptions_found_inconclusive");
+    assert_eq!(
+        (
+            counts[0], counts[1], counts[2], counts[9], counts[10], counts[14], counts[15]
+        ),
+        (19_000, 0, 1_000, 19_000, 19_000, 19_000, 20_000)
+    );
+    let timed = Instant::now();
+    let (status, list) = accountable
+        .read(
+            &format!("tasks/{task}/assessment/exceptions"),
+            &accountable.csrf,
+        )
+        .await;
+    let list_time = timed.elapsed();
+    assert_eq!(status, 200, "{list}");
+    assert_eq!(list["counts"]["total"], "19006");
+    assert_eq!(list["exceptions"].as_array().unwrap().len(), 50);
+    assert!(list["next_cursor"].is_string());
+    let timed = Instant::now();
+    let first = list["exceptions"][0]["id"].as_str().unwrap().to_string();
+    let (status, _) = accountable
+        .read(
+            &format!("tasks/{task}/assessment/exceptions/{first}"),
+            &accountable.csrf,
+        )
+        .await;
+    let detail_time = timed.elapsed();
+    assert_eq!(status, 200);
+    eprintln!("scale: cycle {cycle:?}, list {list_time:?}, detail {detail_time:?}");
+    assert!(list_time < Duration::from_secs(3), "list {list_time:?}");
+    assert!(
+        detail_time < Duration::from_secs(2),
+        "detail {detail_time:?}"
+    );
     server.abort();
     let _ = stop.send(true);
     let _ = worker.await;

@@ -41,6 +41,13 @@ fn unavailable(_: sqlx::Error) -> ReadingError {
 }
 fn refusal(error: sqlx::Error) -> ReadingError {
     match &error {
+        // A Task's exception ceiling is a bound, not a malformed proposal.
+        sqlx::Error::Database(database)
+            if database.code().as_deref() == Some("23514")
+                && database.message().contains("a Task holds at most") =>
+        {
+            ReadingError::Capacity
+        }
         sqlx::Error::Database(database)
             if matches!(
                 database.code().as_deref(),
@@ -48,6 +55,11 @@ fn refusal(error: sqlx::Error) -> ReadingError {
             ) =>
         {
             ReadingError::Invalid
+        }
+        // The write exceeded the runtime's statement bound: a recorded
+        // refusal the agent is told about, never a halted cycle.
+        sqlx::Error::Database(database) if database.code().as_deref() == Some("57014") => {
+            ReadingError::Capacity
         }
         _ => ReadingError::Unavailable,
     }
@@ -699,6 +711,8 @@ use zobba_domain::{
 
 /// Rows one INSERT statement carries (members, opportunities, selections).
 const BATCH: usize = 1_000;
+/// Opportunities one statement writes (see `record_opportunities`).
+const OPPORTUNITY_BATCH: usize = 5_000;
 
 fn population_from(row: &PgRow) -> Result<PopulationRecord, ReadingError> {
     let (document, created) = document_of(row)?;
@@ -1120,7 +1134,17 @@ impl CoverageStore for AssessmentRepository {
             };
         }
         let s = &basis.scope;
-        for chunk in records.chunks(BATCH) {
+        // The published 24.2 guard reads the whole population once per
+        // statement (row-level policy per member), so a write of up to
+        // 20,000 opportunities goes in few, larger statements under a bounded
+        // longer statement limit (24.3b review: 1,000-row statements over a
+        // 20,000-member population each approached the 4 s runtime bound).
+        // A write that still exceeds it is a recorded capacity refusal.
+        sqlx::query("SET LOCAL statement_timeout = 60000")
+            .execute(&mut *tx)
+            .await
+            .map_err(unavailable)?;
+        for chunk in records.chunks(OPPORTUNITY_BATCH) {
             let member: Vec<i32> = chunk.iter().map(|r| r.member_ordinal as i32).collect();
             let subject: Vec<&str> = chunk.iter().map(|r| r.subject.as_str()).collect();
             let applicability: Vec<&str> = chunk

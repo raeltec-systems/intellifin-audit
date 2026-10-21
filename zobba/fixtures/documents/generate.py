@@ -405,7 +405,26 @@ save("Zip bomb.xlsx", zip_bomb())
 save("Encrypted.xlsx", b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\0" * 504)
 save("Macro workbook.xlsm", macro_workbook())
 save("Notes.txt", "Opening balance 1,250.00 agreed to the ledger.\n".encode("utf-8"))
+
+def ap_invoices_bulk():
+    """Story 24.3b review: 20,000 invoices (the population row ceiling), 19,000
+    of them not in the approval history, for the exception scale proof."""
+    import openpyxl
+
+    book = openpyxl.Workbook()
+    sheet = book.active
+    sheet.title = "Sheet1"
+    sheet.append(("Invoice", "Invoice date", "In approval history"))
+    for n in range(1, 20001):
+        sheet.append((f"BLK-{n:05d}", f"{(n % 28) + 1:02d}/03/2026", "Yes" if n % 20 == 0 else "No"))
+    book.properties.created = FIXED
+    book.properties.modified = FIXED
+    buffer = io.BytesIO()
+    book.save(buffer)
+    return normalized_zip(buffer.getvalue())
+
 save("AP invoices.xlsx", ap_invoices())
+save("AP invoices bulk.xlsx", ap_invoices_bulk())
 save(
     "AP policy.txt",
     "Invoices above 1,000.00 USD require an approver. No invoice may exceed 5,000.00 USD.\n".encode("utf-8"),

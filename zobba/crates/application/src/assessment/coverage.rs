@@ -1525,6 +1525,10 @@ where
                     "{} over population {} was not recorded: the platform refused it as proposed.",
                     criterion.id, population.id
                 )),
+                Err(ReadingError::Capacity) => feedback.push(format!(
+                    "{} over population {} was not recorded: it exceeds the platform's bound for one write or the Task's 20000 exceptions. Nothing of it was recorded.",
+                    criterion.id, population.id
+                )),
                 Err(error) => return Err(error),
             }
         }
@@ -1673,6 +1677,10 @@ where
                 }
                 Err(ReadingError::Invalid) => feedback.push(format!(
                     "No summary of population {} was recorded: the platform refused it as proposed.",
+                    population.id
+                )),
+                Err(ReadingError::Capacity) => feedback.push(format!(
+                    "No summary of population {} was recorded: it exceeds the platform's bound for one write.",
                     population.id
                 )),
                 Err(error) => return Err(error),

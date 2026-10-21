@@ -586,6 +586,10 @@ where
                     "No effective summary of population {} was recorded: the platform's recount disagreed (a revision, disposition or exception changed meanwhile). Ask summarise_effective again.",
                     population.id
                 )),
+                Err(ReadingError::Capacity) => feedback.push(format!(
+                    "No effective summary of population {} was recorded: its recount exceeds the platform's bound for one write.",
+                    population.id
+                )),
                 Err(error) => return Err(error),
             }
         }

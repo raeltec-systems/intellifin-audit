@@ -545,6 +545,13 @@ impl ExceptionStore for AssessmentRepository {
         }
         let document = record.document();
         let mut tx = claimed(&self.pool, basis, &format!("assessment:{}", record.id)).await?;
+        // The guard recounts every opportunity and exception of a population
+        // of up to 20,000 members: a bounded longer statement limit; past it
+        // the write is a recorded capacity refusal (24.3b review A).
+        sqlx::query("SET LOCAL statement_timeout = 60000")
+            .execute(&mut *tx)
+            .await
+            .map_err(unavailable)?;
         let select = format!("{EFFECTIVE_SELECT} WHERE id=$1");
         if let Some(row) = sqlx::query(&select)
             .bind(&record.id)

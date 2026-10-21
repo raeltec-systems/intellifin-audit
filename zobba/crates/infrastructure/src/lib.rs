@@ -58,6 +58,11 @@ pub fn database_options(value: &str) -> Result<PgConnectOptions, BootstrapError>
         .options([
             ("statement_timeout", "4000"),
             ("lock_timeout", "4000"),
+            // Forced row-level policies inflate cost estimates past JIT's
+            // thresholds, and compiling then costs seconds per statement
+            // (24.3b review: a 19,000-exception status read took 24 s with
+            // JIT and 0.7 s without). No runtime query benefits from it.
+            ("jit", "off"),
             ("search_path", "pg_catalog,public"),
         ]))
 }

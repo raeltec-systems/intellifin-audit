@@ -306,7 +306,7 @@ CREATE INDEX assessment_effective_summaries_population ON public.assessment_effe
 -- `assessment_evidence(inputs)`).
 CREATE FUNCTION public.assessment_exception_observations(org text, client text, engagement text, task text, ids text[])
 RETURNS TABLE(exception_id text, kind text, id text, at_us bigint, verdict text, execution text, origin text, review text, causes text[], criterion_id text, inputs jsonb)
-LANGUAGE sql STABLE SECURITY INVOKER SET search_path=pg_catalog,public AS $body$
+LANGUAGE sql STABLE SECURITY INVOKER SET search_path=pg_catalog,public SET enable_nestloop=off AS $body$
  WITH x AS MATERIALIZED (SELECT x.id, x.subject, x.criterion_root FROM public.assessment_exceptions x
      WHERE (x.organisation_id,x.client_id,x.engagement_id,x.task_id)=(org,client,engagement,task)
        AND (ids IS NULL OR x.id IN (SELECT pg_catalog.unnest(ids)))),
@@ -401,7 +401,7 @@ $body$;
 --    for anything else (undetermined, failed, not applicable, absent, none).
 CREATE FUNCTION public.assessment_exception_statuses(org text, client text, engagement text, task text, ids text[])
 RETURNS TABLE(id text, subject text, criterion_root text, status text, latest_observed text)
-LANGUAGE sql STABLE SECURITY INVOKER SET search_path=pg_catalog,public AS $body$
+LANGUAGE sql STABLE SECURITY INVOKER SET search_path=pg_catalog,public SET enable_nestloop=off AS $body$
  WITH x AS MATERIALIZED (SELECT x.id, x.subject, x.criterion_root FROM public.assessment_exceptions x
      WHERE (x.organisation_id,x.client_id,x.engagement_id,x.task_id)=(org,client,engagement,task)
        AND (ids IS NULL OR x.id IN (SELECT pg_catalog.unnest(ids)))),
@@ -450,7 +450,7 @@ $body$;
 -- version supersedes.
 CREATE FUNCTION public.assessment_effective_outcomes(org text, client text, engagement text, population text)
 RETURNS TABLE(criterion_id text, member_ordinal integer, subject text, applicability text, execution text, verdict text, reason text, origin text, review text, head_id text, superseded boolean)
-LANGUAGE sql STABLE SECURITY INVOKER SET search_path=pg_catalog,public AS $body$
+LANGUAGE sql STABLE SECURITY INVOKER SET search_path=pg_catalog,public SET enable_nestloop=off AS $body$
  SELECT o.criterion_id, o.member_ordinal, o.subject,
    coalesce(h.applicability,o.applicability),
    coalesce(h.execution,o.execution),
@@ -556,7 +556,7 @@ ALTER TABLE public.assessment_dispositions FORCE ROW LEVEL SECURITY;
 -- the 20,001st is refused whole, so it is never recorded without its
 -- exception.
 CREATE FUNCTION public.exception_record() RETURNS trigger
-LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,public AS $body$
+LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,public SET enable_nestloop=off AS $body$
 DECLARE staged jsonb; added_exceptions bigint;
 BEGIN
  IF TG_TABLE_NAME='assessment_evaluations' THEN
@@ -627,10 +627,17 @@ BEGIN
  INSERT INTO public.assessment_exception_occurrences(organisation_id,client_id,engagement_id,task_id,actor_id,exception_id,source_kind,source_id,population_id,member_ordinal,criterion_id,basis_id,origin,evidence,source_us,seq)
   SELECT s.organisation_id,s.client_id,s.engagement_id,s.task_id,s.actor_id,s.exception_id,
     s.source_kind,s.source_id,s.population_id,s.member_ordinal,s.criterion_id,s.basis_id,s.origin,s.evidence,s.source_us,
-    (greatest(coalesce((SELECT max(y.seq) FROM public.assessment_exception_occurrences y WHERE (y.organisation_id,y.client_id,y.engagement_id,y.exception_id)=(s.organisation_id,s.client_id,s.engagement_id,s.exception_id)),0),
-      coalesce((SELECT max(d.seq) FROM public.assessment_exception_dispositions d WHERE (d.organisation_id,d.client_id,d.engagement_id,d.exception_id)=(s.organisation_id,s.client_id,s.engagement_id,s.exception_id)),0))
-     + row_number() OVER (PARTITION BY s.organisation_id,s.client_id,s.engagement_id,s.exception_id ORDER BY s.source_us, s.source_id COLLATE "C"))::integer
-  FROM s;
+    (coalesce(placed.last,0) + row_number() OVER (PARTITION BY s.organisation_id,s.client_id,s.engagement_id,s.exception_id ORDER BY s.source_us, s.source_id COLLATE "C"))::integer
+  FROM s
+  -- The greatest place each exception already holds, read once per
+  -- statement (set-based, whatever the planner knows of new rows).
+  LEFT JOIN (SELECT q.exception_id, max(q.seq) AS last FROM (
+      SELECT y.exception_id, y.seq FROM public.assessment_exception_occurrences y
+       WHERE (y.organisation_id,y.client_id,y.engagement_id,y.task_id) IN (SELECT DISTINCT t.organisation_id,t.client_id,t.engagement_id,t.task_id FROM jsonb_to_recordset(staged) AS t(organisation_id text, client_id text, engagement_id text, task_id text))
+      UNION ALL
+      SELECT d.exception_id, d.seq FROM public.assessment_exception_dispositions d
+       WHERE (d.organisation_id,d.client_id,d.engagement_id,d.task_id) IN (SELECT DISTINCT t.organisation_id,t.client_id,t.engagement_id,t.task_id FROM jsonb_to_recordset(staged) AS t(organisation_id text, client_id text, engagement_id text, task_id text))) q
+    GROUP BY 1) placed ON placed.exception_id=s.exception_id;
  RETURN NULL;
 END $body$;
 DO $writer$
@@ -649,7 +656,7 @@ END $writer$;
 -- them; a direct insert that differs in any column is refused), and an
 -- occurrence is ordered after every earlier record of its exception.
 CREATE FUNCTION public.exception_batch() RETURNS trigger
-LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,public AS $body$
+LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,public SET enable_nestloop=off AS $body$
 BEGIN
  IF TG_TABLE_NAME='assessment_exceptions' THEN
   IF EXISTS(WITH t AS (SELECT DISTINCT a.organisation_id, a.client_id, a.engagement_id, a.task_id FROM added a),
@@ -661,68 +668,109 @@ BEGIN
        OR k.root IS DISTINCT FROM a.criterion_root) THEN
    RAISE EXCEPTION 'an exception is named by its Task, criterion lineage root and subject' USING ERRCODE='23514';
   END IF;
+  -- A row the trusted writer derived inside its own statement trigger
+  -- (trigger depth above one: only owner-defined triggers nest, and only the
+  -- writer inserts here) was derived from its source by that code; every
+  -- other insert is checked against its source here.
+  IF pg_catalog.pg_trigger_depth() = 1 THEN
   IF EXISTS(WITH t AS (SELECT DISTINCT a.organisation_id, a.client_id, a.engagement_id, a.task_id FROM added a),
     k AS MATERIALIZED (SELECT t.organisation_id, t.client_id, t.engagement_id, t.task_id, c.criterion_id, c.root FROM t
-      CROSS JOIN LATERAL public.assessment_task_criterion_roots(t.organisation_id,t.client_id,t.engagement_id,t.task_id) c)
-   SELECT 1 FROM added a WHERE NOT (
-       (a.first_source_kind='evaluation' AND EXISTS(SELECT 1 FROM public.assessment_evaluations e WHERE (e.organisation_id,e.client_id,e.engagement_id,e.id)=(a.organisation_id,a.client_id,a.engagement_id,a.first_source_id)
-          AND e.task_id=a.task_id AND e.subject=a.subject AND e.verdict='not_met' AND EXISTS(SELECT 1 FROM k WHERE (k.organisation_id,k.client_id,k.engagement_id,k.task_id,k.criterion_id,k.root)=(a.organisation_id,a.client_id,a.engagement_id,a.task_id,e.criterion_id,a.criterion_root))))
-    OR (a.first_source_kind='revision' AND EXISTS(SELECT 1 FROM public.assessment_evaluation_revisions r WHERE (r.organisation_id,r.client_id,r.engagement_id,r.id)=(a.organisation_id,a.client_id,a.engagement_id,a.first_source_id)
-          AND r.task_id=a.task_id AND r.subject=a.subject AND r.verdict='not_met' AND EXISTS(SELECT 1 FROM k WHERE (k.organisation_id,k.client_id,k.engagement_id,k.task_id,k.criterion_id,k.root)=(a.organisation_id,a.client_id,a.engagement_id,a.task_id,r.criterion_id,a.criterion_root))))
-    OR (a.first_source_kind='opportunity' AND EXISTS(SELECT 1 FROM public.assessment_opportunities o WHERE (o.organisation_id,o.client_id,o.engagement_id)=(a.organisation_id,a.client_id,a.engagement_id)
-          AND o.population_id||'#'||o.criterion_id||'#'||o.member_ordinal=a.first_source_id AND o.evaluation_id IS NULL
-          AND o.task_id=a.task_id AND o.subject=a.subject AND o.verdict='not_met' AND EXISTS(SELECT 1 FROM k WHERE (k.organisation_id,k.client_id,k.engagement_id,k.task_id,k.criterion_id,k.root)=(a.organisation_id,a.client_id,a.engagement_id,a.task_id,o.criterion_id,a.criterion_root))))
-    OR (a.first_source_kind='disposition' AND EXISTS(SELECT 1 FROM public.assessment_dispositions d JOIN public.assessment_evaluations c ON (c.organisation_id,c.client_id,c.engagement_id,c.id)=(d.organisation_id,d.client_id,d.engagement_id,d.chain_id)
-          WHERE (d.organisation_id,d.client_id,d.engagement_id,d.id)=(a.organisation_id,a.client_id,a.engagement_id,a.first_source_id)
-          AND d.task_id=a.task_id AND c.subject=a.subject AND d.kind='replaced' AND d.verdict='not_met' AND EXISTS(SELECT 1 FROM k WHERE (k.organisation_id,k.client_id,k.engagement_id,k.task_id,k.criterion_id,k.root)=(a.organisation_id,a.client_id,a.engagement_id,a.task_id,c.criterion_id,a.criterion_root)))))) THEN
+      CROSS JOIN LATERAL public.assessment_task_criterion_roots(t.organisation_id,t.client_id,t.engagement_id,t.task_id) c),
+    -- Each new exception's first source, found set-based (one join per
+    -- source kind, never a lookup per row).
+    src AS (
+     SELECT a.id, e.task_id, e.subject, e.criterion_id FROM added a JOIN public.assessment_evaluations e
+       ON (e.organisation_id,e.client_id,e.engagement_id,e.id)=(a.organisation_id,a.client_id,a.engagement_id,a.first_source_id)
+      WHERE a.first_source_kind='evaluation' AND e.verdict='not_met'
+     UNION ALL
+     SELECT a.id, r.task_id, r.subject, r.criterion_id FROM added a JOIN public.assessment_evaluation_revisions r
+       ON (r.organisation_id,r.client_id,r.engagement_id,r.id)=(a.organisation_id,a.client_id,a.engagement_id,a.first_source_id)
+      WHERE a.first_source_kind='revision' AND r.verdict='not_met'
+     UNION ALL
+     SELECT a.id, o.task_id, o.subject, o.criterion_id FROM added a JOIN public.assessment_opportunities o
+       -- Joined by its key (the source ID is population#criterion#member).
+       ON (o.organisation_id,o.client_id,o.engagement_id,o.population_id,o.criterion_id,o.member_ordinal::text)
+         =(a.organisation_id,a.client_id,a.engagement_id,pg_catalog.split_part(a.first_source_id,'#',1),pg_catalog.split_part(a.first_source_id,'#',2),pg_catalog.split_part(a.first_source_id,'#',3))
+       AND o.population_id||'#'||o.criterion_id||'#'||o.member_ordinal=a.first_source_id
+      WHERE a.first_source_kind='opportunity' AND o.verdict='not_met' AND o.evaluation_id IS NULL
+     UNION ALL
+     SELECT a.id, d.task_id, c.subject, c.criterion_id FROM added a JOIN public.assessment_dispositions d
+       ON (d.organisation_id,d.client_id,d.engagement_id,d.id)=(a.organisation_id,a.client_id,a.engagement_id,a.first_source_id)
+      JOIN public.assessment_evaluations c ON (c.organisation_id,c.client_id,c.engagement_id,c.id)=(d.organisation_id,d.client_id,d.engagement_id,d.chain_id)
+      WHERE a.first_source_kind='disposition' AND d.kind='replaced' AND d.verdict='not_met')
+   SELECT 1 FROM added a
+     LEFT JOIN src ON src.id=a.id AND src.task_id=a.task_id AND src.subject=a.subject
+     LEFT JOIN k ON (k.organisation_id,k.client_id,k.engagement_id,k.task_id,k.criterion_id,k.root)=(a.organisation_id,a.client_id,a.engagement_id,a.task_id,src.criterion_id,a.criterion_root)
+     WHERE k.root IS NULL) THEN
    RAISE EXCEPTION 'an exception begins with a not_met result of its lineage and subject' USING ERRCODE='23514';
+  END IF;
   END IF;
  ELSE
   -- Every occurrence writer holds its Task's exception lock (shared with
   -- the disposition guard), so the order check below reads settled places.
   PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('exceptions:'||t.organisation_id||'/'||t.client_id||'/'||t.engagement_id||'/'||t.task_id, 2403))
    FROM (SELECT DISTINCT a.organisation_id, a.client_id, a.engagement_id, a.task_id FROM added a ORDER BY 1,2,3,4) t;
-  -- The expected occurrence of each new row, derived from its source.
+  -- (As above: the trusted writer's own rows were derived by it.)
+  IF pg_catalog.pg_trigger_depth() = 1 THEN
+  -- The expected occurrence of each new row, derived from its source
+  -- (set-based: one join per source kind, never a lookup per row).
   IF EXISTS(WITH t AS (SELECT DISTINCT a.organisation_id, a.client_id, a.engagement_id, a.task_id FROM added a),
     k AS MATERIALIZED (SELECT t.organisation_id, t.client_id, t.engagement_id, t.task_id, c.criterion_id, c.root FROM t
-      CROSS JOIN LATERAL public.assessment_task_criterion_roots(t.organisation_id,t.client_id,t.engagement_id,t.task_id) c)
+      CROSS JOIN LATERAL public.assessment_task_criterion_roots(t.organisation_id,t.client_id,t.engagement_id,t.task_id) c),
+    s AS (
+     SELECT a.exception_id AS e_id, a.source_kind AS e_kind, a.source_id AS e_source,
+       e.task_id, e.actor_id, e.subject, NULL::text AS population_id, NULL::integer AS member_ordinal, e.criterion_id, e.basis_id, e.origin,
+       public.assessment_evidence(e.document->'inputs') AS evidence, e.created_us AS source_us
+     FROM added a JOIN public.assessment_evaluations e ON (e.organisation_id,e.client_id,e.engagement_id,e.id)=(a.organisation_id,a.client_id,a.engagement_id,a.source_id)
+     WHERE a.source_kind='evaluation' AND e.verdict='not_met'
+     UNION ALL
+     SELECT a.exception_id, a.source_kind, a.source_id, r.task_id, r.actor_id, r.subject, NULL, NULL, r.criterion_id, r.basis_id, r.origin, public.assessment_evidence(r.document->'inputs'), r.created_us
+     FROM added a JOIN public.assessment_evaluation_revisions r ON (r.organisation_id,r.client_id,r.engagement_id,r.id)=(a.organisation_id,a.client_id,a.engagement_id,a.source_id)
+     WHERE a.source_kind='revision' AND r.verdict='not_met'
+     UNION ALL
+     SELECT a.exception_id, a.source_kind, a.source_id, o.task_id, o.actor_id, o.subject, o.population_id, o.member_ordinal, o.criterion_id, p.basis_id, o.origin, public.assessment_evidence(o.inputs), o.created_us
+     FROM added a JOIN public.assessment_opportunities o ON (o.organisation_id,o.client_id,o.engagement_id,o.population_id,o.criterion_id,o.member_ordinal)=(a.organisation_id,a.client_id,a.engagement_id,a.population_id,a.criterion_id,a.member_ordinal)
+     JOIN public.assessment_populations p ON (p.organisation_id,p.client_id,p.engagement_id,p.id)=(o.organisation_id,o.client_id,o.engagement_id,o.population_id)
+     WHERE a.source_kind='opportunity' AND o.population_id||'#'||o.criterion_id||'#'||o.member_ordinal=a.source_id AND o.verdict='not_met' AND o.evaluation_id IS NULL
+     UNION ALL
+     SELECT a.exception_id, a.source_kind, a.source_id, d.task_id, d.actor_id, c.subject, NULL, NULL, h.criterion_id, h.basis_id, 'human', public.assessment_evidence(h.document->'inputs'), d.created_us
+     FROM added a JOIN public.assessment_dispositions d ON (d.organisation_id,d.client_id,d.engagement_id,d.id)=(a.organisation_id,a.client_id,a.engagement_id,a.source_id)
+     JOIN public.assessment_evaluations c ON (c.organisation_id,c.client_id,c.engagement_id,c.id)=(d.organisation_id,d.client_id,d.engagement_id,d.chain_id)
+     JOIN (SELECT e.organisation_id, e.client_id, e.engagement_id, e.id, e.criterion_id, e.basis_id, e.document FROM public.assessment_evaluations e
+       UNION ALL SELECT v.organisation_id, v.client_id, v.engagement_id, v.id, v.criterion_id, v.basis_id, v.document FROM public.assessment_evaluation_revisions v) h
+       ON (h.organisation_id,h.client_id,h.engagement_id,h.id)=(d.organisation_id,d.client_id,d.engagement_id,d.revision_id)
+     WHERE a.source_kind='disposition' AND d.kind='replaced' AND d.verdict='not_met')
    SELECT 1 FROM added a
-     LEFT JOIN public.assessment_exceptions x ON (x.organisation_id,x.client_id,x.engagement_id,x.id)=(a.organisation_id,a.client_id,a.engagement_id,a.exception_id)
-     LEFT JOIN LATERAL (
-       SELECT e.task_id, e.actor_id, e.subject, NULL::text AS population_id, NULL::integer AS member_ordinal, e.criterion_id, e.basis_id, e.origin,
-         public.assessment_evidence(e.document->'inputs') AS evidence, e.created_us AS source_us
-       FROM public.assessment_evaluations e WHERE a.source_kind='evaluation' AND (e.organisation_id,e.client_id,e.engagement_id,e.id)=(a.organisation_id,a.client_id,a.engagement_id,a.source_id) AND e.verdict='not_met'
-       UNION ALL
-       SELECT r.task_id, r.actor_id, r.subject, NULL, NULL, r.criterion_id, r.basis_id, r.origin, public.assessment_evidence(r.document->'inputs'), r.created_us
-       FROM public.assessment_evaluation_revisions r WHERE a.source_kind='revision' AND (r.organisation_id,r.client_id,r.engagement_id,r.id)=(a.organisation_id,a.client_id,a.engagement_id,a.source_id) AND r.verdict='not_met'
-       UNION ALL
-       SELECT o.task_id, o.actor_id, o.subject, o.population_id, o.member_ordinal, o.criterion_id, p.basis_id, o.origin, public.assessment_evidence(o.inputs), o.created_us
-       FROM public.assessment_opportunities o JOIN public.assessment_populations p ON (p.organisation_id,p.client_id,p.engagement_id,p.id)=(o.organisation_id,o.client_id,o.engagement_id,o.population_id)
-       WHERE a.source_kind='opportunity' AND (o.organisation_id,o.client_id,o.engagement_id,o.population_id,o.criterion_id,o.member_ordinal)=(a.organisation_id,a.client_id,a.engagement_id,a.population_id,a.criterion_id,a.member_ordinal)
-         AND o.population_id||'#'||o.criterion_id||'#'||o.member_ordinal=a.source_id AND o.verdict='not_met' AND o.evaluation_id IS NULL
-       UNION ALL
-       SELECT d.task_id, d.actor_id, c.subject, NULL, NULL, h.criterion_id, h.basis_id, 'human', public.assessment_evidence(h.document->'inputs'), d.created_us
-       FROM public.assessment_dispositions d
-       JOIN public.assessment_evaluations c ON (c.organisation_id,c.client_id,c.engagement_id,c.id)=(d.organisation_id,d.client_id,d.engagement_id,d.chain_id)
-       JOIN LATERAL (SELECT e.criterion_id, e.basis_id, e.document FROM public.assessment_evaluations e WHERE (e.organisation_id,e.client_id,e.engagement_id,e.id)=(d.organisation_id,d.client_id,d.engagement_id,d.revision_id)
-         UNION ALL SELECT v.criterion_id, v.basis_id, v.document FROM public.assessment_evaluation_revisions v WHERE (v.organisation_id,v.client_id,v.engagement_id,v.id)=(d.organisation_id,d.client_id,d.engagement_id,d.revision_id)) h ON true
-       WHERE a.source_kind='disposition' AND (d.organisation_id,d.client_id,d.engagement_id,d.id)=(a.organisation_id,a.client_id,a.engagement_id,a.source_id) AND d.kind='replaced' AND d.verdict='not_met'
-     ) s ON true
+     LEFT JOIN s ON (s.e_id,s.e_kind,s.e_source)=(a.exception_id,a.source_kind,a.source_id)
      LEFT JOIN k ON (k.organisation_id,k.client_id,k.engagement_id,k.task_id,k.criterion_id)=(a.organisation_id,a.client_id,a.engagement_id,a.task_id,s.criterion_id)
+     -- Its own exception of this Task, lineage root and subject.
+     LEFT JOIN public.assessment_exceptions x ON (x.organisation_id,x.client_id,x.engagement_id,x.id)=(a.organisation_id,a.client_id,a.engagement_id,a.exception_id)
+       AND x.task_id=a.task_id AND x.subject=s.subject AND x.criterion_root=k.root
      WHERE s.task_id IS NULL OR x.id IS NULL
-       OR (a.task_id,a.actor_id) IS DISTINCT FROM (s.task_id,s.actor_id) OR x.task_id IS DISTINCT FROM a.task_id
-       OR x.subject IS DISTINCT FROM s.subject
-       OR x.criterion_root IS DISTINCT FROM k.root
+       OR (a.task_id,a.actor_id) IS DISTINCT FROM (s.task_id,s.actor_id)
        OR (a.population_id,a.member_ordinal,a.criterion_id,a.basis_id,a.origin,a.source_us) IS DISTINCT FROM (s.population_id,s.member_ordinal,s.criterion_id,s.basis_id,s.origin,s.source_us)
        OR a.evidence IS DISTINCT FROM s.evidence) THEN
    RAISE EXCEPTION 'an occurrence is exactly the not_met result it names, in its exception' USING ERRCODE='23514';
   END IF;
+  END IF;
   -- Ordered after every earlier record of its exception: no disposition
   -- and no other occurrence holds a later or equal place.
-  IF EXISTS(SELECT 1 FROM added a WHERE
-       EXISTS(SELECT 1 FROM public.assessment_exception_dispositions d WHERE (d.organisation_id,d.client_id,d.engagement_id,d.exception_id)=(a.organisation_id,a.client_id,a.engagement_id,a.exception_id) AND d.seq >= a.seq)
-    OR EXISTS(SELECT 1 FROM public.assessment_exception_occurrences y WHERE (y.organisation_id,y.client_id,y.engagement_id,y.exception_id)=(a.organisation_id,a.client_id,a.engagement_id,a.exception_id) AND y.seq >= a.seq
-         AND NOT EXISTS(SELECT 1 FROM added b WHERE (b.organisation_id,b.client_id,b.engagement_id,b.exception_id,b.source_kind,b.source_id)=(y.organisation_id,y.client_id,y.engagement_id,y.exception_id,y.source_kind,y.source_id)))) THEN
+  -- Set-based: per exception, the statement's first place against the
+  -- greatest place already stored (its own new rows excluded by a hashed
+  -- key set, never by a scan of the statement's rows per stored row).
+  IF EXISTS(WITH mine AS MATERIALIZED (SELECT a.organisation_id, a.client_id, a.engagement_id, a.exception_id, min(a.seq) AS first FROM added a GROUP BY 1,2,3,4),
+      keys AS MATERIALIZED (SELECT a.exception_id||'|'||a.source_kind||'|'||a.source_id AS key FROM added a),
+      stored AS (SELECT y.exception_id, max(y.seq) AS last FROM public.assessment_exception_occurrences y
+        WHERE (y.organisation_id,y.client_id,y.engagement_id) IN (SELECT DISTINCT m.organisation_id,m.client_id,m.engagement_id FROM mine m)
+          AND y.exception_id IN (SELECT m.exception_id FROM mine m)
+          AND (y.exception_id||'|'||y.source_kind||'|'||y.source_id) NOT IN (SELECT k.key FROM keys k)
+        GROUP BY 1
+        UNION ALL
+        SELECT d.exception_id, max(d.seq) FROM public.assessment_exception_dispositions d
+        WHERE (d.organisation_id,d.client_id,d.engagement_id) IN (SELECT DISTINCT m.organisation_id,m.client_id,m.engagement_id FROM mine m)
+          AND d.exception_id IN (SELECT m.exception_id FROM mine m)
+        GROUP BY 1)
+     SELECT 1 FROM mine m JOIN stored s ON s.exception_id=m.exception_id WHERE s.last >= m.first) THEN
    RAISE EXCEPTION 'an occurrence is ordered after every earlier record of its exception' USING ERRCODE='23514';
   END IF;
  END IF;
@@ -792,7 +840,7 @@ CREATE TRIGGER exception_guard BEFORE INSERT ON public.assessment_exception_disp
 -- (read once) and `assessment_exception_statuses` (the exceptions of its own
 -- subjects under its basis's criterion lineages).
 CREATE FUNCTION public.effective_guard() RETURNS trigger
-LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,public AS $body$
+LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,public SET enable_nestloop=off AS $body$
 DECLARE population public.assessment_populations%ROWTYPE; recount record; counted record;
  inner_summary jsonb := NEW.document->'effective'->'summary'; outer_summary jsonb := NEW.document->'effective';
  entry jsonb; extra jsonb; criterion_entry record; expected text; effective_expected text; unresolved integer; subjects integer; criteria integer;
@@ -1069,6 +1117,13 @@ BEGIN
   EXECUTE format('REVOKE ALL ON public.%I FROM PUBLIC',relation);
  END LOOP;
 END $immutable$;
+-- Statement-level guards read every new row against whole sets. A
+-- transition table and freshly written rows carry no statistics, and plans
+-- cached by a session outlive them, so a guard planned with nested loops
+-- re-reads whole sets per new row (measured at 5,000 opportunities: 24 s with
+-- nested loops, 1 s without). These guards plan hash joins only. The
+-- published 24.2 batch guard (unchanged code) takes the same setting.
+ALTER FUNCTION public.coverage_batch() SET enable_nestloop=off;
 REVOKE ALL ON FUNCTION public.exception_record(),public.exception_batch(),public.exception_guard(),public.effective_guard(),public.exception_immutable(),public.exception_retained(),public.population_succession() FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.assessment_criterion_root(text,text,text,text),public.assessment_task_criterion_roots(text,text,text,text),public.assessment_task_population_roots(text,text,text,text),
  public.assessment_exception_key(text,text,text,text,text,text),public.assessment_evidence(jsonb),public.assessment_exception_observations(text,text,text,text,text[]),
