@@ -7,7 +7,9 @@ quality against cost. This reopens Anthropic qualification. Keys stay in the env
 must still be set before the first paid call. First check on 2026-10-21: the OpenAI key
 answers 401 `invalid_api_key`, and the Anthropic key is not scoped to a workspace, so the
 API asks for an `anthropic-workspace-id` header that Zobba does not send. A model listing
-call costs nothing; use it to check a key before any paid run.
+call costs nothing; use it to check a key before any paid run. Owner set the total cap
+to USD 100 for the whole comparison (each run also has its own cap) and chose a new
+workspace-scoped Anthropic key over a Zobba code change.
 
 ## 2026-10-14 — Story 22.6 method and skill use during investigation
 
