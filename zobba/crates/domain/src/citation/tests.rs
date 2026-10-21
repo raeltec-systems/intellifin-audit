@@ -554,6 +554,12 @@ fn assessment_fields_are_optional_bounded_and_counted_when_invalid() {
         assert!(earlier.summarise_effective.is_empty());
         assert!(!CitedAnswer::assessment_schema().accepts(&JsonValue::Object(map.clone())));
         map.insert("summarise_effective".into(), JsonValue::Array(vec![]));
+        // A stored 24.3b answer (no 24.4 field) still decodes, unchanged,
+        // but the assessment schema now asks for draft_work_product too.
+        let earlier = CitedAnswer::from_json(&JsonValue::Object(map.clone())).unwrap();
+        assert!(earlier.draft_work_product.is_empty());
+        assert!(!CitedAnswer::assessment_schema().accepts(&JsonValue::Object(map.clone())));
+        map.insert("draft_work_product".into(), JsonValue::Array(vec![]));
         map.insert(
             "evaluate".into(),
             JsonValue::Array(vec![s("crit-1"), s("crit-1"), s("not an id")]),

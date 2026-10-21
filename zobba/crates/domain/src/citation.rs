@@ -376,6 +376,10 @@ pub struct CitedAnswer {
     /// Story 24.3b: effective summaries trusted code computes over the
     /// current revisions and dispositions.
     pub summarise_effective: Vec<SummaryRequest>,
+    /// Story 24.4: at most one work-product draft per answer: the agent's
+    /// own document, whose every claim trusted code checks against its
+    /// records before a version is recorded (all or nothing).
+    pub draft_work_product: Vec<crate::work_product::Draft>,
     /// Story 22.6: investigation requests and notes that were individually
     /// invalid, repeated or over their bound and so were left out on decode.
     /// The rest of the answer stands; trusted code reports the count.
@@ -508,6 +512,7 @@ impl CitedAnswer {
                 .iter()
                 .all(crate::revision::CarryFacts::is_valid)
             && self.summarise_effective.len() <= crate::exception::MAX_SUMMARISE_EFFECTIVE
+            && self.draft_work_product.len() <= crate::work_product::MAX_DRAFTS
     }
     /// Whether the answer proposes criteria, a basis, facts, evaluations or
     /// judgments (Story 24.1), or a population, a sample, population
@@ -525,6 +530,7 @@ impl CitedAnswer {
             || !self.summarise.is_empty()
             || !self.carry_facts.is_empty()
             || !self.summarise_effective.is_empty()
+            || !self.draft_work_product.is_empty()
     }
     /// Whether the answer asks for more native reading or its own analysis
     /// program before it is complete (Story 22.5).
@@ -658,6 +664,7 @@ impl CitedAnswer {
             fields.extend(coverage::answer_fields());
             fields.extend(crate::revision::answer_fields());
             fields.extend(crate::exception::answer_fields());
+            fields.extend(crate::work_product::answer_fields());
         }
         object(fields)
     }
@@ -928,6 +935,13 @@ impl CitedAnswer {
             crate::exception::decode_summarise_effective,
             &mut discarded,
         )?;
+        let draft_work_product = entries(
+            object,
+            "draft_work_product",
+            crate::work_product::MAX_DRAFTS,
+            crate::work_product::decode_draft,
+            &mut discarded,
+        )?;
         let answer = Self {
             segments,
             limitations,
@@ -948,6 +962,7 @@ impl CitedAnswer {
             summarise,
             carry_facts,
             summarise_effective,
+            draft_work_product,
             discarded,
         };
         answer.is_valid().then_some(answer)
