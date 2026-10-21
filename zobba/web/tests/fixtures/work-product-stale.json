@@ -1,0 +1,441 @@
+{
+  "author_kind": "agent",
+  "author_label": "Zobba (agent)",
+  "digest": "0000000000000000000000000000000000000000000000000000000000000001",
+  "figure_rule": "statement_figures_v1",
+  "id": "wpv-0000000000000000000000000000000000000002",
+  "kind": "working_paper",
+  "limitations": [
+    "Summary summary-0000000000000000000000000000000000000003: conclusion exceptions found inconclusive; unresolved 20.",
+    "An exception not observed in the latest revision stays open; this is not evidence of remediation.",
+    "Section Conclusion is required by the template and is not completed in this version.",
+    "Claim [1] needs refresh: a newer summary of the same population supersedes the one it cites.",
+    "Claim [2] needs refresh: the evaluation it cites was revised.",
+    "Claim [3] needs refresh: a person's disposition changed the evaluation's effective outcome.",
+    "Claim [5] needs refresh: a newer summary of the same population supersedes the one it cites."
+  ],
+  "missing_required": [
+    "conclusion"
+  ],
+  "newer_version_id": "wpv-0000000000000000000000000000000000000004",
+  "predecessor_id": null,
+  "product": {
+    "author_kind": "agent",
+    "claims": "24",
+    "id": "wp-0000000000000000000000000000000000000005",
+    "kind": "working_paper",
+    "missing_required": [
+      "conclusion"
+    ],
+    "neutral": false,
+    "recorded_us": "1760000000000000",
+    "refresh": "2",
+    "review_state": "Draft",
+    "task_id": "0000000000000000000000000000000000000000000000000000000000000006",
+    "template": "AP working paper FY2026",
+    "template_id": "ap-wp",
+    "template_version": "1",
+    "title": "AP approvals working paper",
+    "version": "5",
+    "version_id": "wpv-0000000000000000000000000000000000000004"
+  },
+  "recorded_us": "1760000000000000",
+  "refresh": "4",
+  "review_state": "Draft",
+  "sections": [
+    {
+      "blocks": [
+        {
+          "author_id": "0000000000000000000000000000000000000000000000000000000000000007",
+          "author_kind": "agent",
+          "author_label": "Zobba (agent)",
+          "authored_in_version": "wpv-0000000000000000000000000000000000000002",
+          "claim": null,
+          "id": "blk-0000000000000000000000000000000000000008",
+          "kind": "heading",
+          "label": null,
+          "label_words": null,
+          "lines": [],
+          "record_id": null,
+          "section_id": "objective",
+          "text": "Approval testing"
+        },
+        {
+          "author_id": "0000000000000000000000000000000000000000000000000000000000000007",
+          "author_kind": "agent",
+          "author_label": "Zobba (agent)",
+          "authored_in_version": "wpv-0000000000000000000000000000000000000002",
+          "claim": null,
+          "id": "blk-0000000000000000000000000000000000000009",
+          "kind": "narrative",
+          "label": "narrative",
+          "label_words": null,
+          "lines": [],
+          "record_id": null,
+          "section_id": "objective",
+          "text": "Test whether every invoice above the threshold was approved."
+        }
+      ],
+      "id": "objective",
+      "not_completed": null,
+      "required": true,
+      "title": "Objective"
+    },
+    {
+      "blocks": [
+        {
+          "author_id": "0000000000000000000000000000000000000000000000000000000000000007",
+          "author_kind": "agent",
+          "author_label": "Zobba (agent)",
+          "authored_in_version": "wpv-0000000000000000000000000000000000000002",
+          "claim": null,
+          "id": "blk-000000000000000000000000000000000000000a",
+          "kind": "narrative",
+          "label": "judgment",
+          "label_words": "Zobba's judgment — not checked against records",
+          "lines": [],
+          "record_id": null,
+          "section_id": "results",
+          "text": "Approvals appear weak across the population; segregation needs a closer look."
+        },
+        {
+          "author_id": "0000000000000000000000000000000000000000000000000000000000000007",
+          "author_kind": "agent",
+          "author_label": "Zobba (agent)",
+          "authored_in_version": "wpv-0000000000000000000000000000000000000002",
+          "claim": {
+            "assertions": [
+              {
+                "criterion_id": "crit-000000000000000000000000000000000000000b",
+                "kind": "count",
+                "locator": null,
+                "measure": "not_met",
+                "origin": null,
+                "record_digest": "000000000000000000000000000000000000000000000000000000000000000c",
+                "record_id": "summary-0000000000000000000000000000000000000003",
+                "record_kind": "summary",
+                "review": null,
+                "source": null,
+                "subject": null,
+                "unit": null,
+                "value": "15",
+                "withheld": false
+              },
+              {
+                "criterion_id": "crit-000000000000000000000000000000000000000b",
+                "kind": "count",
+                "locator": null,
+                "measure": "applicable",
+                "origin": null,
+                "record_digest": "000000000000000000000000000000000000000000000000000000000000000c",
+                "record_id": "summary-0000000000000000000000000000000000000003",
+                "record_kind": "summary",
+                "review": null,
+                "source": null,
+                "subject": null,
+                "unit": null,
+                "value": "1000",
+                "withheld": false
+              }
+            ],
+            "coverage": "Population complete · 1,200 in scope · unresolved 20 (see Limitations)",
+            "current": false,
+            "number": "1",
+            "refresh": [
+              "summary_superseded"
+            ],
+            "refresh_words": [
+              "a newer summary of the same population supersedes the one it cites"
+            ],
+            "support": [
+              "Summary summary-0000000000000000000000000000000000000003: 15 not met (criterion crit-000000000000000000000000000000000000000b)",
+              "Summary summary-0000000000000000000000000000000000000003: 1,000 applicable (criterion crit-000000000000000000000000000000000000000b)"
+            ],
+            "withheld": false
+          },
+          "id": "blk-000000000000000000000000000000000000000d",
+          "kind": "claim",
+          "label": null,
+          "label_words": null,
+          "lines": [],
+          "record_id": null,
+          "section_id": "results",
+          "text": "15 of 1,000 applicable invoices had no recorded approver."
+        },
+        {
+          "author_id": "0000000000000000000000000000000000000000000000000000000000000007",
+          "author_kind": "agent",
+          "author_label": "Zobba (agent)",
+          "authored_in_version": "wpv-0000000000000000000000000000000000000002",
+          "claim": null,
+          "id": "blk-000000000000000000000000000000000000000e",
+          "kind": "coverage",
+          "label": null,
+          "label_words": null,
+          "lines": [
+            "Population complete · 1,200 in scope · unresolved 20 (see Limitations)",
+            "Subjects: 20 failing · 960 meeting every applicable criterion · 20 unresolved · 200 not applicable to any",
+            "Conclusion: exceptions found inconclusive"
+          ],
+          "record_id": "summary-0000000000000000000000000000000000000003",
+          "section_id": "results",
+          "text": null
+        },
+        {
+          "author_id": "0000000000000000000000000000000000000000000000000000000000000007",
+          "author_kind": "agent",
+          "author_label": "Zobba (agent)",
+          "authored_in_version": "wpv-0000000000000000000000000000000000000002",
+          "claim": {
+            "assertions": [
+              {
+                "criterion_id": null,
+                "kind": "outcome",
+                "locator": null,
+                "measure": null,
+                "origin": "model_proposal",
+                "record_digest": "000000000000000000000000000000000000000000000000000000000000000f",
+                "record_id": "eval-0000000000000000000000000000000000000010",
+                "record_kind": "evaluation",
+                "review": "unreviewed",
+                "source": null,
+                "subject": "INV-0042",
+                "unit": null,
+                "value": "not_met",
+                "withheld": false
+              }
+            ],
+            "coverage": "One evaluation of one subject under basis basis-0000000000000000000000000000000000000011; it says nothing about other subjects",
+            "current": false,
+            "number": "2",
+            "refresh": [
+              "evaluation_revised"
+            ],
+            "refresh_words": [
+              "the evaluation it cites was revised"
+            ],
+            "support": [
+              "Evaluation eval-0000000000000000000000000000000000000010 of INV-0042: not met (model proposal, unreviewed)"
+            ],
+            "withheld": false
+          },
+          "id": "blk-0000000000000000000000000000000000000012",
+          "kind": "claim",
+          "label": null,
+          "label_words": null,
+          "lines": [],
+          "record_id": null,
+          "section_id": "results",
+          "text": "Segregation of duties was not met for INV-0042."
+        },
+        {
+          "author_id": "0000000000000000000000000000000000000000000000000000000000000007",
+          "author_kind": "agent",
+          "author_label": "Zobba (agent)",
+          "authored_in_version": "wpv-0000000000000000000000000000000000000002",
+          "claim": {
+            "assertions": [
+              {
+                "criterion_id": null,
+                "kind": "outcome",
+                "locator": null,
+                "measure": null,
+                "origin": "model_proposal",
+                "record_digest": "0000000000000000000000000000000000000000000000000000000000000013",
+                "record_id": "eval-0000000000000000000000000000000000000014",
+                "record_kind": "evaluation",
+                "review": "unreviewed",
+                "source": null,
+                "subject": "INV-0055",
+                "unit": null,
+                "value": "not_met",
+                "withheld": false
+              }
+            ],
+            "coverage": "One evaluation of one subject under basis basis-0000000000000000000000000000000000000011; it says nothing about other subjects",
+            "current": false,
+            "number": "3",
+            "refresh": [
+              "disposition_changed"
+            ],
+            "refresh_words": [
+              "a person's disposition changed the evaluation's effective outcome"
+            ],
+            "support": [
+              "Evaluation eval-0000000000000000000000000000000000000014 of INV-0055: not met (model proposal, unreviewed)"
+            ],
+            "withheld": false
+          },
+          "id": "blk-0000000000000000000000000000000000000015",
+          "kind": "claim",
+          "label": null,
+          "label_words": null,
+          "lines": [],
+          "record_id": null,
+          "section_id": "results",
+          "text": "INV-0055 did not meet the segregation criterion."
+        },
+        {
+          "author_id": "0000000000000000000000000000000000000000000000000000000000000007",
+          "author_kind": "agent",
+          "author_label": "Zobba (agent)",
+          "authored_in_version": "wpv-0000000000000000000000000000000000000002",
+          "claim": {
+            "assertions": [
+              {
+                "criterion_id": null,
+                "kind": "quote",
+                "locator": "bytes:0-48",
+                "measure": null,
+                "origin": null,
+                "record_digest": "0000000000000000000000000000000000000000000000000000000000000016",
+                "record_id": "ap-policy",
+                "record_kind": "original",
+                "review": null,
+                "source": {
+                  "byte_end": 48,
+                  "byte_start": 0,
+                  "filename": "AP policy.txt",
+                  "location": "bytes 0–48",
+                  "locator": "bytes:0-48",
+                  "original_id": "ap-policy",
+                  "quote": "Invoices above 1,000.00 USD require an approver.",
+                  "readable": true,
+                  "reason": null,
+                  "sha256": "0000000000000000000000000000000000000000000000000000000000000016",
+                  "verification": "verified",
+                  "version": "v3"
+                },
+                "subject": null,
+                "unit": null,
+                "value": "Invoices above 1,000.00 USD require an approver.",
+                "withheld": false
+              }
+            ],
+            "coverage": null,
+            "current": true,
+            "number": "4",
+            "refresh": [],
+            "refresh_words": [],
+            "support": [
+              "Quote from original ap-policy at bytes:0-48: \"Invoices above 1,000.00 USD require an approver.\""
+            ],
+            "withheld": false
+          },
+          "id": "blk-0000000000000000000000000000000000000017",
+          "kind": "claim",
+          "label": null,
+          "label_words": null,
+          "lines": [],
+          "record_id": null,
+          "section_id": "results",
+          "text": "The policy requires an approver above 1,000.00 USD."
+        },
+        {
+          "author_id": "0000000000000000000000000000000000000000000000000000000000000007",
+          "author_kind": "agent",
+          "author_label": "Zobba (agent)",
+          "authored_in_version": "wpv-0000000000000000000000000000000000000002",
+          "claim": {
+            "assertions": [
+              {
+                "criterion_id": null,
+                "kind": "conclusion",
+                "locator": null,
+                "measure": null,
+                "origin": null,
+                "record_digest": "000000000000000000000000000000000000000000000000000000000000000c",
+                "record_id": "summary-0000000000000000000000000000000000000003",
+                "record_kind": "summary",
+                "review": null,
+                "source": null,
+                "subject": null,
+                "unit": null,
+                "value": "exceptions_found_inconclusive",
+                "withheld": false
+              }
+            ],
+            "coverage": "Population complete · 1,200 in scope · unresolved 20 (see Limitations)",
+            "current": false,
+            "number": "5",
+            "refresh": [
+              "summary_superseded"
+            ],
+            "refresh_words": [
+              "a newer summary of the same population supersedes the one it cites"
+            ],
+            "support": [
+              "Summary summary-0000000000000000000000000000000000000003 concludes exceptions found inconclusive"
+            ],
+            "withheld": false
+          },
+          "id": "blk-0000000000000000000000000000000000000018",
+          "kind": "claim",
+          "label": null,
+          "label_words": null,
+          "lines": [],
+          "record_id": null,
+          "section_id": "results",
+          "text": "The coverage summary concludes that exceptions were found and the result is inconclusive."
+        },
+        {
+          "author_id": "0000000000000000000000000000000000000000000000000000000000000007",
+          "author_kind": "agent",
+          "author_label": "Zobba (agent)",
+          "authored_in_version": "wpv-0000000000000000000000000000000000000002",
+          "claim": null,
+          "id": "blk-0000000000000000000000000000000000000019",
+          "kind": "exceptions",
+          "label": null,
+          "label_words": null,
+          "lines": [
+            "Exceptions under basis basis-000000000000000000000000000000000000001a: 27 open · 0 resolved by evidence · 0 replaced by human judgment · 0 closed by disposition",
+            "An exception not observed in the latest revision stays open; this is not evidence of remediation."
+          ],
+          "record_id": "basis-000000000000000000000000000000000000001a",
+          "section_id": "results",
+          "text": null
+        }
+      ],
+      "id": "results",
+      "not_completed": null,
+      "required": false,
+      "title": "Results"
+    },
+    {
+      "blocks": [
+        {
+          "author_id": "0000000000000000000000000000000000000000000000000000000000000007",
+          "author_kind": "agent",
+          "author_label": "Zobba (agent)",
+          "authored_in_version": "wpv-0000000000000000000000000000000000000002",
+          "claim": null,
+          "id": "blk-000000000000000000000000000000000000001b",
+          "kind": "limitations",
+          "label": null,
+          "label_words": null,
+          "lines": [
+            "Summary summary-0000000000000000000000000000000000000003: conclusion exceptions found inconclusive; unresolved 20.",
+            "An exception not observed in the latest revision stays open; this is not evidence of remediation.",
+            "Section Conclusion is required by the template and is not completed in this version.",
+            "Claim [1] needs refresh: a newer summary of the same population supersedes the one it cites.",
+            "Claim [2] needs refresh: the evaluation it cites was revised.",
+            "Claim [3] needs refresh: a person's disposition changed the evaluation's effective outcome.",
+            "Claim [5] needs refresh: a newer summary of the same population supersedes the one it cites."
+          ],
+          "record_id": null,
+          "section_id": "conclusion",
+          "text": null
+        }
+      ],
+      "id": "conclusion",
+      "not_completed": "Not completed in this version.",
+      "required": true,
+      "title": "Conclusion"
+    }
+  ],
+  "template": "AP working paper FY2026",
+  "title": "AP approvals working paper",
+  "version": "1",
+  "withheld": "0"
+}

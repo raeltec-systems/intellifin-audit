@@ -1959,7 +1959,10 @@ pub fn view_of(
             "Section {title} is required by the template and is not completed in this version."
         ));
     }
-    for c in claims.values() {
+    // In claim order (the map is keyed by block ID).
+    let mut ordered: Vec<&ClaimView> = claims.values().collect();
+    ordered.sort_by_key(|c| c.number);
+    for c in ordered {
         if !c.currency.current() {
             limitations.push(format!(
                 "Claim [{}] needs refresh: {}.",

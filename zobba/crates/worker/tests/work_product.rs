@@ -760,6 +760,70 @@ fn quote_assertion() -> serde_json::Value {
 }
 
 /// The versions of the work product: (number, ID, author kind), in order.
+/// The exact JSON the web parses (`web/tests/fixtures/<name>`), with every
+/// generated identifier and digest (a lowercase hex run of 32 or more) and
+/// every database time replaced by a stable value of the same shape. Set
+/// `ZOBBA_UPDATE_WORK_PRODUCT_FIXTURE=1` to rewrite it after an intended change.
+fn fixture(body: &serde_json::Value, name: &str) {
+    fn times(value: &mut serde_json::Value) {
+        match value {
+            serde_json::Value::Object(map) => {
+                for (key, field) in map.iter_mut() {
+                    if key == "recorded_us" && field.is_string() {
+                        *field = serde_json::json!("1760000000000000");
+                    } else {
+                        times(field);
+                    }
+                }
+            }
+            serde_json::Value::Array(items) => items.iter_mut().for_each(times),
+            _ => {}
+        }
+    }
+    let mut body = body.clone();
+    times(&mut body);
+    let text = format!("{}\n", serde_json::to_string_pretty(&body).unwrap());
+    let hex = |c: char| c.is_ascii_digit() || ('a'..='f').contains(&c);
+    let chars: Vec<char> = text.chars().collect();
+    let mut seen: Vec<String> = Vec::new();
+    let (mut out, mut i) = (String::new(), 0);
+    while i < chars.len() {
+        let mut j = i;
+        while j < chars.len() && hex(chars[j]) {
+            j += 1;
+        }
+        let bounded = (i == 0 || !chars[i - 1].is_ascii_alphanumeric())
+            && (j == chars.len() || !chars[j].is_ascii_alphanumeric());
+        if j - i >= 32 && bounded {
+            let run: String = chars[i..j].iter().collect();
+            let index = seen.iter().position(|s| *s == run).unwrap_or_else(|| {
+                seen.push(run.clone());
+                seen.len() - 1
+            });
+            out.push_str(&format!("{:0width$x}", index + 1, width = j - i));
+            i = j;
+        } else if j > i {
+            out.extend(&chars[i..j]);
+            i = j;
+        } else {
+            out.push(chars[i]);
+            i += 1;
+        }
+    }
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../web/tests/fixtures")
+        .join(name);
+    if std::env::var("ZOBBA_UPDATE_WORK_PRODUCT_FIXTURE").as_deref() == Ok("1") {
+        std::fs::write(&path, out).unwrap();
+    } else {
+        let stored = std::fs::read_to_string(&path).unwrap_or_default();
+        assert_eq!(
+            stored, out,
+            "set ZOBBA_UPDATE_WORK_PRODUCT_FIXTURE=1 to update {path:?}"
+        );
+    }
+}
+
 async fn versions(admin: &mut PgConnection) -> Vec<(i32, String, String)> {
     sqlx::query_as(
         "SELECT version, id, author_kind FROM public.work_product_versions ORDER BY version",
@@ -1461,6 +1525,10 @@ async fn every_claim_of_a_recorded_version_agrees_with_its_records() {
     assert_eq!(status, 200, "{support}");
     assert_eq!(support["items"].as_array().unwrap().len(), 2);
     assert_eq!(support["items"][0]["pinned"]["value"], "15");
+    fixture(
+        &serde_json::json!({"shelf": task_shelf, "version": view, "support": support}),
+        "work-product.json",
+    );
 
     // A person's edit: an edited narrative and claim sentence, a removed
     // claim; every kept block is unchanged with its author.
@@ -1755,6 +1823,7 @@ async fn every_claim_of_a_recorded_version_agrees_with_its_records() {
             .unwrap()
     };
     assert_eq!(refresh_of(&v1_after, "15 of 1,000"), ["summary_superseded"]);
+    fixture(&v1_after, "work-product-stale.json");
     assert_eq!(
         refresh_of(&v1_after, "Segregation of duties"),
         ["evaluation_revised"]

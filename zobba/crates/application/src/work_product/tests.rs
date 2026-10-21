@@ -1221,6 +1221,16 @@ fn currency_is_derived_on_read_and_withheld_quotes_are_never_stale() {
     assert!(reasons.contains(&vec![RefreshReason::ExceptionStatusChanged]));
     assert!(reasons.contains(&vec![RefreshReason::FactSuperseded]));
     assert_eq!(view.refresh, 4);
+    // The limitations name the claims needing refresh in claim order, never
+    // in the order of their (random) block IDs.
+    let numbers: Vec<usize> = view
+        .limitations
+        .iter()
+        .filter_map(|l| l.strip_prefix("Claim ["))
+        .map(|l| l.split(']').next().unwrap().parse().unwrap())
+        .collect();
+    assert_eq!(numbers.len(), 4);
+    assert!(numbers.windows(2).all(|w| w[0] < w[1]), "{numbers:?}");
     assert_eq!(view.withheld, 1, "the viewer may not read the policy");
     assert!(view.withheld_originals.contains("ap-policy"));
     assert!(view.claims.values().any(|c| {

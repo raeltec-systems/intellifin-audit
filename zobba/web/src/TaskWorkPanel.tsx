@@ -5,6 +5,7 @@ import type { Scope } from './engagements';
 import { AssessmentBasis } from './AssessmentBasis';
 import { Coverage } from './Coverage';
 import { Exceptions } from './Exceptions';
+import { WorkProducts } from './WorkProducts';
 import { Citation } from './Citation';
 import { chipLabel, readTaskAnswers } from './citation';
 import type { CitedAnswer } from './citation';
@@ -138,6 +139,8 @@ export function TaskWorkPanel({ state, citations, session }: Props) {
     {work.assessment ? <Coverage key={session ? `${session.identity.id}/${session.csrf_token}/${work.task_id}` : work.task_id} assessment={work.assessment} taskId={work.task_id} scope={citations && session ? citations.scope : undefined} session={session} /> : null}
     {work.assessment && citations && session ? <Exceptions key={`exceptions/${session.identity.id}/${session.csrf_token}/${work.task_id}`} taskId={work.task_id} scope={citations.scope} session={session}
       facts={work.assessment.facts} criterionKeys={new Map(work.assessment.criteria.map(c => [c.id, c.key]))} /> : null}
+    {citations && session ? <WorkProducts key={`work-products/${session.identity.id}/${session.csrf_token}/${work.task_id}`} taskId={work.task_id} scope={citations.scope} session={session}
+      accessReady={citations.accessReady} onSourceAccessFailure={() => setNotice('That original is not available to you now. Nothing was opened.')} /> : null}
     <details className="brief-revisions"><summary>Brief revisions ({work.briefs.length})</summary><ol>
       {work.briefs.map(brief => <li key={brief.command_id}>
         <p className="retained-text">{brief.content}</p>
