@@ -1,0 +1,12 @@
+Selected secondary-source evidence
+Source: https://www.wired.com/story/openai-dots-always-on-ai-agents-that-proactively-help/
+Published: Sep 29, 2026, 1:15 PM; timezone not established
+Retrieved: 2026-09-30
+
+Selected quotation:
+In one demo example shared by OpenAI, a user’s Dot helps plan dinner.
+
+Research summary (not a quotation):
+Report describes a launch demo with food options and a user decision, channel continuity and enterprise pilots. The sensitive-action summary is broader than the official password-handoff rule.
+
+This is a short relevant excerpt, not the complete article. See public-secondary.md for source-specific limits.

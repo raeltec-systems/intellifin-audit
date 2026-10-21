@@ -1,0 +1,25 @@
+{
+  "gate": "native-cancellation-repair",
+  "command": [
+    "cargo",
+    "test",
+    "--locked",
+    "-p",
+    "zobba-infrastructure",
+    "--lib",
+    "model::native",
+    "--",
+    "--test-threads=1"
+  ],
+  "working_directory": "zobba",
+  "started_at": "2026-10-03T05:42:56.716164+00:00",
+  "ended_at": "2026-10-03T05:43:25.297366+00:00",
+  "duration_seconds": 28.581,
+  "exit": 101,
+  "source_before": "native-cancellation-repair-source-before.json",
+  "source_after": "native-cancellation-repair-source-after.json",
+  "source_unchanged": true,
+  "changed_source_paths": [],
+  "log": "native-cancellation-repair.log",
+  "log_sha256": "29fea41aaab8fdbf97fae61d7c9aaf069d7d645b7e3bde6e82f78cdcf1c0ecf8"
+}

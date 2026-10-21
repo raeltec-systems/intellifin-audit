@@ -1,0 +1,33 @@
+captured 2026-09-29T19:30:29.133110Z from https://crates.io/api/v1/crates/<name>
+tokio              latest=1.53.1     updated=2026-07-20 total_dl=1,010,879,180 recent_dl=237,722,638
+sqlx               latest=0.9.0      updated=2026-05-21 total_dl= 154,532,139 recent_dl= 40,553,384
+tokio-postgres     latest=0.7.18     updated=2026-06-12 total_dl=  70,963,846 recent_dl= 18,411,873
+deadpool-postgres  latest=0.14.2     updated=2026-08-26 total_dl=  23,583,009 recent_dl=  6,214,245
+aws-sdk-s3         latest=1.150.0    updated=2026-09-25 total_dl=  90,836,728 recent_dl= 22,082,160
+oauth2             latest=5.0.0      updated=2025-01-21 total_dl=  53,848,168 recent_dl= 14,644,745
+aes-gcm            latest=0.11.1     updated=2026-08-21 total_dl= 165,431,645 recent_dl= 47,907,631
+ed25519-dalek      latest=3.0.0      updated=2026-07-06 total_dl= 222,783,449 recent_dl= 60,022,930
+hpke               latest=0.14.1     updated=2026-09-06 total_dl=  10,197,109 recent_dl=  3,746,427
+calamine           latest=0.36.1     updated=2026-07-27 total_dl=  13,781,312 recent_dl=  4,320,569
+rust_xlsxwriter    latest=0.99.1     updated=2026-09-14 total_dl=   4,745,003 recent_dl=  2,064,026
+docx-rs            latest=0.4.22     updated=2026-07-21 total_dl=   3,523,498 recent_dl=    833,545
+docx-rust          latest=0.1.11     updated=2026-01-22 total_dl=   2,271,791 recent_dl=    217,661
+lopdf              latest=0.45.0     updated=2026-09-08 total_dl=  21,618,731 recent_dl= 10,456,735
+pdfium-render      latest=0.9.4      updated=2026-09-06 total_dl=   2,714,843 recent_dl=  1,211,280
+pdf-extract        latest=0.12.1     updated=2026-09-16 total_dl=   5,586,245 recent_dl=  2,909,764
+mail-parser        latest=0.11.9     updated=2026-09-09 total_dl=   3,903,162 recent_dl=  1,575,675
+leptess            latest=0.14.0     updated=2023-02-21 total_dl=     293,383 recent_dl=    105,454
+async-openai       latest=0.42.1     updated=2026-09-28 total_dl=   8,712,186 recent_dl=  2,672,938
+anthropic          latest=0.0.8      updated=2024-09-03 total_dl=      31,920 recent_dl=      4,145
+apalis             latest=0.7.4      updated=2026-09-15 total_dl=   1,207,208 recent_dl=    330,435
+underway           latest=0.2.0      updated=2025-07-16 total_dl=      23,151 recent_dl=      5,971
+playwright         latest=0.0.20     updated=2022-08-20 total_dl=     113,521 recent_dl=     15,178
+jsonschema         latest=0.58.2     updated=2026-09-28 total_dl=  94,972,004 recent_dl= 24,319,992
+schemars           latest=1.2.2      updated=2026-07-27 total_dl= 499,264,814 recent_dl=180,058,243
+ts-rs              latest=12.0.1     updated=2026-01-31 total_dl=  16,518,662 recent_dl=  6,581,098
+opentelemetry      latest=0.33.0     updated=2026-09-18 total_dl= 276,257,608 recent_dl= 63,108,601
+rmcp               latest=3.5.0      updated=2026-09-28 total_dl=  30,329,676 recent_dl= 15,998,862
+starlark           latest=0.14.2     updated=2026-06-05 total_dl=   5,975,425 recent_dl=  2,667,763
+landlock           latest=0.4.7      updated=2026-07-27 total_dl=  17,006,534 recent_dl=  5,628,380
+seccompiler        latest=0.5.0      updated=2025-03-07 total_dl=  21,687,683 recent_dl=  6,639,898
+portable-pty       latest=0.9.0      updated=2025-02-11 total_dl=  17,365,341 recent_dl=  9,358,634

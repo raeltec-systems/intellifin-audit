@@ -1,0 +1,10 @@
+$ pnpm --filter @zobba/web test:browser --workers=1 --retries=0 --reporter=list,json --config playwright.knowledge-upgrade.config.ts
+$ playwright test --workers=1 --retries=0 --reporter=list,json --config playwright.knowledge-upgrade.config.ts
+
+Running 1 test using 1 worker
+
+(node:1060987) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/upgrade/knowledge.spec.ts:24:1 › accepted schema9 public acquisition survives upgrade and current UI capture recovery with exact deduplication (6.3s)
+
+  1 passed (11.7s)

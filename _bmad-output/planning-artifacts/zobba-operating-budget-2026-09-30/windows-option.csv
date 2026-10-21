@@ -1,0 +1,12 @@
+item,monthly_delta_usd
+Windows compute delta versus Linux,39.2
+Working disk delta,9.6
+Snapshot delta,1.0
+Per-organisation AD controllers,87.6
+Per-organisation license endpoint AZs,29.2
+Windows endpoint GB,0.02
+Dedicated Windows VPC NAT gateways,65.7
+Dedicated Windows VPC NAT publicIPv4,7.3
+Office Standard named users,31.4
+RDS SAL named users,20.0
+Incremental Business Support+ on eligible AWS usage,21.5658

@@ -1,0 +1,16 @@
+{
+  "canonical_tip": {
+    "key": "page-guide-104",
+    "command_id": "b2339023c76a831cd94e9f6d889e5dae5f02e5c6dc527c0805ec5daab3ccd2cb",
+    "received_cursor": "106"
+  },
+  "last_visible_command_id": "b2339023c76a831cd94e9f6d889e5dae5f02e5c6dc527c0805ec5daab3ccd2cb",
+  "expected": {
+    "through": "106",
+    "before": "7"
+  },
+  "actual": {
+    "through": "106",
+    "before": "7"
+  }
+}

@@ -1,0 +1,14 @@
+   Compiling zobba-infrastructure v0.1.0 (/workspace/intellifin-audit/zobba/crates/infrastructure)
+error[E0308]: mismatched types
+   --> crates/infrastructure/tests/operations/model_execution.rs:673:15
+    |
+673 |         .push(reference.clone());
+    |          ---- ^^^^^^^^^^^^^^^^^ expected `VerificationItem`, found `RecordReference`
+    |          |
+    |          arguments to this method are incorrect
+    |
+note: method defined here
+   --> /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/alloc/src/vec/mod.rs:1001:11
+
+For more information about this error, try `rustc --explain E0308`.
+error: could not compile `zobba-infrastructure` (test "operations") due to 1 previous error

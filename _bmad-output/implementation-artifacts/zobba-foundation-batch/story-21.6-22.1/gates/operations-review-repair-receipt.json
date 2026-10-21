@@ -1,0 +1,25 @@
+{
+  "gate": "operations-review-repair",
+  "command": [
+    "cargo",
+    "test",
+    "--locked",
+    "-p",
+    "zobba-infrastructure",
+    "--test",
+    "operations",
+    "--",
+    "--test-threads=1"
+  ],
+  "working_directory": "zobba",
+  "started_at": "2026-10-03T05:18:52.708729+00:00",
+  "ended_at": "2026-10-03T05:19:08.806288+00:00",
+  "duration_seconds": 16.098,
+  "exit": 101,
+  "source_before": "operations-review-repair-source-before.json",
+  "source_after": "operations-review-repair-source-after.json",
+  "source_unchanged": true,
+  "changed_source_paths": [],
+  "log": "operations-review-repair.log",
+  "log_sha256": "f25db7b84be9ef7dab8844ca02d70ce1318d2ba27946aaecd2a7309c09f57ab6"
+}

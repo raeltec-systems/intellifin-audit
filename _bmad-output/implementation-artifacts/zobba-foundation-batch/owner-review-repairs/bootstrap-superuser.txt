@@ -1,0 +1,46 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.31s
+     Running tests/bootstrap.rs (target/debug/deps/bootstrap-d727f3047abe50b5)
+
+running 3 tests
+
+thread 'support::partial_dns_overlap_refuses_test_pair_but_still_blocks_development_overlap' (235861) panicked at crates/infrastructure/tests/support/mod.rs:51:5:
+all test roles must share one complete effective endpoint set
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'support::partial_dns_overlap_refuses_test_pair_but_still_blocks_development_overlap' (235861) panicked at crates/infrastructure/tests/support/mod.rs:51:5:
+all test roles must share one complete effective endpoint set
+test support::partial_dns_overlap_refuses_test_pair_but_still_blocks_development_overlap ... ok
+
+thread 'support::destructive_guard_refuses_development_and_endpoint_aliases' (235860) panicked at crates/infrastructure/tests/support/mod.rs:80:9:
+refusing destructive fixture against configured development database
+
+thread 'support::destructive_guard_refuses_development_and_endpoint_aliases' (235860) panicked at crates/infrastructure/tests/support/mod.rs:80:9:
+refusing destructive fixture against configured development database
+
+thread 'support::destructive_guard_refuses_development_and_endpoint_aliases' (235860) panicked at crates/infrastructure/tests/support/mod.rs:80:9:
+refusing destructive fixture against configured development database
+
+thread 'support::destructive_guard_refuses_development_and_endpoint_aliases' (235860) panicked at crates/infrastructure/tests/support/mod.rs:80:9:
+refusing destructive fixture against configured development database
+
+thread 'support::destructive_guard_refuses_development_and_endpoint_aliases' (235860) panicked at crates/infrastructure/tests/support/mod.rs:80:9:
+refusing destructive fixture against configured development database
+
+thread 'support::destructive_guard_refuses_development_and_endpoint_aliases' (235860) panicked at crates/infrastructure/tests/support/mod.rs:68:5:
+destructive fixtures require a dedicated *_test database
+
+thread 'support::destructive_guard_refuses_development_and_endpoint_aliases' (235860) panicked at crates/infrastructure/tests/support/mod.rs:58:49:
+explicit safe test migration URL: InvalidConfiguration
+
+thread 'support::destructive_guard_refuses_development_and_endpoint_aliases' (235860) panicked at crates/infrastructure/tests/support/mod.rs:58:49:
+explicit safe test migration URL: InvalidConfiguration
+
+thread 'support::destructive_guard_refuses_development_and_endpoint_aliases' (235860) panicked at crates/infrastructure/tests/support/mod.rs:58:49:
+explicit safe test migration URL: InvalidConfiguration
+test support::destructive_guard_refuses_development_and_endpoint_aliases ... ok
+bootstrap contract: fresh/v1/v2/repeat/owner/privilege/foreign/marker/checksum/version refusals passed; test schema empty
+test bootstrap_contract ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 45.53s
+
+bootstrap_exit=0

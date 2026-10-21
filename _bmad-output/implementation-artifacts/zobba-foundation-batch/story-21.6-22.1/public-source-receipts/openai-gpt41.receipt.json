@@ -1,0 +1,20 @@
+{
+  "requested_url": "https://developers.openai.com/api/docs/models/gpt-4.1",
+  "effective_url": "https://developers.openai.com/api/docs/models/gpt-4.1",
+  "retrieved_at_utc": "2026-10-03T04:29:19.646987+00:00",
+  "completed_at_utc": "2026-10-03T04:29:20.157898+00:00",
+  "method": "GET",
+  "curl_exit_code": 0,
+  "http_status": 200,
+  "content_type": "text/html",
+  "ssl_verify_result": 0,
+  "tls_verification_disabled": false,
+  "auth_headers_added": false,
+  "body_file": "openai-gpt41.html",
+  "bytes": 422909,
+  "sha256": "293e63c4bc090c7649041b1f32e43b69637102828f273c681ab09ebe3ce17f63",
+  "stderr": "",
+  "readable_extraction_file": "/tmp/zobba-story-22-1/public-source-receipts/openai-gpt41.txt",
+  "readable_extraction_sha256": "4189dcb1741b02493780f542fea02c84b7999770c65c6ea5816296ec933235c8",
+  "raw_body_in_checkpoint": false
+}

@@ -1,0 +1,12 @@
+{
+  "scope": "internal StoredReceipt maximum shape; actual IDs are ASCII and many are shorter",
+  "compact_bytes": 40512,
+  "postgres_jsonb_text_bytes": 40830,
+  "unchanged_durable_limit": 65536,
+  "margin": 24706,
+  "affected_ids_max": 256,
+  "destinations_max": 50,
+  "id_max_bytes": 128,
+  "revisions_conservative_u64_max": "18446744073709551615",
+  "runtime_max_record_regression": "Passed in final rust-tests-2.log: postgres_knowledge_producers_retrieval_authority_and_mutation_contracts calls maximum_reason_receipts_preserve_large_records; knowledge suite3/3 in131.07s."
+}

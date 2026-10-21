@@ -1,0 +1,17 @@
+# General analysis image (Stories 22.4/22.5): Python 3.13 slim plus the
+# owner-approved document libraries. Build only through build.sh, which
+# fetches the hash-pinned wheels first and builds reproducibly
+# (SOURCE_DATE_EPOCH=0, rewritten layer timestamps), so the same inputs give
+# the same image digest. The base is pinned by its index digest.
+ARG BASE_IMAGE=docker.io/library/python:3.13-slim@sha256:70729b46c69b4f1e97c4822c1af3df53a1476cf5ddc6c087c0c10bc3a5678c2f
+FROM ${BASE_IMAGE}
+# Offline, hash-checked, no dependency resolution, no bytecode written at
+# install time (programs run with -I -B).
+RUN --mount=type=bind,source=requirements.txt,target=/build/requirements.txt \
+    --mount=type=bind,source=wheels,target=/build/wheels \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_NO_CACHE_DIR=1 \
+    python3 -m pip install --no-index --find-links /build/wheels --require-hashes \
+      --no-deps --no-compile --only-binary=:all: -r /build/requirements.txt \
+ && python3 -I -B -c "import pandas, openpyxl, docx, pypdfium2, email" \
+ && find / -xdev -name '__pycache__' -type d -prune -exec rm -rf {} + \
+ && rm -rf /root/.cache

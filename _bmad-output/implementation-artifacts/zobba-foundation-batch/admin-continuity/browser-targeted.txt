@@ -1,0 +1,11 @@
+$ pnpm --filter @zobba/web test:browser evidence.spec.ts membership.spec.ts --grep 'lost upload acknowledgement|ordinary Save refuses' --workers=1 --retries=0
+$ playwright test evidence.spec.ts membership.spec.ts --grep 'lost upload acknowledgement|ordinary Save refuses' --workers=1 --retries=0
+
+Running 2 tests using 1 worker
+
+(node:597840) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/browser/evidence.spec.ts:151:1 › lost upload acknowledgement retries the same registered original across API restart without overwrite (3.9s)
+  ✓  2 tests/browser/membership.spec.ts:254:1 › ordinary Save refuses the last non-expiring Admin and permits temporary Admins after establishing a replacement (3.7s)
+
+  2 passed (14.5s)

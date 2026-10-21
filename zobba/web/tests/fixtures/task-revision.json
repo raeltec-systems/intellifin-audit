@@ -1,0 +1,330 @@
+{
+  "chain_id": "eval-1",
+  "entries": [
+    {
+      "applicability": "applicable",
+      "basis_id": "basis-2",
+      "causes": [],
+      "changes": {
+        "added": [],
+        "removed": [],
+        "replaced": []
+      },
+      "criterion_id": "crit-3",
+      "dispositions": [],
+      "execution": "completed",
+      "id": "eval-1",
+      "inputs": [
+        {
+          "digest": "0000000000000000000000000000000000000000000000000000000000000001",
+          "fact_id": "fact-4"
+        }
+      ],
+      "invocation_id": "id-5",
+      "judgment": null,
+      "origin": "deterministic",
+      "output_digest": "0000000000000000000000000000000000000000000000000000000000000002",
+      "predecessor_id": null,
+      "reason": "missing_fact",
+      "recorded_us": "1760000000000000",
+      "revision": "1",
+      "verdict": "undetermined"
+    },
+    {
+      "applicability": "applicable",
+      "basis_id": "basis-2",
+      "causes": [
+        "inputs_changed"
+      ],
+      "changes": {
+        "added": [
+          "fact-6"
+        ],
+        "removed": [],
+        "replaced": []
+      },
+      "criterion_id": "crit-3",
+      "dispositions": [
+        {
+          "actor_id": "actor-a",
+          "actor_label": "auditor-a",
+          "chain_id": "eval-1",
+          "concern": "facts",
+          "id": "disp-7",
+          "kind": "needs_reconsideration",
+          "rationale": "The amount cell was re-keyed after approval; read the corrected export.",
+          "recorded_us": "1760000000000000",
+          "references": [],
+          "revision": "2",
+          "revision_id": "rev-8",
+          "verdict": null
+        }
+      ],
+      "execution": "completed",
+      "id": "rev-8",
+      "inputs": [
+        {
+          "digest": "0000000000000000000000000000000000000000000000000000000000000001",
+          "fact_id": "fact-4"
+        },
+        {
+          "digest": "0000000000000000000000000000000000000000000000000000000000000003",
+          "fact_id": "fact-6"
+        }
+      ],
+      "invocation_id": "id-9",
+      "judgment": null,
+      "origin": "deterministic",
+      "output_digest": "0000000000000000000000000000000000000000000000000000000000000004",
+      "predecessor_id": "eval-1",
+      "reason": null,
+      "recorded_us": "1760000000000000",
+      "revision": "2",
+      "verdict": "met"
+    },
+    {
+      "applicability": "applicable",
+      "basis_id": "basis-10",
+      "causes": [
+        "inputs_changed",
+        "basis_revised",
+        "reconsideration_requested"
+      ],
+      "changes": {
+        "added": [],
+        "removed": [],
+        "replaced": [
+          {
+            "from": "fact-4",
+            "to": "fact-11"
+          }
+        ]
+      },
+      "criterion_id": "crit-3",
+      "dispositions": [],
+      "execution": "completed",
+      "id": "rev-12",
+      "inputs": [
+        {
+          "digest": "0000000000000000000000000000000000000000000000000000000000000005",
+          "fact_id": "fact-11"
+        },
+        {
+          "digest": "0000000000000000000000000000000000000000000000000000000000000003",
+          "fact_id": "fact-6"
+        }
+      ],
+      "invocation_id": "id-13",
+      "judgment": null,
+      "origin": "deterministic",
+      "output_digest": "0000000000000000000000000000000000000000000000000000000000000006",
+      "predecessor_id": "rev-8",
+      "reason": null,
+      "recorded_us": "1760000000000000",
+      "revision": "3",
+      "verdict": "met"
+    }
+  ],
+  "facts": [
+    {
+      "basis_id": "basis-2",
+      "candidates": null,
+      "execution_epoch": "1",
+      "id": "fact-4",
+      "invocation_id": "id-5",
+      "job_id": null,
+      "mantissa": "125000",
+      "measure": "USD",
+      "measure_grounded": true,
+      "methodology_binding_id": "id-14",
+      "name": "amount",
+      "offset_minutes": null,
+      "rule": "decimal_grouped_comma",
+      "scale": 2,
+      "sources": [
+        {
+          "byte_end": null,
+          "byte_start": null,
+          "filename": "AP invoices.xlsx",
+          "location": "Sheet1!B2",
+          "locator": "cell:Sheet1!B2",
+          "original_id": "ap-invoices",
+          "quote": "1,250.00",
+          "readable": true,
+          "reason": null,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000007",
+          "verification": "verified",
+          "version": "id-15"
+        },
+        {
+          "byte_end": null,
+          "byte_start": null,
+          "filename": "AP invoices.xlsx",
+          "location": "Sheet1!A2",
+          "locator": "cell:Sheet1!A2",
+          "original_id": "ap-invoices",
+          "quote": "INV-0042",
+          "readable": true,
+          "reason": null,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000007",
+          "verification": "verified",
+          "version": "id-15"
+        },
+        {
+          "byte_end": null,
+          "byte_start": null,
+          "filename": "AP invoices.xlsx",
+          "location": "Sheet1!C2",
+          "locator": "cell:Sheet1!C2",
+          "original_id": "ap-invoices",
+          "quote": "USD",
+          "readable": true,
+          "reason": null,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000007",
+          "verification": "verified",
+          "version": "id-15"
+        }
+      ],
+      "subject": "INV-0042",
+      "subject_grounded": true,
+      "subject_unit": "invoice",
+      "support": "supported",
+      "support_reason": null,
+      "unavailable_reason": null,
+      "utc": null,
+      "value": "1250.00",
+      "value_kind": "decimal",
+      "value_withheld": false
+    },
+    {
+      "basis_id": "basis-10",
+      "candidates": null,
+      "execution_epoch": "1",
+      "id": "fact-11",
+      "invocation_id": "id-13",
+      "job_id": null,
+      "mantissa": "125000",
+      "measure": "USD",
+      "measure_grounded": true,
+      "methodology_binding_id": "id-14",
+      "name": "amount",
+      "offset_minutes": null,
+      "rule": "decimal_grouped_comma",
+      "scale": 2,
+      "sources": [
+        {
+          "byte_end": null,
+          "byte_start": null,
+          "filename": "AP invoices.xlsx",
+          "location": "Sheet1!B2",
+          "locator": "cell:Sheet1!B2",
+          "original_id": "ap-invoices",
+          "quote": "1,250.00",
+          "readable": true,
+          "reason": null,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000007",
+          "verification": "verified",
+          "version": "id-15"
+        },
+        {
+          "byte_end": null,
+          "byte_start": null,
+          "filename": "AP invoices.xlsx",
+          "location": "Sheet1!A2",
+          "locator": "cell:Sheet1!A2",
+          "original_id": "ap-invoices",
+          "quote": "INV-0042",
+          "readable": true,
+          "reason": null,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000007",
+          "verification": "verified",
+          "version": "id-15"
+        },
+        {
+          "byte_end": null,
+          "byte_start": null,
+          "filename": "AP invoices.xlsx",
+          "location": "Sheet1!C2",
+          "locator": "cell:Sheet1!C2",
+          "original_id": "ap-invoices",
+          "quote": "USD",
+          "readable": true,
+          "reason": null,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000007",
+          "verification": "verified",
+          "version": "id-15"
+        }
+      ],
+      "subject": "INV-0042",
+      "subject_grounded": true,
+      "subject_unit": "invoice",
+      "support": "supported",
+      "support_reason": null,
+      "unavailable_reason": null,
+      "utc": null,
+      "value": "1250.00",
+      "value_kind": "decimal",
+      "value_withheld": false
+    },
+    {
+      "basis_id": "basis-2",
+      "candidates": null,
+      "execution_epoch": "1",
+      "id": "fact-6",
+      "invocation_id": "id-9",
+      "job_id": null,
+      "mantissa": null,
+      "measure": null,
+      "measure_grounded": null,
+      "methodology_binding_id": "id-14",
+      "name": "approver",
+      "offset_minutes": null,
+      "rule": "identifier_exact",
+      "scale": null,
+      "sources": [
+        {
+          "byte_end": null,
+          "byte_start": null,
+          "filename": "AP invoices.xlsx",
+          "location": "Sheet1!D2",
+          "locator": "cell:Sheet1!D2",
+          "original_id": "ap-invoices",
+          "quote": "J. Smith",
+          "readable": true,
+          "reason": null,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000007",
+          "verification": "verified",
+          "version": "id-15"
+        },
+        {
+          "byte_end": null,
+          "byte_start": null,
+          "filename": "AP invoices.xlsx",
+          "location": "Sheet1!A2",
+          "locator": "cell:Sheet1!A2",
+          "original_id": "ap-invoices",
+          "quote": "INV-0042",
+          "readable": true,
+          "reason": null,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000007",
+          "verification": "verified",
+          "version": "id-15"
+        }
+      ],
+      "subject": "INV-0042",
+      "subject_grounded": true,
+      "subject_unit": "invoice",
+      "support": "supported",
+      "support_reason": null,
+      "unavailable_reason": null,
+      "utc": null,
+      "value": "J. Smith",
+      "value_kind": "identifier",
+      "value_withheld": false
+    }
+  ],
+  "head_id": "rev-12",
+  "next_cursor": null,
+  "subject": "INV-0042",
+  "total": "3"
+}

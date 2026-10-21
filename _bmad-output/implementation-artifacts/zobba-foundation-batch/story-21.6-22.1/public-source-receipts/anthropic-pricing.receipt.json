@@ -1,0 +1,20 @@
+{
+  "requested_url": "https://platform.claude.com/docs/en/about-claude/pricing",
+  "effective_url": "https://platform.claude.com/docs/en/about-claude/pricing",
+  "retrieved_at_utc": "2026-10-03T04:26:50.216539+00:00",
+  "completed_at_utc": "2026-10-03T04:26:50.779382+00:00",
+  "method": "GET",
+  "curl_exit_code": 0,
+  "http_status": 200,
+  "content_type": "text/html; charset=utf-8",
+  "ssl_verify_result": 0,
+  "tls_verification_disabled": false,
+  "auth_headers_added": false,
+  "body_file": "anthropic-pricing.html",
+  "bytes": 823140,
+  "sha256": "35f6fa011719d8cb71ecc2b12df81a8633a9a6d639558de0f1973de3ec11bead",
+  "stderr": "",
+  "readable_extraction_file": "/tmp/zobba-story-22-1/public-source-receipts/anthropic-pricing.txt",
+  "readable_extraction_sha256": "25499bdf63dcc2ee0bb26b62051647fa2ae359f70f70c40327ff6d2e933472c8",
+  "raw_body_in_checkpoint": false
+}

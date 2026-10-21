@@ -1,0 +1,27 @@
+   Compiling zobba-application v0.1.0 (/workspace/intellifin-audit/zobba/crates/application)
+   Compiling zobba-infrastructure v0.1.0 (/workspace/intellifin-audit/zobba/crates/infrastructure)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 21.42s
+     Running tests/operations.rs (target/debug/deps/operations-c15f0a4016247673)
+
+running 5 tests
+test maximal_valid_owned_wire_values_fit_durable_byte_envelopes ... ok
+test owned_storage_roundtrips_and_refuses_ambiguous_durable_fields ... ok
+test standing_permissions_exact_operations_and_transaction_cutoffs ... FAILED
+test support::destructive_guard_refuses_development_and_endpoint_aliases ... ok
+test support::partial_dns_overlap_refuses_test_pair_but_still_blocks_development_overlap ... ok
+
+failures:
+
+---- standing_permissions_exact_operations_and_transaction_cutoffs stdout ----
+
+thread 'standing_permissions_exact_operations_and_transaction_cutoffs' (1114054) panicked at crates/infrastructure/tests/operations/model_execution.rs:331:67:
+called `Result::unwrap()` on an `Err` value: Denied
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    standing_permissions_exact_operations_and_transaction_cutoffs
+
+test result: FAILED. 4 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.69s
+
+error: test failed, to rerun pass `-p zobba-infrastructure --test operations`

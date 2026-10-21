@@ -1,0 +1,169 @@
+{
+  "scope": "URLs and hashes of original inspected public captures, not a manifest of bundled full captures. Price facts independently recorded in model-rates.json.",
+  "sources": [
+    {
+      "source": "anthropic-pricing-md",
+      "requested_url": "https://platform.claude.com/docs/en/about-claude/pricing.md",
+      "final_url": "https://platform.claude.com/docs/en/about-claude/pricing.md",
+      "retrieved_at": "2026-09-30T15:45:21.154474+00:00",
+      "bytes": 47954,
+      "sha256": "245b5d0472659075015551126902de479990475fa61deb58c5fc20ef5e51a909"
+    },
+    {
+      "source": "anthropic-models-md",
+      "requested_url": "https://platform.claude.com/docs/en/models/overview.md",
+      "final_url": "https://platform.claude.com/docs/en/models/overview.md",
+      "retrieved_at": "2026-09-30T15:45:21.083498+00:00",
+      "bytes": 17228,
+      "sha256": "938b1c3789c869b6f62adf59f72e8296b51c69bfb0fc53f1e33d518153840281"
+    },
+    {
+      "source": "anthropic-versioning",
+      "requested_url": "https://platform.claude.com/docs/en/models/model-ids.md"
+    },
+    {
+      "source": "anthropic-adaptive",
+      "requested_url": "https://platform.claude.com/docs/en/build-with-claude/adaptive-thinking.md",
+      "final_url": "https://platform.claude.com/docs/en/build-with-claude/thinking-steering-and-cost.md",
+      "retrieved_at": "2026-09-30T15:45:21.200839+00:00",
+      "bytes": 42008,
+      "sha256": "77a3c015084155915ce820e8811f9d349f12914bda2706f4d9d3de7b4308af2e"
+    },
+    {
+      "source": "openai-computer",
+      "requested_url": "https://developers.openai.com/api/docs/guides/tools-computer-use.md",
+      "final_url": "https://developers.openai.com/api/docs/guides/tools-computer-use.md",
+      "retrieved_at": "2026-09-30T15:45:20.992992+00:00",
+      "bytes": 25185,
+      "sha256": "cc6e107d4276b17579e2039a7c4b8d30c25030fb244777402f4d54d488acafe0"
+    },
+    {
+      "source": "openai-embedding-small",
+      "requested_url": "https://developers.openai.com/api/docs/models/text-embedding-3-small.md",
+      "final_url": "https://developers.openai.com/api/docs/models/text-embedding-3-small.md",
+      "retrieved_at": "2026-09-30T15:48:08.016073+00:00",
+      "bytes": 3114,
+      "sha256": "727fa16f2461f7e8bf9e9adf47b839e10a4b12980d9486b634de77f00c0be567"
+    },
+    {
+      "source": "openai-api-pricing",
+      "requested_url": "https://openai.com/api/pricing/",
+      "final_url": "https://openai.com/business/pricing/#api",
+      "retrieved_at": "2026-09-30T15:42:23.216714+00:00",
+      "bytes": 759313,
+      "sha256": "41cfe4c94b29b8045767ab85e388fdad3ac0a3c4289dace99f9e23a9f1499ce7"
+    },
+    {
+      "source": "openai-platform-pricing",
+      "requested_url": "https://developers.openai.com/api/docs/pricing",
+      "final_url": "https://developers.openai.com/api/docs/pricing",
+      "retrieved_at": "2026-09-30T15:42:23.217085+00:00",
+      "bytes": 580818,
+      "sha256": "e3819a0793d2820ef817ff9468a042bdb139209daae28b0f96e7e500f5e21005"
+    },
+    {
+      "source": "openai-models",
+      "requested_url": "https://developers.openai.com/api/docs/models",
+      "final_url": "https://developers.openai.com/api/docs/models",
+      "retrieved_at": "2026-09-30T15:42:23.050598+00:00",
+      "bytes": 384713,
+      "sha256": "1f068124c872274709340dd1619f9bddda4d3fa657a4c78bc2a58c6a3f564291"
+    },
+    {
+      "source": "anthropic-pricing",
+      "requested_url": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "final_url": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "retrieved_at": "2026-09-30T15:42:23.242519+00:00",
+      "bytes": 821091,
+      "sha256": "58ab8dbe61dc278c25d66dbdc7db1d11650f80b415c8b18cc3cf61670d80c852"
+    },
+    {
+      "source": "anthropic-models",
+      "requested_url": "https://platform.claude.com/docs/en/about-claude/models/overview",
+      "final_url": "https://platform.claude.com/docs/en/models/overview",
+      "retrieved_at": "2026-09-30T15:42:23.360519+00:00",
+      "bytes": 386721,
+      "sha256": "103024c7e49fdc8bd4a26fbf078cbc749d56cfb6e747a5b9e1c34b304d3e472a"
+    },
+    {
+      "source": "openai-pricing-md",
+      "requested_url": "https://developers.openai.com/api/docs/pricing.md",
+      "final_url": "https://developers.openai.com/api/docs/pricing.md",
+      "retrieved_at": "2026-09-30T15:42:58.112079+00:00",
+      "bytes": 22631,
+      "sha256": "0d9fb6b240209bb7b5a05d1d6ce0b8a796e0924b7e34c5ab183a3f1f890febe6"
+    },
+    {
+      "source": "openai-sol",
+      "requested_url": "https://developers.openai.com/api/docs/models/gpt-6.1-sol.md",
+      "final_url": "https://developers.openai.com/api/docs/models/gpt-6.1-sol.md",
+      "retrieved_at": "2026-09-30T15:42:58.123694+00:00",
+      "bytes": 4294,
+      "sha256": "972f4265295eea723d5332016dc22cde03f46173fafcbcba5c23b24c8cee90c6"
+    },
+    {
+      "source": "openai-astra",
+      "requested_url": "https://developers.openai.com/api/docs/models/gpt-6-astra.md",
+      "final_url": "https://developers.openai.com/api/docs/models/gpt-6-astra.md",
+      "retrieved_at": "2026-09-30T15:42:58.325505+00:00",
+      "bytes": 3791,
+      "sha256": "290905c5491e594376583ae22c7d21b3b6f5469074c9a7de0189bd3ae54b290a"
+    },
+    {
+      "source": "openai-luna",
+      "requested_url": "https://developers.openai.com/api/docs/models/gpt-6-luna.md",
+      "final_url": "https://developers.openai.com/api/docs/models/gpt-6-luna.md",
+      "retrieved_at": "2026-09-30T15:42:58.478123+00:00",
+      "bytes": 4043,
+      "sha256": "9bde4b64e369ace4696d98a7dd6ec8b8e0c6a8de090a116970d55dcd4cadfc7b"
+    },
+    {
+      "source": "openai-caching",
+      "requested_url": "https://developers.openai.com/api/docs/guides/prompt-caching.md",
+      "final_url": "https://developers.openai.com/api/docs/guides/prompt-caching.md",
+      "retrieved_at": "2026-09-30T15:42:58.102630+00:00",
+      "bytes": 47155,
+      "sha256": "fe0452cd0f57321cdb42ffe8fa1ae5ebb6fdffbcc179436d534943062b2178dd"
+    },
+    {
+      "source": "openai-images",
+      "requested_url": "https://developers.openai.com/api/docs/guides/images-vision.md",
+      "final_url": "https://developers.openai.com/api/docs/guides/images-vision.md",
+      "retrieved_at": "2026-09-30T15:42:58.089540+00:00",
+      "bytes": 41092,
+      "sha256": "b4aca9b44700eab851b6c3ec38a89425cd713891c7ecf4afccbdd1fc6e33786a"
+    },
+    {
+      "source": "openai-reasoning",
+      "requested_url": "https://developers.openai.com/api/docs/guides/reasoning.md",
+      "final_url": "https://developers.openai.com/api/docs/guides/reasoning.md",
+      "retrieved_at": "2026-09-30T15:42:58.227096+00:00",
+      "bytes": 70779,
+      "sha256": "a561487dd41db8828b5b9920d77275bdced3c3c07ba1fb9f3c3230c5aaeb925b"
+    },
+    {
+      "source": "anthropic-vision",
+      "requested_url": "https://platform.claude.com/docs/en/build-with-claude/vision.md",
+      "final_url": "https://platform.claude.com/docs/en/build-with-claude/vision.md",
+      "retrieved_at": "2026-09-30T15:42:59.055483+00:00",
+      "bytes": 47817,
+      "sha256": "e9fae34abd4b2ddd8db6d0943dfad96a1e8298d39556de2e04535b994af9a4e8"
+    },
+    {
+      "source": "anthropic-thinking",
+      "requested_url": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking.md",
+      "final_url": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking.md",
+      "retrieved_at": "2026-09-30T15:42:58.265367+00:00",
+      "bytes": 22124,
+      "sha256": "b9fb3c0a08d3f6a31ad3ff6273c786f2f9a24b1d881e97095c262a6576a26563"
+    },
+    {
+      "source": "openai-transcribe",
+      "requested_url": "https://developers.openai.com/api/docs/models/gpt-transcribe.md",
+      "final_url": "https://developers.openai.com/api/docs/models/gpt-transcribe.md",
+      "retrieved_at": "2026-09-30T16:01:14.163157+00:00",
+      "bytes": 2888,
+      "sha256": "b01f0e3e215c4536dffff243e69ab6885208af36f1ba916917cf878b1ccd48ec"
+    }
+  ]
+}

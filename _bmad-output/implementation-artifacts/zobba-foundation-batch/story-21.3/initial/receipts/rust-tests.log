@@ -1,0 +1,542 @@
+   Compiling zobba-infrastructure v0.1.0 (/workspace/intellifin-audit/zobba/crates/infrastructure)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.64s
+     Running unittests src/lib.rs (target/debug/deps/zobba_api-980ce4be9b8f93d3)
+
+running 15 tests
+test auth::tests::composed_reads_refuse_changed_or_ambiguous_sessions_without_clearing_cookies ... ok
+test auth::tests::duplicate_cookies_do_not_select_an_ambiguous_session ... ok
+test auth::tests::mutations_require_exact_origin_and_session_csrf ... ok
+test auth::tests::read_session_preconditions_are_independent_of_mutation_csrf ... ok
+test engagements::tests::cursor_requires_one_complete_valid_tuple ... ok
+test evidence::tests::admission_precedes_body_polling_and_120_second_deadline_releases_capacity ... ok
+test evidence::tests::attachment_filename_is_bounded_and_cannot_add_headers_or_paths ... ok
+test evidence::tests::attachment_filename_preserves_bounded_extensions_with_shared_browser_rules ... ok
+test evidence::tests::durable_reservation_limit_is_distinct_from_transient_io_capacity ... ok
+test evidence::tests::preview_caps_bytes_on_utf8_boundaries_and_lines_without_parsers ... ok
+test operations::tests::actor_fence_is_required_unique_and_never_adopts_another_actor ... ok
+test operations::tests::decimal_wire_authority_is_lossless_and_unambiguous ... ok
+test tasks::tests::cursor_refuses_overflow_signs_and_nondecimal_values ... ok
+test tasks::tests::parsed_meaning_ignores_json_key_order_but_rejects_unknown_fields ... ok
+test tasks::tests::wire_receipt_never_claims_applied_or_exposes_execution_capabilities ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running unittests src/main.rs (target/debug/deps/zobba_api-b276258b07067d14)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/evidence_contract.rs (target/debug/deps/evidence_contract-acb3e7593b2f7139)
+
+running 3 tests
+test evidence_upload_and_download_describe_raw_binary_not_json_integer_arrays ... ok
+test finite_reservation_limit_is_documented_as_conflict_without_retry_after ... ok
+test shared_browser_metadata_matrix_preserves_rust_acceptance_and_exact_values ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+     Running tests/evidence_fixture.rs (target/debug/deps/evidence_fixture-039cdd22944f1762)
+     Running tests/evidence_http.rs (target/debug/deps/evidence_http-24b696b6abc94884)
+
+running 4 tests
+test composition::production_constructor_child ... ignored, spawned with isolated synthetic configuration by the parent HTTP contract
+test evidence_http_proves_custody_replay_limits_and_authority_after_io ... ok
+test support::destructive_guard_refuses_development_and_endpoint_aliases ... ok
+test support::partial_dns_overlap_refuses_test_pair_but_still_blocks_development_overlap ... ok
+
+test result: ok. 3 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 8.35s
+
+     Running tests/membership_contract.rs (target/debug/deps/membership_contract-be574590d1154d54)
+
+running 6 tests
+test assignment_renewal_is_a_scope_specific_boolean_with_canonical_false_default ... ok
+test generated_contract_exposes_shared_vocabulary_bounds_and_invalid_examples ... ok
+test invitation_request_limits_match_the_owned_validator ... ok
+test legacy_assignment_modes_cannot_silently_replace_unseen_assignments ... ok
+test membership_save_rejects_invalid_vocabulary_versions_identifiers_and_expiry ... ok
+test one_hundred_assignment_renewals_fit_the_existing_request_body_bound ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests/membership_http.rs (target/debug/deps/membership_http-f47da5e4abce3cbe)
+
+running 3 tests
+test membership_http_current_authority_exact_retries_and_verified_recipient ... ok
+test support::destructive_guard_refuses_development_and_endpoint_aliases ... ok
+test support::partial_dns_overlap_refuses_test_pair_but_still_blocks_development_overlap ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.98s
+
+     Running tests/methodology_contract.rs (target/debug/deps/methodology_contract-29c4d0c06e611c0e)
+
+running 11 tests
+test composed_diff_and_guide_reason_preserve_valid_text_without_truncation ... ok
+test create_and_guide_context_is_optional_exact_and_refused_for_controls ... ok
+test generated_contract_exposes_methodology_routes_owned_enums_and_context ... ok
+test methodology_rejects_unknown_fields_and_non_owned_vocabulary_at_every_depth ... ok
+test methodology_revisions_are_canonical_lossless_decimal_strings ... ok
+test recall_retains_the_exact_reason_and_refuses_revision_coercion ... ok
+test resolution_neutral_source_bound_includes_the_builtin_fallback ... ok
+test resolution_preserves_neutral_contributors_and_exact_field_and_template_sources ... ok
+test save_preserves_template_contents_and_json_escaping_within_the_request_envelope ... ok
+test task_basis_conversion_preserves_more_than_two_hundred_bindings_and_notices ... ok
+test template_prose_preserves_layout_and_feff_with_distinct_text_bounds ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+     Running tests/methodology_http.rs (target/debug/deps/methodology_http-41147e919676189b)
+
+running 3 tests
+test methodology_http_save_replay_scope_context_and_session_fences ... ok
+test support::destructive_guard_refuses_development_and_endpoint_aliases ... ok
+test support::partial_dns_overlap_refuses_test_pair_but_still_blocks_development_overlap ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.21s
+
+     Running tests/operations_http.rs (target/debug/deps/operations_http-da3a1e905f10269f)
+
+running 3 tests
+test exact_operation_http_decisions_revocation_and_fresh_projections ... ok
+test support::destructive_guard_refuses_development_and_endpoint_aliases ... ok
+test support::partial_dns_overlap_refuses_test_pair_but_still_blocks_development_overlap ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 12.86s
+
+     Running tests/skills.rs (target/debug/deps/skills-278f2128b86a48a4)
+
+running 3 tests
+test skills_http_catalog_selection_current_use_scope_and_session_contracts ... ok
+test support::destructive_guard_refuses_development_and_endpoint_aliases ... ok
+test support::partial_dns_overlap_refuses_test_pair_but_still_blocks_development_overlap ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.71s
+
+     Running tests/skills_contract.rs (target/debug/deps/skills_contract-21b0aeaa668ea89f)
+
+running 4 tests
+test generated_skill_contract_retains_limits_fences_and_no_execution_route ... ok
+test selection_and_status_accept_only_exact_canonical_browser_basis ... ok
+test skill_wire_preserves_exact_resource_unicode_and_large_revisions ... ok
+test skill_wire_refuses_unknown_tools_privilege_fields_and_invalid_bounds ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+     Running tests/tasks_http.rs (target/debug/deps/tasks_http-566ba33f120e6322)
+
+running 3 tests
+test scoped_http_commands_reauthorize_retries_and_reserve_control_authentication ... ok
+test support::destructive_guard_refuses_development_and_endpoint_aliases ... ok
+test support::partial_dns_overlap_refuses_test_pair_but_still_blocks_development_overlap ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 16.53s
+
+     Running unittests src/lib.rs (target/debug/deps/zobba_application-f47634667b7d4ed3)
+
+running 9 tests
+test methodology::tests::conversion_retains_exact_template_and_requirement_versions ... ok
+test methodology::tests::historical_business_period_is_not_compared_to_availability_date ... ok
+test methodology::tests::historical_template_conversion_retains_source_revision_neutrality_and_recall ... ok
+test methodology::tests::recall_needs_current_revision_version_identity_and_reason ... ok
+test methodology::tests::sourced_proposals_need_attribution_and_neutral_source_keeps_its_label ... ok
+test methodology::tests::undo_is_a_new_successor_command_and_retains_exact_retry_meaning ... ok
+test methodology::tests::validated_save_has_bounded_scope_revision_and_separate_activation ... ok
+test task::tests::diagnostics_are_fixed_secret_free_codes ... ok
+test tests::diagnostics_are_allowlisted_codes_only ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/debug/deps/zobba_cli-f1ecc29fddaf337c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/zobba_domain-616580de12395370)
+
+running 79 tests
+test evidence::tests::preview_is_inert_bounded_and_utf8_safe ... ok
+test identity::tests::administrative_roles_never_imply_audit_authority ... ok
+test identity::tests::scope_bounds_match_unicode_and_ascii_contracts ... ok
+test membership::tests::commands_are_bounded_and_roles_do_not_invent_authority ... ok
+test membership::tests::expiry_bounds_match_the_owned_wire_timestamp_range ... ok
+test membership::tests::recipient_identity_preserves_local_case_and_rejects_ambiguous_addresses ... ok
+test methodology::tests::adopted_empty_and_default_only_overrides_cannot_relabel_neutral_requirements ... ok
+test methodology::tests::conditional_assignment_cannot_supply_its_own_missing_context ... ok
+test methodology::tests::equal_rank_overlap_is_explicit_and_independent_of_input_order ... ok
+test methodology::tests::exact_historical_template_survives_successor_without_reintroducing_old_policy ... ok
+test methodology::tests::historical_template_sources_respect_scope_and_availability ... ok
+test methodology::tests::label_only_adopted_override_preserves_substantive_neutral_standing ... ok
+test methodology::tests::labels_text_and_templates_share_rust_unicode_whitespace_edges ... ok
+test methodology::tests::neutral_defaults_cannot_hide_an_unresolved_conditional_assignment ... ok
+test methodology::tests::neutral_starter_and_incomplete_criteria_do_not_claim_firm_adoption ... ok
+test methodology::tests::optional_fields_replace_individually_without_erasing_other_inheritance ... ok
+test methodology::tests::optional_task_context_uses_firm_defaults_and_explicit_context_wins ... ok
+test methodology::tests::partial_adoption_identifies_remaining_neutral_fields_without_new_completeness_gate ... ok
+test methodology::tests::recall_blocks_affected_basis_and_foreign_scope_never_contributes ... ok
+test methodology::tests::replaced_optional_neutral_fields_do_not_taint_adopted_requirement_provenance ... ok
+test methodology::tests::same_template_version_cannot_silently_change_content_in_narrower_scope ... ok
+test methodology::tests::scoped_partial_override_preserves_every_inherited_mandatory_field ... ok
+test methodology::tests::straddling_business_period_is_incomplete_instead_of_selecting_one_policy ... ok
+test methodology::tests::template_copy_preserves_original_neutrality_and_recall_independent_of_input_order ... ok
+test methodology::tests::template_prose_preserves_multiline_layout_without_accepting_other_controls ... ok
+test methodology::tests::template_reference_binds_exact_content_and_missing_version_is_incomplete ... ok
+test methodology::tests::unavailable_future_assignment_does_not_displace_historical_business_policy ... ok
+test methodology::tests::unrelated_recalled_historical_template_does_not_restrict_current_basis ... ok
+test methodology::tests::validates_real_business_dates_and_complete_ordered_periods ... ok
+test methodology::tests::validates_stable_ids_duplicates_unicode_and_aggregate_size ... ok
+test permissions::capability_tests::alternative_rule_recipient_and_classification_correlation_survives_intersection ... ok
+test permissions::capability_tests::attachment_free_possibility_does_not_prove_required_attachment_coverage ... ok
+test permissions::capability_tests::changed_actor_scope_task_and_same_version_tampering_are_never_compatible ... ok
+test permissions::capability_tests::complete_operation_corpus_obeys_exact_and_projected_cross_contract ... ok
+test permissions::capability_tests::complete_pair_integrity_is_checked_before_interpreting_revocation ... ok
+test permissions::capability_tests::current_widening_never_replaces_accepted_bounds_and_standing_is_only_advisory ... ok
+test permissions::capability_tests::early_policy_refusal_preserves_the_unused_request_budget ... ok
+test permissions::capability_tests::equal_action_does_not_join_different_whole_tuples ... ok
+test permissions::capability_tests::every_accepted_and_current_hard_bound_can_remove_candidates ... ok
+test permissions::capability_tests::every_ancestor_expiry_sets_the_refresh_deadline_and_expires_at_the_boundary ... ok
+test permissions::capability_tests::every_source_binding_component_and_trusted_adapter_constraint_is_checked ... ok
+test permissions::capability_tests::exhausted_projection_budget_retains_structural_and_source_refusals ... ok
+test permissions::capability_tests::explicit_comparison_and_region_exhaustion_are_unavailable_never_forbidden ... ok
+test permissions::capability_tests::live_test_and_audit_account_boundaries_match_exact_evaluation ... ok
+test permissions::capability_tests::malformed_needs_and_untrusted_time_are_unavailable ... ok
+test permissions::capability_tests::optional_tuple_fields_narrow_and_never_create_authority ... ok
+test permissions::capability_tests::request_work_budget_is_shared_across_needs_and_charges_only_consumed_work ... ok
+test permissions::capability_tests::revocations_replaced_identities_and_incomplete_chains_fail_closed ... ok
+test permissions::capability_tests::same_tuple_dominance_requires_both_sets_and_a_later_deadline ... ok
+test permissions::capability_tests::send_requires_a_common_recipient_even_when_details_are_unknown ... ok
+test permissions::capability_tests::unrelated_account_alternatives_do_not_hide_the_eliminating_hard_bound ... ok
+test permissions::capability_tests::valid_policy_alternatives_can_exceed_the_fixed_projection_capacity ... ok
+test permissions::tests::accepted_scope_actor_task_and_immutable_versions_cannot_be_substituted ... ok
+test permissions::tests::all_three_purposes_need_their_verified_account_boundary ... ok
+test permissions::tests::audit_coordination_never_grants_operational_resource_writes ... ok
+test permissions::tests::complete_delegation_chain_is_ordered_versioned_bounded_and_revocable ... ok
+test permissions::tests::decisions_bind_every_material_field_revision_and_expiry ... ok
+test permissions::tests::every_required_layer_narrows_immediately_and_widening_cannot_enlarge_acceptance ... ok
+test permissions::tests::expiry_and_attachment_recipient_bounds_apply_to_all_policy_layers ... ok
+test permissions::tests::live_write_and_unrestricted_takeover_remain_hard_denials ... ok
+test permissions::tests::malformed_unbounded_and_ambiguous_requests_have_no_canonical_encoding ... ok
+test permissions::tests::source_facts_never_infer_completion_or_absence_from_pending ... ok
+test permissions::tests::test_labels_do_not_replace_verification_scope_or_cleanup ... ok
+test skills::tests::applicability_distinguishes_missing_context_disjoint_and_straddling_periods ... ok
+test skills::tests::bounded_aggregate_metadata_cannot_bypass_resource_limits ... ok
+test skills::tests::canonical_framing_distinguishes_delimiter_like_content_without_normalization ... ok
+test skills::tests::manifest_resources_are_exact_inert_utf8_not_executable_instructions ... ok
+test skills::tests::method_compatibility_requires_every_exact_current_version_not_latest_or_candidates ... ok
+test skills::tests::narrowing_is_exact_ordered_and_cannot_supply_source_qualification ... ok
+test skills::tests::pure_techniques_can_be_inspected_with_neutral_or_incomplete_methods ... ok
+test skills::tests::resource_byte_limits_and_aggregate_bounds_include_multibyte_unicode ... ok
+test skills::tests::resource_controls_preserve_layout_and_reject_binary_or_unsafe_control_bytes ... ok
+test skills::tests::source_license_revision_and_all_resource_meaning_are_digest_inputs ... ok
+test skills::tests::stable_ids_duplicates_unknown_tools_and_revision_normalization_are_rejected ... ok
+test skills::tests::tool_vocabulary_is_finite_versioned_and_never_mints_an_operation ... ok
+test task::tests::command_matrix_requires_exact_target_and_content ... ok
+test task::tests::exact_text_is_retained_but_invalid_or_unbounded_content_is_refused ... ok
+test task::tests::explicit_create_and_guide_context_is_exact_meaning_and_never_chat_policy ... ok
+test task::tests::resumption_requires_explicit_command_and_observed_cessation ... ok
+
+test result: ok. 79 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.93s
+
+     Running unittests src/lib.rs (target/debug/deps/zobba_infrastructure-033f05ca12fe4905)
+
+running 24 tests
+test evidence::s3::tests::namespace_covers_effective_endpoint_and_bucket ... ok
+test evidence::s3::tests::namespace_preserves_sdk_default_explicit_style_and_slash_destinations ... ok
+test evidence::s3::tests::namespace_tracks_sdk_service_endpoint_priority_and_express_selection ... ok
+test evidence::s3::tests::production_environment_cannot_disable_signing_or_transport_guards ... ok
+test evidence::s3::tests::stream_cap_applies_without_trusting_metadata ... ok
+test evidence::s3::tests::strict_builder_overrides_only_unsafe_switches ... ok
+test identity::tests::random_tokens_are_opaque_distinct_and_hashes_do_not_store_the_secret ... ok
+test oidc::tests::configuration_keeps_destinations_explicit_and_https ... ok
+test oidc::tests::fixture_ca_requires_deliberate_local_and_cookie_isolated_hosts ... ok
+test oidc::tests::http_rejects_untrusted_url_and_method_before_network_io ... ok
+test oidc::tests::pinned_claim_decoder_keeps_optional_evidence_and_malformed_types_distinct ... ok
+test oidc::tests::protocol_inputs_have_rfc_and_resource_bounds ... ok
+test oidc::tests::public_diagnostics_are_fixed_and_have_no_provider_source ... ok
+test oidc::tests::signing_key_size_and_count_bound_synchronous_verification_work ... ok
+test oidc::tests::verification_keys_expire_at_five_minutes_without_extending_on_attempt ... ok
+test skills::tests::distinct_queries_exhaust_one_shared_budget_without_reviving_or_denial ... ok
+test skills::tests::equivalent_queries_share_work_across_manifest_and_need_display_ids ... ok
+test skills::tests::exact_source_binding_participates_in_capability_cache_identity ... ok
+test skills::tests::exhausted_request_budget_preserves_catalog_metadata_and_selection_receipt ... ok
+test skills::tests::fresh_task_inspections_do_not_reuse_prior_source_or_budget_results ... ok
+test skills::tests::history_reuses_version_inspection_but_fences_each_selection_basis ... ok
+test tests::interpolated_role_is_a_bounded_identifier ... ok
+test tests::rejects_implicit_or_overridden_database_identity ... ok
+test tests::supports_only_postgres_18 ... ok
+
+test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.90s
+
+     Running tests/admin_continuity.rs (target/debug/deps/admin_continuity-b18f1a4a724da935)
+
+running 3 tests
+test postgres_admin_continuity_contract ... ok
+test support::destructive_guard_refuses_development_and_endpoint_aliases ... ok
+test support::partial_dns_overlap_refuses_test_pair_but_still_blocks_development_overlap ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.03s
+
+     Running tests/bootstrap.rs (target/debug/deps/bootstrap-ff1d555326359bc0)
+
+running 3 tests
+test bootstrap_contract ... ok
+test support::destructive_guard_refuses_development_and_endpoint_aliases ... ok
+test support::partial_dns_overlap_refuses_test_pair_but_still_blocks_development_overlap ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 295.84s
+
+     Running tests/conversation.rs (target/debug/deps/conversation-e58db316e87238cc)
+
+running 3 tests
+test scoped_consistent_conversation_history_and_bounded_recovery ... ok
+test support::destructive_guard_refuses_development_and_endpoint_aliases ... ok
+test support::partial_dns_overlap_refuses_test_pair_but_still_blocks_development_overlap ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 33.42s
+
+     Running tests/evidence.rs (target/debug/deps/evidence-72100568b273e143)
+
+running 3 tests
+test immutable_scoped_custody_replay_and_post_lock_session_fence ... ok
+test support::destructive_guard_refuses_development_and_endpoint_aliases ... ok
+test support::partial_dns_overlap_refuses_test_pair_but_still_blocks_development_overlap ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.98s
+
+     Running tests/evidence_s3.rs (target/debug/deps/evidence_s3-9c282a1fedf9056e)
+
+running 23 tests
+test absent_latest_after_409_or_412_retries_without_overwriting ... ok
+test adapter_does_not_acquire_a_second_internal_admission_lane ... ok
+test body_claim_mismatch_and_oversize_fail_before_network_io ... ok
+test both_uncommitted_create_failures_return_no_object_or_receipt ... ok
+test complete_get_body_and_bucket_probe_obey_request_deadlines ... ok
+test conditional_create_is_signed_versioned_and_independently_read_back ... ok
+test corruption_or_truncation_never_registers_or_discloses_bytes ... ok
+test existing_exact_bytes_reconcile_but_changed_bytes_never_overwrite ... ok
+test fixture_connector_ignores_hostile_proxy_environment_in_child_process ... ok
+test fixture_transport_requires_numeric_loopback_without_url_extras ... ok
+test invalid_ids_versions_and_changed_namespace_are_refused_before_network ... ok
+test later_corruption_is_refused_before_original_disclosure ... ok
+test lost_put_ack_is_reconciled_with_head_and_pinned_read_without_second_write ... ok
+test missing_bucket_is_unavailable_and_no_put_is_attempted ... ok
+test missing_key_with_healthy_bucket_is_explicitly_absent ... ok
+test missing_or_literal_null_version_never_registers ... ok
+test newer_latest_object_cannot_substitute_a_registered_original ... ok
+test one_uncommitted_put_failure_retries_the_same_conditional_key ... ok
+test oversized_response_metadata_is_refused_before_body_collection ... ok
+test registered_retry_reads_same_version_without_another_put ... ok
+test repeated_409_or_412_without_commit_returns_no_receipt ... ok
+test returned_version_must_match_the_explicitly_requested_version ... ok
+test ten_mib_is_inclusive_for_put_and_verified_get ... ok
+
+test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.76s
+
+     Running tests/fixture.rs (target/debug/deps/fixture-9f0c0f59751198e8)
+
+running 4 tests
+test local_seed_preserves_deleted_and_disabled_authority ... ok
+test local_seed_refuses_nonlocal_destinations_before_connecting ... ok
+test support::destructive_guard_refuses_development_and_endpoint_aliases ... ok
+test support::partial_dns_overlap_refuses_test_pair_but_still_blocks_development_overlap ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.30s
+
+     Running tests/identity.rs (target/debug/deps/identity-5e4637c9f22b10bb)
+
+running 3 tests
+test postgres_identity_contract ... ok
+test support::destructive_guard_refuses_development_and_endpoint_aliases ... ok
+test support::partial_dns_overlap_refuses_test_pair_but_still_blocks_development_overlap ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.84s
+
+     Running tests/membership.rs (target/debug/deps/membership-e241e1764b1bd0e6)
+
+running 3 tests
+test postgres_membership_contract ... ok
+test support::destructive_guard_refuses_development_and_endpoint_aliases ... ok
+test support::partial_dns_overlap_refuses_test_pair_but_still_blocks_development_overlap ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 31.51s
+
+     Running tests/methodology.rs (target/debug/deps/methodology-586bd4853f6ecd24)
+
+running 3 tests
+test postgres_methodology_contract ... ok
+test support::destructive_guard_refuses_development_and_endpoint_aliases ... ok
+test support::partial_dns_overlap_refuses_test_pair_but_still_blocks_development_overlap ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 13.78s
+
+     Running tests/oidc_protocol.rs (target/debug/deps/oidc_protocol-395338dcb1cf1ab9)
+
+running 14 tests
+test actual_provider_claim_and_algorithm_failures_do_not_refresh_keys ... ok
+test actual_provider_discovery_chunked_bound ... ok
+test actual_provider_discovery_content_length_bound ... ok
+test actual_provider_expired_cache_refresh_failure_is_closed_and_bounded ... ok
+test actual_provider_jwks_chunked_bound ... ok
+test actual_provider_jwks_content_length_bound ... ok
+test actual_provider_protocol_and_bounded_transport_contract ... ok
+test actual_provider_recent_expiry_is_rejected_independently_of_issued_at ... ok
+test actual_provider_retired_key_is_refused_after_cache_expiry ... ok
+test actual_provider_same_kid_replacement_and_invalid_signatures_are_coalesced ... ok
+test actual_provider_token_chunked_bound ... ok
+test actual_provider_token_content_length_bound ... ok
+test signed_malformed_recipient_claim_types_fail_closed_without_parser_fallback ... ok
+test signed_verified_recipient_claims_are_optional_and_preserve_local_part_case ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 31.49s
+
+     Running tests/operations.rs (target/debug/deps/operations-c7088e9f0be4deb0)
+
+running 5 tests
+test maximal_valid_owned_wire_values_fit_durable_byte_envelopes ... ok
+test owned_storage_roundtrips_and_refuses_ambiguous_durable_fields ... ok
+test standing_permissions_exact_operations_and_transaction_cutoffs ... ok
+test support::destructive_guard_refuses_development_and_endpoint_aliases ... ok
+test support::partial_dns_overlap_refuses_test_pair_but_still_blocks_development_overlap ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 48.86s
+
+     Running tests/scope.rs (target/debug/deps/scope-6f6a6a6a820fd7f3)
+
+running 3 tests
+test scoped_authority_and_pool_contract ... ok
+test support::destructive_guard_refuses_development_and_endpoint_aliases ... ok
+test support::partial_dns_overlap_refuses_test_pair_but_still_blocks_development_overlap ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.27s
+
+     Running tests/skills.rs (target/debug/deps/skills-91e0ff8a6821a6fc)
+
+running 3 tests
+test postgres_skills_contract ... ok
+test support::destructive_guard_refuses_development_and_endpoint_aliases ... ok
+test support::partial_dns_overlap_refuses_test_pair_but_still_blocks_development_overlap ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 19.42s
+
+     Running tests/task.rs (target/debug/deps/task-56a1e5fc6418079b)
+
+running 3 tests
+test durable_task_commands_and_fencing_contract ... ok
+test support::destructive_guard_refuses_development_and_endpoint_aliases ... ok
+test support::partial_dns_overlap_refuses_test_pair_but_still_blocks_development_overlap ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 25.10s
+
+     Running unittests src/lib.rs (target/debug/deps/zobba_worker-dfc0fe1d68e8f787)
+
+running 7 tests
+test diagnostics::tests::repeated_errors_are_counted_without_flooding_or_dynamic_content ... ok
+test gateway::tests::blackholed_source_is_bounded_and_stays_unknown ... ok
+test gateway::tests::qualification_configuration_refuses_remote_and_unspecified_addresses ... ok
+test gateway::tests::recovered_receipt_custody_cannot_dispatch ... ok
+test supervision::tests::coordinator_panic_withdraws_readiness_before_join_is_handled ... ok
+test supervision::tests::live_http_service_exits_when_its_coordinator_unexpectedly_returns ... ok
+test supervision::tests::unexpected_coordinator_exit_withdraws_readiness_and_stops_service ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.30s
+
+     Running unittests src/main.rs (target/debug/deps/zobba_worker-2d756b99dce8fdcf)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/durable_process.rs (target/debug/deps/durable_process-1a4ca419750677bd)
+
+running 3 tests
+test durable_controls_crash_recovery_and_revocation_use_real_children ... ok
+test support::destructive_guard_refuses_development_and_endpoint_aliases ... ok
+test support::partial_dns_overlap_refuses_test_pair_but_still_blocks_development_overlap ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 22.61s
+
+     Running tests/gateway_process.rs (target/debug/deps/gateway_process-27794cc680416712)
+
+running 4 tests
+test gateway_worker_helper ... ignored, owned helper process, invoked by gateway test with guarded fixture inputs
+test owned_gateway_process_recovery_preserves_source_facts_and_fences_late_sends ... ok
+test support::destructive_guard_refuses_development_and_endpoint_aliases ... ok
+test support::partial_dns_overlap_refuses_test_pair_but_still_blocks_development_overlap ... ok
+
+test result: ok. 3 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 14.06s
+
+     Running tests/inert_process.rs (target/debug/deps/inert_process-ce39af6920349c8a)
+
+running 12 tests
+test child_mode_rejects_invalid_process_tokens_and_extra_arguments ... ok
+test child_mode_rejects_malformed_or_unbounded_duration ... ok
+test child_mode_runs_without_database_configuration ... ok
+test configuration_bounds_execution_duration ... ok
+test missing_executable_reports_not_started ... ok
+test observed_process::actual_child_completion_remains_responsive_while_authority_is_stalled ... ok
+test observed_process::actual_child_shutdown_remains_responsive_while_authority_is_stalled ... ok
+test observed_process::completed_is_reported_only_after_actual_child_is_joined ... ok
+test observed_process::revoked_authority_cancels_and_joins_the_exact_child ... ok
+test observed_process::shutdown_cancels_and_joins_the_exact_child ... ok
+test shutdown_already_requested_reports_not_started ... ok
+test unsuccessful_actual_child_exit_is_not_completion ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.93s
+
+     Running tests/reliability_process.rs (target/debug/deps/reliability_process-c4ab474b02505c61)
+
+running 4 tests
+test production_process_faults_and_blackholed_transport_preserve_exact_facts ... worker: receipt_write_failed
+worker: discovery_failed
+worker: coordination_failed
+worker: discovery_failed
+worker: consumption_uncertain
+worker: discovery_failed
+worker: delivery_release_failed
+worker: discovery_failed
+worker: receipt_write_failed
+worker: discovery_failed
+worker: reconciliation_failed
+worker: discovery_failed
+worker: receipt_write_failed
+worker: receipt_write_failed
+worker: receipt_retries_exhausted
+ok
+test reliability_worker_helper ... ignored, test-only helper subprocess; the parent supplies guarded configuration
+test support::destructive_guard_refuses_development_and_endpoint_aliases ... ok
+test support::partial_dns_overlap_refuses_test_pair_but_still_blocks_development_overlap ... ok
+
+test result: ok. 3 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 61.75s
+
+   Doc-tests zobba_api
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests zobba_application
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests zobba_domain
+
+running 2 tests
+test crates/domain/src/permissions.rs - permissions::ConsumedOperation (line 971) - compile fail ... ok
+test crates/domain/src/task.rs - task::ConsumedAttempt (line 258) - compile fail ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
+   Doc-tests zobba_infrastructure
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests zobba_worker
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

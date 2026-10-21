@@ -1,0 +1,23 @@
+
+Running 16 tests using 1 worker
+
+(node:409439) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   1 tests/browser/membership.spec.ts:96:1 › Admin-only has separate keyboard-accessible membership, two current-version Saves and no audit authority (6.3s)
+  ✓   2 tests/browser/membership.spec.ts:144:1 › lost invitation and acceptance acknowledgements retry exactly; acceptance receipt cannot regrant later revoked access (9.8s)
+  ✓   3 tests/browser/membership.spec.ts:199:1 › private invitation can be revoked, and the signed recipient receives an honest refusal (8.9s)
+  ✓   4 tests/browser/membership.spec.ts:213:1 › acceptance needs a fresh verified callback and rejects a different signed recipient (8.9s)
+  ✓   5 tests/browser/membership.spec.ts:235:1 › stale Save and the last Admin are refused without automatic overwrite (3.4s)
+  ✓   6 tests/browser/membership.spec.ts:253:1 › a combined role can narrow its own audit role while retaining only membership administration (3.9s)
+  ✓   7 tests/browser/membership.spec.ts:264:1 › replacing the account withdraws membership metadata and discards unsent invitation drafts (5.0s)
+  ✓   8 tests/browser/membership.spec.ts:295:1 › same-account session replacement clears drafts, private links and uncertain recovery without rebinding (20.9s)
+  ✓   9 tests/browser/membership.spec.ts:328:1 › same-document invitation navigation scrubs each secret and ignores a late previous preview (5.5s)
+  ✓  10 tests/browser/membership.spec.ts:362:1 › preview capacity, outage and timeout remain retryable connection states without suggesting reauthentication (13.8s)
+  ✓  11 tests/browser/membership.spec.ts:385:1 › new invitation fragments preserve pending, uncertain and completed sign-out guidance (5.1s)
+  ✓  12 tests/browser/membership.spec.ts:434:1 › expired membership is shown honestly and can be renewed or have its expiry explicitly cleared (3.0s)
+  ✓  13 tests/browser/membership.spec.ts:449:1 › multi-page member and invitation edits retain selections and preserve existing off-page assignments (5.8s)
+  ✓  14 tests/browser/membership.spec.ts:489:1 › legacy members with over 100 assignments preserve access during role edits and remove only selected scopes across pages (4.6s)
+  ✓  15 tests/browser/membership.spec.ts:511:1 › an opened legacy draft remains preserve-only when expiry changes 101 assignments to 100 on refresh (10.5s)
+  ✓  16 tests/browser/membership.spec.ts:541:1 › a loaded assignment that expires before Save stays expired until explicitly selected in a later draft (11.1s)
+
+  16 passed (2.4m)

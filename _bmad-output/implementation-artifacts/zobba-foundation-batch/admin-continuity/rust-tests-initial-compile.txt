@@ -1,0 +1,45 @@
+   Compiling zobba-infrastructure v0.1.0 (/workspace/intellifin-audit/zobba/crates/infrastructure)
+   Compiling zobba-application v0.1.0 (/workspace/intellifin-audit/zobba/crates/application)
+   Compiling zobba-domain v0.1.0 (/workspace/intellifin-audit/zobba/crates/domain)
+   Compiling zobba-api v0.1.0 (/workspace/intellifin-audit/zobba/crates/api)
+   Compiling zobba-worker v0.1.0 (/workspace/intellifin-audit/zobba/crates/worker)
+error: implementation of `Executor` is not general enough
+    --> crates/infrastructure/tests/bootstrap.rs:1490:21
+     |
+1490 |     let upgrading = tokio::spawn(async move { migrate(upgrade_url.as_str(), &role_copy).await });
+     |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ implementation of `Executor` is not general enough
+     |
+     = note: `Executor<'_>` would have to be implemented for the type `&mut PgConnection`
+     = note: ...but `Executor<'0>` is actually implemented for the type `&'0 mut PgConnection`, for some specific lifetime `'0`
+
+error: implementation of `Send` is not general enough
+    --> crates/infrastructure/tests/bootstrap.rs:1490:21
+     |
+1490 |       let upgrading = tokio::spawn(async move { migrate(upgrade_url.as_str(), &role_copy).await });
+     |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ implementation of `Send` is not general enough
+     |
+    ::: crates/infrastructure/src/lib.rs:612:83
+     |
+ 612 |   pub async fn migrate(url: &str, runtime_role: &str) -> Result<(), BootstrapError> {
+     |  ___________________________________________________________________________________-
+ 613 | |     if !valid_role_name(runtime_role) {
+ 614 | |         return Err(BootstrapError::InvalidConfiguration);
+...    |
+ 631 | |     .map_err(|_| BootstrapError::DatabaseUnavailable)?
+ 632 | | }
+     | |_- this async fn captures a value whose type is not `Send`
+     |
+     = note: `Send` would have to be implemented for the type `&str`
+     = note: ...but `Send` is actually implemented for the type `&'0 str`, for some specific lifetime `'0`
+
+error: implementation of `sqlx::Acquire` is not general enough
+    --> crates/infrastructure/tests/bootstrap.rs:1490:21
+     |
+1490 |     let upgrading = tokio::spawn(async move { migrate(upgrade_url.as_str(), &role_copy).await });
+     |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ implementation of `sqlx::Acquire` is not general enough
+     |
+     = note: `sqlx::Acquire<'_>` would have to be implemented for the type `&mut PgConnection`
+     = note: ...but `sqlx::Acquire<'0>` is actually implemented for the type `&'0 mut PgConnection`, for some specific lifetime `'0`
+
+error: could not compile `zobba-infrastructure` (test "bootstrap") due to 3 previous errors
+warning: build failed, waiting for other jobs to finish...

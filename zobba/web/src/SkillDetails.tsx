@@ -1,0 +1,28 @@
+import type { SkillInspection, SkillVersion } from './skills';
+import { skillStatusLabels } from './skills';
+
+export function SkillDetails({ version }: { version: SkillVersion }) {
+  const { manifest, assignment, applicability } = version.command;
+  return <details className="skill-details"><summary>Inspect {manifest.name} inputs, provenance and resources</summary>
+    <p className="retained-text">{manifest.description}</p>
+    <dl><div><dt>Exact technique</dt><dd>{manifest.id}@{manifest.version}</dd></div><div><dt>Catalog identity</dt><dd>{version.id}</dd></div><div><dt>Manifest SHA-256</dt><dd className="skill-digest">{version.digest}</dd></div>
+      <div><dt>Installed by</dt><dd>{version.actor_id} · {new Date(version.installed_at * 1000).toLocaleString()}</dd></div><div><dt>Source</dt><dd>{manifest.source.reference}</dd></div><div><dt>Source revision</dt><dd>{manifest.source.revision}</dd></div><div><dt>License</dt><dd>{manifest.source.license}</dd></div>
+      <div><dt>Current recorded status</dt><dd>{version.status_event.status} · revision {version.status_event.revision} · recorded by {version.status_event.actor_id} on {new Date(version.status_event.recorded_at * 1000).toLocaleString()}</dd></div>
+      <div><dt>Status explanation</dt><dd className="retained-text">{version.status_event.reason ?? 'Initial installation status'}</dd></div>
+      <div><dt>Availability scope</dt><dd>{assignment.kind}{assignment.client_id ? ` · client ${assignment.client_id}` : ''}{assignment.engagement_id ? ` · engagement ${assignment.engagement_id}` : ''}</dd></div>
+      <div><dt>Business applicability</dt><dd>{applicability.audit_area ?? 'All audit areas'} · {applicability.period_start ? `${applicability.period_start} to ${applicability.period_end}` : 'All business periods'}</dd></div>
+      <div><dt>Required exact methodology versions</dt><dd>{manifest.method_version_ids.join(', ') || 'Independent technique; no exact method version required'}</dd></div></dl>
+    <p className="scope-note">Recorded Admin installation and exact provenance do not claim independent content certification. Scripts remain inert text.</p>
+    <h5>Declared inputs</h5>{manifest.inputs.length ? <ul>{manifest.inputs.map(input => <li key={input.id}>{input.label} · {input.required ? 'Required input' : 'Optional input'} · {input.id}</li>)}</ul> : <p>No material inputs declared.</p>}
+    <h5>Expected outputs</h5>{manifest.outputs.length ? <ul>{manifest.outputs.map((output, index) => <li key={index}>{output}</li>)}</ul> : <p>No outputs declared.</p>}
+    <h5>Declared tool and effect needs</h5>{manifest.needs.length ? <ul>{manifest.needs.map(need => <li key={need.id}><strong>{need.tool}</strong> · {need.id}<dl>{(['account_id', 'environment_id', 'destination', 'resource_id'] as const).map(field => need[field] ? <div key={field}><dt>{field.replaceAll('_', ' ')}</dt><dd>{need[field]}</dd></div> : null)}</dl><p>Recipients: {need.recipients.join(', ') || 'Exact recipients unresolved'} · attachment classifications: {need.attachment_classifications.join(', ') || 'Exact classifications unresolved'} · {need.requires_attachments ? 'Attachments required' : 'Attachment-free details possible'}</p></li>)}</ul> : <p>Pure technique: no tools or effects requested.</p>}
+    <h5>Immutable resources</h5>{manifest.resources.length ? manifest.resources.map(resource => <details key={resource.id}><summary>{resource.id} · {resource.kind === 'script' ? 'Inert script' : 'Text resource'}</summary><p className="skill-digest">SHA-256 {version.resource_digests.find(value => value.id === resource.id)?.digest}</p><pre tabIndex={0} className="skill-resource">{resource.content}</pre></details>) : <p>No resources installed.</p>}
+  </details>;
+}
+export function SkillEligibility({ inspection }: { inspection: SkillInspection }) {
+  return <section className="skill-eligibility" aria-label="Current skill eligibility"><p><strong>{skillStatusLabels[inspection.status]}</strong> · {inspection.reason}</p>
+    <p className="scope-note">{inspection.authority_actor_id ? `Capability inspection uses this Task’s accepted authority for ${inspection.authority_actor_id}.` : 'No accepted Task authority is used for this pure technique, or authority is unavailable as explained above.'} Selection records a technique choice. Exact actions still require current admission and any decision; no execution is performed.</p>
+    {inspection.needs.length ? <ul>{inspection.needs.map(need => <li key={need.id}>{need.tool} · {need.status === 'compatible_needs_exact_details' ? 'Possibilities need exact action details' : need.status === 'forbidden' ? 'Forbidden' : 'Unavailable'}: {need.reason}{need.blocking_bound ? <p>Blocking bound: {need.blocking_bound.accepted ? 'Accepted Task authority' : 'Current authority'} · {need.blocking_bound.kind}{need.blocking_bound.delegation_depth === null ? '' : ` · delegation depth ${need.blocking_bound.delegation_depth} (root is 0)`}.</p> : null}{need.refresh_at == null ? '' : ` Refresh by ${new Date(need.refresh_at * 1000).toLocaleString()}; revocation can invalidate earlier.`}</li>)}</ul> : null}
+    <details><summary>Eligibility observation</summary><p>Observed {new Date(inspection.observed_at * 1000).toLocaleString()} · catalog revision {inspection.catalog_revision} · method binding {inspection.methodology_binding_id} · Task execution epoch {inspection.execution_epoch}</p><p className="skill-digest">Dependency fingerprint {inspection.dependency_fingerprint}</p><p>This observation is not an authority grant. Current checks run again before selection or new use.</p></details>
+  </section>;
+}

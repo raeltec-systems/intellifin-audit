@@ -1,0 +1,20 @@
+{
+  "requested_url": "https://platform.claude.com/docs/en/api/messages/create",
+  "effective_url": "https://platform.claude.com/docs/en/api/messages/create",
+  "retrieved_at_utc": "2026-10-03T04:29:19.648246+00:00",
+  "completed_at_utc": "2026-10-03T04:29:20.302638+00:00",
+  "method": "GET",
+  "curl_exit_code": 0,
+  "http_status": 200,
+  "content_type": "text/html; charset=utf-8",
+  "ssl_verify_result": 0,
+  "tls_verification_disabled": false,
+  "auth_headers_added": false,
+  "body_file": "anthropic-messages.html",
+  "bytes": 1526200,
+  "sha256": "afc9343d6baedcee42a14bc4bd000ebe67e5d85de269d8c646b99939563ee8f3",
+  "stderr": "",
+  "readable_extraction_file": "/tmp/zobba-story-22-1/public-source-receipts/anthropic-messages.txt",
+  "readable_extraction_sha256": "4b8faef877c082feb10fb3c5d60d0491ecefd97be01dd0646920f3b9788f748e",
+  "raw_body_in_checkpoint": false
+}

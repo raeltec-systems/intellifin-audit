@@ -1,0 +1,5 @@
+    Checking zobba-infrastructure v0.1.0 (/workspace/intellifin-audit/zobba/crates/infrastructure)
+    Checking zobba-api v0.1.0 (/workspace/intellifin-audit/zobba/crates/api)
+    Checking zobba-worker v0.1.0 (/workspace/intellifin-audit/zobba/crates/worker)
+    Checking zobba-cli v0.1.0 (/workspace/intellifin-audit/zobba/crates/cli)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 30.99s

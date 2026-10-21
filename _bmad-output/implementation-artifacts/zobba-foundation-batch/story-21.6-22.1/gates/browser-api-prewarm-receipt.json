@@ -1,0 +1,24 @@
+{
+  "gate": "browser-api-prewarm",
+  "command": [
+    "cargo",
+    "test",
+    "--locked",
+    "-p",
+    "zobba-api",
+    "--test",
+    "evidence_fixture",
+    "--no-run"
+  ],
+  "working_directory": "zobba",
+  "started_at": "2026-10-03T05:20:51.955469+00:00",
+  "ended_at": "2026-10-03T05:21:29.560593+00:00",
+  "duration_seconds": 37.605,
+  "exit": 0,
+  "source_before": "browser-api-prewarm-source-before.json",
+  "source_after": "browser-api-prewarm-source-after.json",
+  "source_unchanged": true,
+  "changed_source_paths": [],
+  "log": "browser-api-prewarm.log",
+  "log_sha256": "915cf9c91c01b60313e6e63f04b2bcf7f5856e7fdc90315808fd7eada601bb92"
+}

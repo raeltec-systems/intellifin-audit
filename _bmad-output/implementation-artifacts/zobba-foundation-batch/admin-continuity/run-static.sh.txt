@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+. /workspace/zobba-build-tools/activate-tests.sh
+cd /workspace/intellifin-audit/zobba
+run() {
+  local name="$1"
+  shift
+  local result=0
+  "$@" > "/tmp/zobba-admin-continuity/${name}.txt" 2>&1 || result=$?
+  printf '%s\n' "$result" > "/tmp/zobba-admin-continuity/${name}.exit"
+  return "$result"
+}
+run fmt-complete cargo fmt --all -- --check
+run clippy-complete cargo clippy --workspace --all-targets --locked --offline -- -D warnings
+run build-complete cargo build --workspace --locked --offline
+run web-check-final pnpm check
+run web-build-final pnpm build

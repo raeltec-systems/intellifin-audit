@@ -1,0 +1,14 @@
+   Compiling zobba-application v0.1.0 (/workspace/intellifin-audit/zobba/crates/application)
+   Compiling zobba-infrastructure v0.1.0 (/workspace/intellifin-audit/zobba/crates/infrastructure)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.62s
+     Running unittests src/lib.rs (target/debug/deps/zobba_infrastructure-667f7288055a224c)
+
+running 6 tests
+test evidence::s3::tests::namespace_covers_effective_endpoint_and_bucket ... ok
+test evidence::s3::tests::stream_cap_applies_without_trusting_metadata ... ok
+test evidence::s3::tests::strict_builder_overrides_only_unsafe_switches ... ok
+test evidence::s3::tests::production_environment_cannot_disable_signing_or_transport_guards ... ok
+test evidence::s3::tests::namespace_tracks_sdk_service_endpoint_priority_and_express_selection ... ok
+test evidence::s3::tests::namespace_preserves_sdk_default_explicit_style_and_slash_destinations ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 12 filtered out; finished in 0.78s

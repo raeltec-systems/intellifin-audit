@@ -1,0 +1,106 @@
+$ playwright test evidence-unicode.spec.ts --workers=1 --retries=0
+
+Running 3 tests using 1 worker
+
+(node:540665) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  1 tests/browser/evidence-unicode.spec.ts:169:1 › mixed API-created normal and FEFF originals retain exact metadata and download bytes (15.3s)
+(node:540922) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  2 tests/browser/evidence-unicode.spec.ts:194:1 › mixed API-created pending reservations recover exact drafts after reload and register the same originals (16.7s)
+(node:541182) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  3 tests/browser/evidence-unicode.spec.ts:254:1 › new source entry trims Rust whitespace and preserves FEFF in all five assertion fields (15.0s)
+
+
+  1) tests/browser/evidence-unicode.spec.ts:169:1 › mixed API-created normal and FEFF originals retain exact metadata and download bytes 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByRole('heading', { name: 'Registered originals', exact: true })
+    Expected: visible
+    Timeout: 12000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 12000ms
+      - waiting for getByRole('heading', { name: 'Registered originals', exact: true })
+
+
+      64 | async function openEvidence(page: Page) {
+      65 |   await page.getByRole('button', { name: 'Evidence', exact: true }).click();
+    > 66 |   await expect(page.getByRole('heading', { name: 'Registered originals', exact: true })).toBeVisible();
+         |                                                                                          ^
+      67 | }
+      68 | async function reloadEvidence(page: Page) {
+      69 |   await page.reload();
+        at openEvidence (/workspace/intellifin-audit/zobba/web/tests/browser/evidence-unicode.spec.ts:66:90)
+        at /workspace/intellifin-audit/zobba/web/tests/browser/evidence-unicode.spec.ts:178:3
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../../../tmp/zobba-21-1-unicode/negative-browser-results/evidence-unicode-mixed-API-b7661-metadata-and-download-bytes/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../../../tmp/zobba-21-1-unicode/negative-browser-results/evidence-unicode-mixed-API-b7661-metadata-and-download-bytes/error-context.md
+
+    Error Context: ../../../../tmp/zobba-21-1-unicode/negative-browser-results/evidence-unicode-mixed-API-b7661-metadata-and-download-bytes/error-context.md
+
+  2) tests/browser/evidence-unicode.spec.ts:194:1 › mixed API-created pending reservations recover exact drafts after reload and register the same originals 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByRole('heading', { name: 'Registered originals', exact: true })
+    Expected: visible
+    Timeout: 12000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 12000ms
+      - waiting for getByRole('heading', { name: 'Registered originals', exact: true })
+
+
+      64 | async function openEvidence(page: Page) {
+      65 |   await page.getByRole('button', { name: 'Evidence', exact: true }).click();
+    > 66 |   await expect(page.getByRole('heading', { name: 'Registered originals', exact: true })).toBeVisible();
+         |                                                                                          ^
+      67 | }
+      68 | async function reloadEvidence(page: Page) {
+      69 |   await page.reload();
+        at openEvidence (/workspace/intellifin-audit/zobba/web/tests/browser/evidence-unicode.spec.ts:66:90)
+        at reloadEvidence (/workspace/intellifin-audit/zobba/web/tests/browser/evidence-unicode.spec.ts:71:3)
+        at /workspace/intellifin-audit/zobba/web/tests/browser/evidence-unicode.spec.ts:208:3
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../../../tmp/zobba-21-1-unicode/negative-browser-results/evidence-unicode-mixed-API-587ab-register-the-same-originals/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../../../tmp/zobba-21-1-unicode/negative-browser-results/evidence-unicode-mixed-API-587ab-register-the-same-originals/error-context.md
+
+    Error Context: ../../../../tmp/zobba-21-1-unicode/negative-browser-results/evidence-unicode-mixed-API-587ab-register-the-same-originals/error-context.md
+
+  3) tests/browser/evidence-unicode.spec.ts:254:1 › new source entry trims Rust whitespace and preserves FEFF in all five assertion fields 
+
+    TimeoutError: page.waitForResponse: Timeout 12000ms exceeded while waiting for event "response"
+
+      270 |   }
+      271 |   const file = { name: 'new-unicode-assertions.txt', mimeType: 'text/plain', buffer: Buffer.from('New source assertion original\n') };
+    > 272 |   const reserved = page.waitForResponse(response => response.request().method() === 'POST' &&
+          |                         ^
+      273 |     new URL(response.url()).pathname === '/api/engagements/engagement-a/evidence-reservations', { timeout: 12_000 });
+      274 |   await page.getByLabel('Original file (up to 10 MiB)', { exact: true }).setInputFiles(file);
+      275 |   await page.getByRole('button', { name: 'Acquire and verify original', exact: true }).click();
+        at /workspace/intellifin-audit/zobba/web/tests/browser/evidence-unicode.spec.ts:272:25
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../../../tmp/zobba-21-1-unicode/negative-browser-results/evidence-unicode-new-sourc-8da42-n-all-five-assertion-fields/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../../../tmp/zobba-21-1-unicode/negative-browser-results/evidence-unicode-new-sourc-8da42-n-all-five-assertion-fields/error-context.md
+
+    Error Context: ../../../../tmp/zobba-21-1-unicode/negative-browser-results/evidence-unicode-new-sourc-8da42-n-all-five-assertion-fields/error-context.md
+
+  3 failed
+    tests/browser/evidence-unicode.spec.ts:169:1 › mixed API-created normal and FEFF originals retain exact metadata and download bytes 
+    tests/browser/evidence-unicode.spec.ts:194:1 › mixed API-created pending reservations recover exact drafts after reload and register the same originals 
+    tests/browser/evidence-unicode.spec.ts:254:1 › new source entry trims Rust whitespace and preserves FEFF in all five assertion fields 
+[ELIFECYCLE] Command failed with exit code 1.

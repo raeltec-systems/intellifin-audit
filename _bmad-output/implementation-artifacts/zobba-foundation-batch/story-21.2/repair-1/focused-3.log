@@ -1,0 +1,20 @@
+   Compiling zobba-infrastructure v0.1.0 (/workspace/intellifin-audit/zobba/crates/infrastructure)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.67s
+     Running tests/methodology.rs (target/debug/deps/methodology-dfe0915004d61698)
+
+running 3 tests
+test postgres_methodology_contract ... ok
+test support::destructive_guard_refuses_development_and_endpoint_aliases ... ok
+test support::partial_dns_overlap_refuses_test_pair_but_still_blocks_development_overlap ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 15.57s
+
+     Running tests/task.rs (target/debug/deps/task-4e2ce7069d95ade2)
+
+running 3 tests
+test durable_task_commands_and_fencing_contract ... ok
+test support::destructive_guard_refuses_development_and_endpoint_aliases ... ok
+test support::partial_dns_overlap_refuses_test_pair_but_still_blocks_development_overlap ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 18.01s
+

@@ -1,0 +1,2 @@
+   Compiling zobba-api v0.1.0 (/workspace/intellifin-audit/zobba/crates/api)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 5.26s

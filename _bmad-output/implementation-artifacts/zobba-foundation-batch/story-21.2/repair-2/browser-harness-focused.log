@@ -1,0 +1,16 @@
+$ pnpm --filter @zobba/web test:browser tests/browser/conversation-review.spec.ts tests/browser/evidence.spec.ts -g 'same-scope checks|completed metadata|completed download' --reporter=list,/tmp/zobba-story-21-2/repair-2/cursor-reporter.cjs --workers=1 --retries=0
+$ playwright test tests/browser/conversation-review.spec.ts tests/browser/evidence.spec.ts -g 'same-scope checks|completed metadata|completed download' --reporter=list,/tmp/zobba-story-21-2/repair-2/cursor-reporter.cjs --workers=1 --retries=0
+
+Running 7 tests using 1 worker
+
+(node:832236) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/browser/conversation-review.spec.ts:73:1 › same-scope checks hide every protected surface and restore mounted Task controls, disclosure and focus (6.0s)
+  ✓  2 tests/browser/evidence.spec.ts:187:3 › completed metadata is withheld after same-actor session replacement (6.7s)
+  ✓  3 tests/browser/evidence.spec.ts:209:3 › completed download creates no Blob URL after same-actor session replacement (5.3s)
+  ✓  4 tests/browser/evidence.spec.ts:187:3 › completed metadata is withheld after same-engagement actor replacement (6.4s)
+  ✓  5 tests/browser/evidence.spec.ts:209:3 › completed download creates no Blob URL after same-engagement actor replacement (6.5s)
+  ✓  6 tests/browser/evidence.spec.ts:187:3 › completed metadata is withheld after foreign-scope account replacement (4.4s)
+  ✓  7 tests/browser/evidence.spec.ts:209:3 › completed download creates no Blob URL after foreign-scope account replacement (5.0s)
+
+  7 passed (50.1s)

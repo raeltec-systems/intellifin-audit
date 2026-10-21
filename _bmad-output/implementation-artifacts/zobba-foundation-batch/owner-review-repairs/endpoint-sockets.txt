@@ -1,0 +1,13 @@
+✔ PostgreSQL TCP endpoint preserves IPv6 and port precedence (2.196897ms)
+✔ invalid effective ports fail with a fixed secret-safe diagnostic (1.013846ms)
+✔ resolved IPv6 and PGPORT endpoints connect to real loopback sockets (21.484291ms)
+✔ default resolver reads PGPORT from the environment (0.459474ms)
+✔ browser DatabaseProxy routes IPv6 and PGPORT, disconnects and recovers (22.609535ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 204.981391

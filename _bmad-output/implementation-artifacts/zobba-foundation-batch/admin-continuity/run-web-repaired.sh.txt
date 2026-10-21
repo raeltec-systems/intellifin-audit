@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+. /workspace/zobba-build-tools/activate-tests.sh
+cd /workspace/intellifin-audit/zobba
+run() {
+  local name="$1"
+  shift
+  local result=0
+  "$@" > "/tmp/zobba-admin-continuity/${name}.txt" 2>&1 || result=$?
+  printf '%s\n' "$result" > "/tmp/zobba-admin-continuity/${name}.exit"
+  return "$result"
+}
+run web-check-repaired pnpm check
+run web-build-repaired pnpm build

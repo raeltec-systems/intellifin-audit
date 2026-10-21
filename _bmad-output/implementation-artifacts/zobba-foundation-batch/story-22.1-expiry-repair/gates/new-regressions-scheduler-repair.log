@@ -1,0 +1,14 @@
+   Compiling zobba-worker v0.1.0 (/workspace/intellifin-audit/zobba/crates/worker)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 7.05s
+     Running tests/gateway_process.rs (target/debug/deps/gateway_process-2fcfa9679d184157)
+
+running 3 tests
+expiry=Lease outcome=Err(Fenced) dispatch_elapsed=987.89966ms validation_delay=869.531678ms staged_flush=1 sends=0 dispatch_rows=0 historical_facts_unchanged=true
+test final_validation_expiry::lease_expiry_during_final_model_validation_refuses_gateway_dispatch ... ok
+expiry=Approval outcome=Err(NeedsDecision) dispatch_elapsed=987.140363ms validation_delay=868.595435ms staged_flush=1 sends=0 dispatch_rows=0 historical_facts_unchanged=true
+test final_validation_expiry::exact_approval_expiry_during_final_model_validation_refuses_gateway_dispatch ... ok
+expiry=Request outcome=Err(Denied) dispatch_elapsed=979.643934ms validation_delay=875.167013ms staged_flush=1 sends=0 dispatch_rows=0 historical_facts_unchanged=true
+test final_validation_expiry::request_expiry_during_final_model_validation_refuses_gateway_dispatch ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 12.19s
+

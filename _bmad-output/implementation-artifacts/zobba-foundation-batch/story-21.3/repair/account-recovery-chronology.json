@@ -1,0 +1,678 @@
+{
+  "original_full_run_sequence": "Not captured; the original failure had a routed conversation 200 where the fixture expected 412.",
+  "normal_isolated": "Focused attempt 7 retained original behavior and passed with two unbound App reads, one engagement 412 and one conversation 412.",
+  "controlled_negative": "Focused attempt 7b held a genuine initial impact 200 and delivered it after the original first-any-session gate was installed. The bound 200 postcheck consumed its first rotation. Explicit App recovery then observed engagement 200, conversation 412 and a legitimate subsequent conversation 200; the unchanged fixture assertion failed. This proves the fixture defect under a permitted real ordering, without retrospectively inventing the original sequence.",
+  "response_integrity": "All responses were real; only delivery order was controlled. No token/header value, callback query, response body or cookie is present in chronology.",
+  "traces": {
+    "focused-7": {
+      "source": "browser-focused-7-results/account-binding-an-engagem-f5043-the-same-recovery-allowance/mixed-recovery-chronology.json",
+      "sha256": "fd2db241be7e1a6b16e97c9a4945975e487c253558dc2b020a3f9ae37df2518c",
+      "events": [
+        {
+          "sequence": 1,
+          "elapsedMs": 2949,
+          "phase": "installing-routes",
+          "event": "sign-in-complete"
+        },
+        {
+          "sequence": 2,
+          "elapsedMs": 2962,
+          "phase": "refresh",
+          "event": "refresh-click-before"
+        },
+        {
+          "sequence": 3,
+          "elapsedMs": 3053,
+          "phase": "refresh",
+          "event": "session-request",
+          "bound": false
+        },
+        {
+          "sequence": 4,
+          "elapsedMs": 3062,
+          "phase": "waiting-for-interruption",
+          "event": "refresh-click-after"
+        },
+        {
+          "sequence": 5,
+          "elapsedMs": 3080,
+          "phase": "waiting-for-interruption",
+          "event": "session-response",
+          "bound": false,
+          "status": 200
+        },
+        {
+          "sequence": 6,
+          "elapsedMs": 3080,
+          "phase": "waiting-for-interruption",
+          "event": "session-count",
+          "bound": false,
+          "sessionReads": 1
+        },
+        {
+          "sequence": 7,
+          "elapsedMs": 3080,
+          "phase": "waiting-for-interruption",
+          "event": "scope-rotation-before",
+          "bound": false,
+          "sessionReads": 1
+        },
+        {
+          "sequence": 8,
+          "elapsedMs": 3108,
+          "phase": "waiting-for-interruption",
+          "event": "scope-rotation-after",
+          "bound": false,
+          "sessionReads": 1
+        },
+        {
+          "sequence": 9,
+          "elapsedMs": 3118,
+          "phase": "waiting-for-interruption",
+          "event": "engagements-request",
+          "bound": true
+        },
+        {
+          "sequence": 10,
+          "elapsedMs": 3129,
+          "phase": "waiting-for-interruption",
+          "event": "engagements-response",
+          "status": 412
+        },
+        {
+          "sequence": 11,
+          "elapsedMs": 3136,
+          "phase": "waiting-for-interruption",
+          "event": "session-request",
+          "bound": false
+        },
+        {
+          "sequence": 12,
+          "elapsedMs": 3146,
+          "phase": "waiting-for-interruption",
+          "event": "session-response",
+          "bound": false,
+          "status": 200
+        },
+        {
+          "sequence": 13,
+          "elapsedMs": 3146,
+          "phase": "waiting-for-interruption",
+          "event": "session-count",
+          "bound": false,
+          "sessionReads": 2
+        },
+        {
+          "sequence": 14,
+          "elapsedMs": 3152,
+          "phase": "waiting-for-interruption",
+          "event": "engagements-request",
+          "bound": true
+        },
+        {
+          "sequence": 15,
+          "elapsedMs": 3169,
+          "phase": "waiting-for-interruption",
+          "event": "engagements-response",
+          "status": 200
+        },
+        {
+          "sequence": 16,
+          "elapsedMs": 3174,
+          "phase": "waiting-for-interruption",
+          "event": "scope-request",
+          "bound": true
+        },
+        {
+          "sequence": 17,
+          "elapsedMs": 3194,
+          "phase": "waiting-for-interruption",
+          "event": "scope-response",
+          "status": 200
+        },
+        {
+          "sequence": 18,
+          "elapsedMs": 3195,
+          "phase": "waiting-for-interruption",
+          "event": "conversation-rotation-before",
+          "scopeReads": 1
+        },
+        {
+          "sequence": 19,
+          "elapsedMs": 3215,
+          "phase": "waiting-for-interruption",
+          "event": "conversation-rotation-after",
+          "scopeReads": 1
+        },
+        {
+          "sequence": 20,
+          "elapsedMs": 3261,
+          "phase": "waiting-for-interruption",
+          "event": "conversation-request",
+          "bound": true
+        },
+        {
+          "sequence": 21,
+          "elapsedMs": 3284,
+          "phase": "waiting-for-interruption",
+          "event": "conversation-response",
+          "status": 412
+        },
+        {
+          "sequence": 22,
+          "elapsedMs": 3334,
+          "phase": "cleanup",
+          "event": "cleanup-before",
+          "sessionReads": 2,
+          "scopeReads": 1,
+          "refusals": 2
+        },
+        {
+          "sequence": 23,
+          "elapsedMs": 3337,
+          "phase": "cleanup",
+          "event": "cleanup-after",
+          "sessionReads": 2,
+          "scopeReads": 1,
+          "refusals": 2
+        }
+      ]
+    },
+    "focused-7b": {
+      "source": "browser-focused-7b-results/account-binding-an-engagem-f5043-the-same-recovery-allowance/mixed-recovery-chronology.json",
+      "sha256": "cd7e86467fca9b4d4d34deaf5b96ad82b8170e1c7e473a9356a63ce93c1fd116",
+      "events": [
+        {
+          "sequence": 1,
+          "elapsedMs": 2663,
+          "phase": "installing-routes",
+          "event": "sign-in-complete"
+        },
+        {
+          "sequence": 2,
+          "elapsedMs": 2701,
+          "phase": "installing-routes",
+          "event": "initial-impact-response",
+          "status": 200
+        },
+        {
+          "sequence": 3,
+          "elapsedMs": 2782,
+          "phase": "releasing-initial-impact",
+          "event": "initial-impact-delivered"
+        },
+        {
+          "sequence": 4,
+          "elapsedMs": 2786,
+          "phase": "releasing-initial-impact",
+          "event": "session-request",
+          "bound": true
+        },
+        {
+          "sequence": 5,
+          "elapsedMs": 2800,
+          "phase": "releasing-initial-impact",
+          "event": "session-response",
+          "bound": true,
+          "status": 200
+        },
+        {
+          "sequence": 6,
+          "elapsedMs": 2800,
+          "phase": "releasing-initial-impact",
+          "event": "session-count",
+          "bound": true,
+          "sessionReads": 1
+        },
+        {
+          "sequence": 7,
+          "elapsedMs": 2800,
+          "phase": "releasing-initial-impact",
+          "event": "scope-rotation-before",
+          "bound": true,
+          "sessionReads": 1
+        },
+        {
+          "sequence": 8,
+          "elapsedMs": 2835,
+          "phase": "releasing-initial-impact",
+          "event": "scope-rotation-after",
+          "bound": true,
+          "sessionReads": 1
+        },
+        {
+          "sequence": 9,
+          "elapsedMs": 2838,
+          "phase": "releasing-initial-impact",
+          "event": "bound-session-delivered"
+        },
+        {
+          "sequence": 10,
+          "elapsedMs": 2881,
+          "phase": "refresh",
+          "event": "refresh-click-before"
+        },
+        {
+          "sequence": 11,
+          "elapsedMs": 2964,
+          "phase": "refresh",
+          "event": "session-request",
+          "bound": false
+        },
+        {
+          "sequence": 12,
+          "elapsedMs": 2978,
+          "phase": "waiting-for-interruption",
+          "event": "refresh-click-after"
+        },
+        {
+          "sequence": 13,
+          "elapsedMs": 2988,
+          "phase": "waiting-for-interruption",
+          "event": "session-response",
+          "bound": false,
+          "status": 200
+        },
+        {
+          "sequence": 14,
+          "elapsedMs": 2988,
+          "phase": "waiting-for-interruption",
+          "event": "session-count",
+          "bound": false,
+          "sessionReads": 2
+        },
+        {
+          "sequence": 15,
+          "elapsedMs": 2996,
+          "phase": "waiting-for-interruption",
+          "event": "engagements-request",
+          "bound": true
+        },
+        {
+          "sequence": 16,
+          "elapsedMs": 3023,
+          "phase": "waiting-for-interruption",
+          "event": "engagements-response",
+          "status": 200
+        },
+        {
+          "sequence": 17,
+          "elapsedMs": 3033,
+          "phase": "waiting-for-interruption",
+          "event": "scope-request",
+          "bound": true
+        },
+        {
+          "sequence": 18,
+          "elapsedMs": 3059,
+          "phase": "waiting-for-interruption",
+          "event": "scope-response",
+          "status": 200
+        },
+        {
+          "sequence": 19,
+          "elapsedMs": 3060,
+          "phase": "waiting-for-interruption",
+          "event": "conversation-rotation-before",
+          "scopeReads": 1
+        },
+        {
+          "sequence": 20,
+          "elapsedMs": 3087,
+          "phase": "waiting-for-interruption",
+          "event": "conversation-rotation-after",
+          "scopeReads": 1
+        },
+        {
+          "sequence": 21,
+          "elapsedMs": 3141,
+          "phase": "waiting-for-interruption",
+          "event": "conversation-request",
+          "bound": true
+        },
+        {
+          "sequence": 22,
+          "elapsedMs": 3156,
+          "phase": "waiting-for-interruption",
+          "event": "conversation-response",
+          "status": 412
+        },
+        {
+          "sequence": 23,
+          "elapsedMs": 3189,
+          "phase": "waiting-for-interruption",
+          "event": "session-request",
+          "bound": false
+        },
+        {
+          "sequence": 24,
+          "elapsedMs": 3208,
+          "phase": "waiting-for-interruption",
+          "event": "session-response",
+          "bound": false,
+          "status": 200
+        },
+        {
+          "sequence": 25,
+          "elapsedMs": 3208,
+          "phase": "waiting-for-interruption",
+          "event": "session-count",
+          "bound": false,
+          "sessionReads": 3
+        },
+        {
+          "sequence": 26,
+          "elapsedMs": 3217,
+          "phase": "waiting-for-interruption",
+          "event": "engagements-request",
+          "bound": true
+        },
+        {
+          "sequence": 27,
+          "elapsedMs": 3240,
+          "phase": "waiting-for-interruption",
+          "event": "engagements-response",
+          "status": 200
+        },
+        {
+          "sequence": 28,
+          "elapsedMs": 3247,
+          "phase": "waiting-for-interruption",
+          "event": "scope-request",
+          "bound": true
+        },
+        {
+          "sequence": 29,
+          "elapsedMs": 3272,
+          "phase": "waiting-for-interruption",
+          "event": "scope-response",
+          "status": 200
+        },
+        {
+          "sequence": 30,
+          "elapsedMs": 3274,
+          "phase": "waiting-for-interruption",
+          "event": "conversation-rotation-before",
+          "scopeReads": 2
+        },
+        {
+          "sequence": 31,
+          "elapsedMs": 3296,
+          "phase": "waiting-for-interruption",
+          "event": "conversation-rotation-after",
+          "scopeReads": 2
+        },
+        {
+          "sequence": 32,
+          "elapsedMs": 3345,
+          "phase": "waiting-for-interruption",
+          "event": "conversation-request",
+          "bound": true
+        },
+        {
+          "sequence": 33,
+          "elapsedMs": 3414,
+          "phase": "waiting-for-interruption",
+          "event": "conversation-response",
+          "status": 200
+        },
+        {
+          "sequence": 34,
+          "elapsedMs": 3775,
+          "phase": "cleanup",
+          "event": "cleanup-before",
+          "sessionReads": 3,
+          "scopeReads": 2,
+          "refusals": 1
+        },
+        {
+          "sequence": 35,
+          "elapsedMs": 3778,
+          "phase": "cleanup",
+          "event": "cleanup-after",
+          "sessionReads": 3,
+          "scopeReads": 2,
+          "refusals": 1
+        }
+      ]
+    },
+    "focused-9": {
+      "source": "browser-focused-9-results/account-binding-an-engagem-f5043-the-same-recovery-allowance/mixed-recovery-chronology.json",
+      "sha256": "39d7e292b373f922728ec3d64ff1234b8689305c376e05f4aebb1fe3542e61ff",
+      "events": [
+        {
+          "sequence": 1,
+          "elapsedMs": 2438,
+          "phase": "installing-routes",
+          "event": "sign-in-complete"
+        },
+        {
+          "sequence": 2,
+          "elapsedMs": 2495,
+          "phase": "installing-routes",
+          "event": "initial-impact-response",
+          "status": 200
+        },
+        {
+          "sequence": 3,
+          "elapsedMs": 2577,
+          "phase": "releasing-initial-impact",
+          "event": "initial-impact-delivered"
+        },
+        {
+          "sequence": 4,
+          "elapsedMs": 2588,
+          "phase": "releasing-initial-impact",
+          "event": "session-request",
+          "bound": true
+        },
+        {
+          "sequence": 5,
+          "elapsedMs": 2621,
+          "phase": "releasing-initial-impact",
+          "event": "session-response",
+          "bound": true,
+          "status": 200
+        },
+        {
+          "sequence": 6,
+          "elapsedMs": 2626,
+          "phase": "releasing-initial-impact",
+          "event": "bound-session-delivered",
+          "boundSessionReads": 1
+        },
+        {
+          "sequence": 7,
+          "elapsedMs": 2830,
+          "phase": "ordinary-conversation-poll",
+          "event": "conversation-request",
+          "bound": true,
+          "injected": false
+        },
+        {
+          "sequence": 8,
+          "elapsedMs": 2918,
+          "phase": "ordinary-conversation-poll",
+          "event": "conversation-response",
+          "status": 200,
+          "injected": false
+        },
+        {
+          "sequence": 9,
+          "elapsedMs": 2974,
+          "phase": "refresh",
+          "event": "refresh-click-before"
+        },
+        {
+          "sequence": 10,
+          "elapsedMs": 3079,
+          "phase": "refresh",
+          "event": "session-request",
+          "bound": false
+        },
+        {
+          "sequence": 11,
+          "elapsedMs": 3089,
+          "phase": "waiting-for-interruption",
+          "event": "refresh-click-after"
+        },
+        {
+          "sequence": 12,
+          "elapsedMs": 3097,
+          "phase": "waiting-for-interruption",
+          "event": "session-response",
+          "bound": false,
+          "status": 200
+        },
+        {
+          "sequence": 13,
+          "elapsedMs": 3097,
+          "phase": "waiting-for-interruption",
+          "event": "session-count",
+          "bound": false,
+          "sessionReads": 1
+        },
+        {
+          "sequence": 14,
+          "elapsedMs": 3097,
+          "phase": "waiting-for-interruption",
+          "event": "scope-rotation-before",
+          "bound": false,
+          "sessionReads": 1
+        },
+        {
+          "sequence": 15,
+          "elapsedMs": 3122,
+          "phase": "waiting-for-interruption",
+          "event": "scope-rotation-after",
+          "bound": false,
+          "sessionReads": 1
+        },
+        {
+          "sequence": 16,
+          "elapsedMs": 3134,
+          "phase": "waiting-for-interruption",
+          "event": "engagements-request",
+          "bound": true
+        },
+        {
+          "sequence": 17,
+          "elapsedMs": 3150,
+          "phase": "waiting-for-interruption",
+          "event": "engagements-response",
+          "status": 412
+        },
+        {
+          "sequence": 18,
+          "elapsedMs": 3165,
+          "phase": "waiting-for-interruption",
+          "event": "session-request",
+          "bound": false
+        },
+        {
+          "sequence": 19,
+          "elapsedMs": 3183,
+          "phase": "waiting-for-interruption",
+          "event": "session-response",
+          "bound": false,
+          "status": 200
+        },
+        {
+          "sequence": 20,
+          "elapsedMs": 3183,
+          "phase": "waiting-for-interruption",
+          "event": "session-count",
+          "bound": false,
+          "sessionReads": 2
+        },
+        {
+          "sequence": 21,
+          "elapsedMs": 3190,
+          "phase": "waiting-for-interruption",
+          "event": "engagements-request",
+          "bound": true
+        },
+        {
+          "sequence": 22,
+          "elapsedMs": 3208,
+          "phase": "waiting-for-interruption",
+          "event": "engagements-response",
+          "status": 200
+        },
+        {
+          "sequence": 23,
+          "elapsedMs": 3215,
+          "phase": "waiting-for-interruption",
+          "event": "scope-request",
+          "bound": true
+        },
+        {
+          "sequence": 24,
+          "elapsedMs": 3232,
+          "phase": "waiting-for-interruption",
+          "event": "scope-response",
+          "status": 200
+        },
+        {
+          "sequence": 25,
+          "elapsedMs": 3233,
+          "phase": "waiting-for-interruption",
+          "event": "conversation-rotation-before",
+          "scopeReads": 1
+        },
+        {
+          "sequence": 26,
+          "elapsedMs": 3291,
+          "phase": "waiting-for-interruption",
+          "event": "conversation-rotation-after",
+          "scopeReads": 1
+        },
+        {
+          "sequence": 27,
+          "elapsedMs": 3584,
+          "phase": "waiting-for-interruption",
+          "event": "conversation-request",
+          "bound": true,
+          "injected": true
+        },
+        {
+          "sequence": 28,
+          "elapsedMs": 3625,
+          "phase": "waiting-for-interruption",
+          "event": "conversation-response",
+          "status": 412,
+          "injected": true
+        },
+        {
+          "sequence": 29,
+          "elapsedMs": 3744,
+          "phase": "cleanup",
+          "event": "cleanup-before",
+          "sessionReads": 2,
+          "boundSessionReads": 1,
+          "scopeReads": 1,
+          "refusals": 2,
+          "engagementMismatches": 1,
+          "conversationMismatches": 1,
+          "ordinaryConversationReads": 1,
+          "posts": 0
+        },
+        {
+          "sequence": 30,
+          "elapsedMs": 3747,
+          "phase": "cleanup",
+          "event": "cleanup-after",
+          "sessionReads": 2,
+          "boundSessionReads": 1,
+          "scopeReads": 1,
+          "refusals": 2,
+          "engagementMismatches": 1,
+          "conversationMismatches": 1,
+          "ordinaryConversationReads": 1,
+          "posts": 0
+        }
+      ]
+    }
+  },
+  "repaired_final": "Focused9 passed all9 account cases. The same mixed case records bound200 before any App injection, a real user-triggered Latest messages resync/snapshot200 with injectionArmed=false, then exactly2 unbound App reads,1 scope read,1 engagement412,1 conversation412, no POST and protected-workspace withdrawal."
+}

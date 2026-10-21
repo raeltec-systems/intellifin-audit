@@ -1,0 +1,3 @@
+# Verification logs and recorded diffs preserve exact execution/proof bytes.
+*.log -text -whitespace
+*.diff -text -whitespace

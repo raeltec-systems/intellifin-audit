@@ -1,0 +1,13 @@
+{
+  "baseline": "d38e1daed736415ef13e7606345dac71bd1d9f01",
+  "source_bytes": 53,
+  "digest": "154a31daf6dcabfb853161ea40d4cf4d9e5464f9072a536ad9aaacc79dcf6504",
+  "version": "v1",
+  "old_capture_revision": "0",
+  "captured_records": 3,
+  "exact_recovery_retry": true,
+  "second_key_no_duplicate_capture": true,
+  "original_receipt_unchanged": true,
+  "original_bytes_unchanged": true,
+  "api_restarted_after_recovery": true
+}

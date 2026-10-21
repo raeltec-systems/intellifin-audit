@@ -1,0 +1,976 @@
+{
+  "retrieved_date": "2026-09-30",
+  "currency": "USD",
+  "region": "us-east-1",
+  "catalogs": {
+    "ec2": {
+      "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonEC2/current/us-east-1/index.json",
+      "versioned_source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonEC2/20260925174521/us-east-1/index.json",
+      "publication_date": "2026-09-25T17:45:21Z",
+      "version": "20260925174521",
+      "retrieved_at_utc": "2026-09-30T13:57:04.411706+00:00",
+      "local_file": "ec2-selected.json",
+      "sha256": "da7530171dcdefa69022f5586773acb8d0a7a9f6ceb4299aa9e4d20575ba567b"
+    },
+    "ecs": {
+      "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonECS/current/us-east-1/index.json",
+      "versioned_source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonECS/20260911124425/us-east-1/index.json",
+      "publication_date": "2026-09-11T12:44:25Z",
+      "version": "20260911124425",
+      "retrieved_at_utc": "2026-09-30T13:55:56.063421+00:00",
+      "local_file": "ecs-index.json",
+      "sha256": "36c229a6f64580ceed6389d2cf2f267bc7e872eff347a39ae6993cc7cab08c99"
+    },
+    "elb": {
+      "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSELB/current/us-east-1/index.json",
+      "versioned_source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSELB/20260911124544/us-east-1/index.json",
+      "publication_date": "2026-09-11T12:45:44Z",
+      "version": "20260911124544",
+      "retrieved_at_utc": "2026-09-30T13:55:55.914264+00:00",
+      "local_file": "elb-index.json",
+      "sha256": "c34f95e97c33d8b32b25eecb2e2008ba651a11ba3bc69794200f5749dcb9d463"
+    },
+    "transfer": {
+      "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSDataTransfer/current/us-east-1/index.json",
+      "versioned_source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSDataTransfer/20260916132208/us-east-1/index.json",
+      "publication_date": "2026-09-16T13:22:08Z",
+      "version": "20260916132208",
+      "retrieved_at_utc": "2026-09-30T13:55:55.960779+00:00",
+      "local_file": "transfer-index.json",
+      "sha256": "00f81657d01946d02c905e32ca87cc6c23720b5de079b90fef5775243abcee80"
+    },
+    "vpc": {
+      "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonVPC/current/us-east-1/index.json",
+      "versioned_source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonVPC/20260917190528/us-east-1/index.json",
+      "publication_date": "2026-09-17T19:05:28Z",
+      "version": "20260917190528",
+      "retrieved_at_utc": "2026-09-30T13:57:43.030184+00:00",
+      "local_file": "vpc-index.json",
+      "sha256": "0c2d9d88dedc3ebb425a97c11a316f4e708945b6a6dd79955f52efd78ff0a42e"
+    }
+  },
+  "selected_products_and_terms": [
+    {
+      "catalog": "ec2",
+      "component": "EC2 m6i.large Linux shared On-Demand",
+      "product": {
+        "sku": "B8JJ44GS8MG4RPR4",
+        "productFamily": "Compute Instance",
+        "attributes": {
+          "servicecode": "AmazonEC2",
+          "location": "US East (N. Virginia)",
+          "locationType": "AWS Region",
+          "instanceType": "m6i.large",
+          "currentGeneration": "Yes",
+          "instanceFamily": "General purpose",
+          "vcpu": "2",
+          "physicalProcessor": "Intel Xeon 8375C (Ice Lake)",
+          "clockSpeed": "3.5 GHz",
+          "memory": "8 GiB",
+          "storage": "EBS only",
+          "networkPerformance": "Up to 12500 Megabit",
+          "processorArchitecture": "64-bit",
+          "tenancy": "Shared",
+          "operatingSystem": "Linux",
+          "licenseModel": "No License required",
+          "usagetype": "BoxUsage:m6i.large",
+          "operation": "RunInstances",
+          "availabilityzone": "NA",
+          "capacitystatus": "Used",
+          "classicnetworkingsupport": "false",
+          "dedicatedEbsThroughput": "Up to 10000 Mbps",
+          "dedicatedEbsThroughputDescription": "650 Mbps",
+          "ecu": "NA",
+          "enhancedNetworkingSupported": "Yes",
+          "gpuMemory": "NA",
+          "instanceFamilyCategory": "General Purpose",
+          "intelAvxAvailable": "Yes",
+          "intelAvx2Available": "Yes",
+          "intelTurboAvailable": "Yes",
+          "marketoption": "OnDemand",
+          "normalizationSizeFactor": "4",
+          "preInstalledSw": "NA",
+          "processorFeatures": "Intel AVX; Intel AVX2; Intel AVX512; Intel Turbo",
+          "regionCode": "us-east-1",
+          "servicename": "Amazon Elastic Compute Cloud",
+          "vpcnetworkingsupport": "true"
+        }
+      },
+      "on_demand_terms": {
+        "B8JJ44GS8MG4RPR4.JRTCKXETXF": {
+          "offerTermCode": "JRTCKXETXF",
+          "sku": "B8JJ44GS8MG4RPR4",
+          "effectiveDate": "2026-09-01T00:00:00Z",
+          "priceDimensions": {
+            "B8JJ44GS8MG4RPR4.JRTCKXETXF.6YS6EN2CT7": {
+              "rateCode": "B8JJ44GS8MG4RPR4.JRTCKXETXF.6YS6EN2CT7",
+              "description": "$0.096 per On Demand Linux m6i.large Instance Hour",
+              "beginRange": "0",
+              "endRange": "Inf",
+              "unit": "Hrs",
+              "pricePerUnit": {
+                "USD": "0.0960000000"
+              },
+              "appliesTo": []
+            }
+          },
+          "termAttributes": {}
+        }
+      }
+    },
+    {
+      "catalog": "ec2",
+      "component": "EC2 m6i.xlarge Windows shared On-Demand",
+      "product": {
+        "sku": "QV83RDMFWDU5WFFX",
+        "productFamily": "Compute Instance",
+        "attributes": {
+          "servicecode": "AmazonEC2",
+          "location": "US East (N. Virginia)",
+          "locationType": "AWS Region",
+          "instanceType": "m6i.xlarge",
+          "currentGeneration": "Yes",
+          "instanceFamily": "General purpose",
+          "vcpu": "4",
+          "physicalProcessor": "Intel Xeon 8375C (Ice Lake)",
+          "clockSpeed": "3.5 GHz",
+          "memory": "16 GiB",
+          "storage": "EBS only",
+          "networkPerformance": "Up to 12500 Megabit",
+          "processorArchitecture": "64-bit",
+          "tenancy": "Shared",
+          "operatingSystem": "Windows",
+          "licenseModel": "No License required",
+          "usagetype": "BoxUsage:m6i.xlarge",
+          "operation": "RunInstances:0002",
+          "availabilityzone": "NA",
+          "capacitystatus": "Used",
+          "classicnetworkingsupport": "false",
+          "dedicatedEbsThroughput": "Up to 10000 Mbps",
+          "dedicatedEbsThroughputDescription": "1250 Mbps",
+          "ecu": "NA",
+          "enhancedNetworkingSupported": "Yes",
+          "gpuMemory": "NA",
+          "instanceFamilyCategory": "General Purpose",
+          "intelAvxAvailable": "Yes",
+          "intelAvx2Available": "Yes",
+          "intelTurboAvailable": "Yes",
+          "marketoption": "OnDemand",
+          "normalizationSizeFactor": "8",
+          "preInstalledSw": "NA",
+          "processorFeatures": "Intel AVX; Intel AVX2; Intel AVX512; Intel Turbo",
+          "regionCode": "us-east-1",
+          "servicename": "Amazon Elastic Compute Cloud",
+          "vpcnetworkingsupport": "true"
+        }
+      },
+      "on_demand_terms": {
+        "QV83RDMFWDU5WFFX.JRTCKXETXF": {
+          "offerTermCode": "JRTCKXETXF",
+          "sku": "QV83RDMFWDU5WFFX",
+          "effectiveDate": "2026-09-01T00:00:00Z",
+          "priceDimensions": {
+            "QV83RDMFWDU5WFFX.JRTCKXETXF.6YS6EN2CT7": {
+              "rateCode": "QV83RDMFWDU5WFFX.JRTCKXETXF.6YS6EN2CT7",
+              "description": "$0.376 per On Demand Windows m6i.xlarge Instance Hour",
+              "beginRange": "0",
+              "endRange": "Inf",
+              "unit": "Hrs",
+              "pricePerUnit": {
+                "USD": "0.3760000000"
+              },
+              "appliesTo": []
+            }
+          },
+          "termAttributes": {}
+        }
+      }
+    },
+    {
+      "catalog": "ec2",
+      "component": "EBS gp3 provisioned storage",
+      "product": {
+        "sku": "JG3KUJMBRGHV3N8G",
+        "productFamily": "Storage",
+        "attributes": {
+          "servicecode": "AmazonEC2",
+          "location": "US East (N. Virginia)",
+          "locationType": "AWS Region",
+          "storageMedia": "SSD-backed",
+          "volumeType": "General Purpose",
+          "maxVolumeSize": "64 TiB",
+          "maxIopsvolume": "80000",
+          "maxThroughputvolume": "2000 MiB/s",
+          "usagetype": "EBS:VolumeUsage.gp3",
+          "operation": "",
+          "regionCode": "us-east-1",
+          "servicename": "Amazon Elastic Compute Cloud",
+          "volumeApiName": "gp3"
+        }
+      },
+      "on_demand_terms": {
+        "JG3KUJMBRGHV3N8G.JRTCKXETXF": {
+          "offerTermCode": "JRTCKXETXF",
+          "sku": "JG3KUJMBRGHV3N8G",
+          "effectiveDate": "2026-09-01T00:00:00Z",
+          "priceDimensions": {
+            "JG3KUJMBRGHV3N8G.JRTCKXETXF.6YS6EN2CT7": {
+              "rateCode": "JG3KUJMBRGHV3N8G.JRTCKXETXF.6YS6EN2CT7",
+              "description": "$0.08 per GB-month of General Purpose (gp3) provisioned storage - US East (N. Virginia)",
+              "beginRange": "0",
+              "endRange": "Inf",
+              "unit": "GB-Mo",
+              "pricePerUnit": {
+                "USD": "0.0800000000"
+              },
+              "appliesTo": []
+            }
+          },
+          "termAttributes": {}
+        }
+      }
+    },
+    {
+      "catalog": "ec2",
+      "component": "NAT gateway provisioned time",
+      "product": {
+        "sku": "M2YSHUBETB3JX4M4",
+        "productFamily": "NAT Gateway",
+        "attributes": {
+          "servicecode": "AmazonEC2",
+          "location": "US East (N. Virginia)",
+          "locationType": "AWS Region",
+          "group": "NGW:NatGateway",
+          "groupDescription": "Hourly charge for NAT Gateways",
+          "usagetype": "NatGateway-Hours",
+          "operation": "NatGateway",
+          "regionCode": "us-east-1",
+          "servicename": "Amazon Elastic Compute Cloud"
+        }
+      },
+      "on_demand_terms": {
+        "M2YSHUBETB3JX4M4.JRTCKXETXF": {
+          "offerTermCode": "JRTCKXETXF",
+          "sku": "M2YSHUBETB3JX4M4",
+          "effectiveDate": "2026-09-01T00:00:00Z",
+          "priceDimensions": {
+            "M2YSHUBETB3JX4M4.JRTCKXETXF.6YS6EN2CT7": {
+              "rateCode": "M2YSHUBETB3JX4M4.JRTCKXETXF.6YS6EN2CT7",
+              "description": "$0.045 per NAT Gateway Hour",
+              "beginRange": "0",
+              "endRange": "Inf",
+              "unit": "Hrs",
+              "pricePerUnit": {
+                "USD": "0.0450000000"
+              },
+              "appliesTo": []
+            }
+          },
+          "termAttributes": {}
+        }
+      }
+    },
+    {
+      "catalog": "ec2",
+      "component": "NAT gateway processed data",
+      "product": {
+        "sku": "59S5R83GFPUAGVR5",
+        "productFamily": "NAT Gateway",
+        "attributes": {
+          "servicecode": "AmazonEC2",
+          "location": "US East (N. Virginia)",
+          "locationType": "AWS Region",
+          "group": "NGW:NatGateway",
+          "groupDescription": "Charge for per GB data processed by NatGateways",
+          "usagetype": "NatGateway-Bytes",
+          "operation": "NatGateway",
+          "regionCode": "us-east-1",
+          "servicename": "Amazon Elastic Compute Cloud"
+        }
+      },
+      "on_demand_terms": {
+        "59S5R83GFPUAGVR5.JRTCKXETXF": {
+          "offerTermCode": "JRTCKXETXF",
+          "sku": "59S5R83GFPUAGVR5",
+          "effectiveDate": "2026-09-01T00:00:00Z",
+          "priceDimensions": {
+            "59S5R83GFPUAGVR5.JRTCKXETXF.6YS6EN2CT7": {
+              "rateCode": "59S5R83GFPUAGVR5.JRTCKXETXF.6YS6EN2CT7",
+              "description": "$0.045 per GB Data Processed by NAT Gateways",
+              "beginRange": "0",
+              "endRange": "Inf",
+              "unit": "GB",
+              "pricePerUnit": {
+                "USD": "0.0450000000"
+              },
+              "appliesTo": []
+            }
+          },
+          "termAttributes": {}
+        }
+      }
+    },
+    {
+      "catalog": "elb",
+      "component": "Application Load Balancer provisioned time",
+      "product": {
+        "sku": "37CUWUT8GSNQEPUV",
+        "productFamily": "Load Balancer-Application",
+        "attributes": {
+          "servicecode": "AWSELB",
+          "location": "US East (N. Virginia)",
+          "locationType": "AWS Region",
+          "group": "ELB:Balancing",
+          "groupDescription": "LoadBalancer hourly usage by Application Load Balancer",
+          "usagetype": "LoadBalancerUsage",
+          "operation": "LoadBalancing:Application",
+          "regionCode": "us-east-1",
+          "servicename": "Elastic Load Balancing"
+        }
+      },
+      "on_demand_terms": {
+        "37CUWUT8GSNQEPUV.JRTCKXETXF": {
+          "offerTermCode": "JRTCKXETXF",
+          "sku": "37CUWUT8GSNQEPUV",
+          "effectiveDate": "2026-08-01T00:00:00Z",
+          "priceDimensions": {
+            "37CUWUT8GSNQEPUV.JRTCKXETXF.6YS6EN2CT7": {
+              "rateCode": "37CUWUT8GSNQEPUV.JRTCKXETXF.6YS6EN2CT7",
+              "description": "$0.0225 per Application LoadBalancer-hour (or partial hour)",
+              "beginRange": "0",
+              "endRange": "Inf",
+              "unit": "Hrs",
+              "pricePerUnit": {
+                "USD": "0.0225000000"
+              },
+              "appliesTo": []
+            }
+          },
+          "termAttributes": {}
+        }
+      }
+    },
+    {
+      "catalog": "elb",
+      "component": "Application Load Balancer used capacity",
+      "product": {
+        "sku": "P2XGEJ8N3KU52WA8",
+        "productFamily": "Load Balancer-Application",
+        "attributes": {
+          "servicecode": "AWSELB",
+          "location": "US East (N. Virginia)",
+          "locationType": "AWS Region",
+          "group": "ELB:Balancing",
+          "groupDescription": "Used Application Load Balancer capacity units-hr",
+          "usagetype": "LCUUsage",
+          "operation": "LoadBalancing:Application",
+          "regionCode": "us-east-1",
+          "servicename": "Elastic Load Balancing"
+        }
+      },
+      "on_demand_terms": {
+        "P2XGEJ8N3KU52WA8.JRTCKXETXF": {
+          "offerTermCode": "JRTCKXETXF",
+          "sku": "P2XGEJ8N3KU52WA8",
+          "effectiveDate": "2026-08-01T00:00:00Z",
+          "priceDimensions": {
+            "P2XGEJ8N3KU52WA8.JRTCKXETXF.6YS6EN2CT7": {
+              "rateCode": "P2XGEJ8N3KU52WA8.JRTCKXETXF.6YS6EN2CT7",
+              "description": "$0.008 per used Application load balancer capacity unit-hour (or partial hour)",
+              "beginRange": "0",
+              "endRange": "Inf",
+              "unit": "LCU-Hrs",
+              "pricePerUnit": {
+                "USD": "0.0080000000"
+              },
+              "appliesTo": []
+            }
+          },
+          "termAttributes": {}
+        }
+      }
+    },
+    {
+      "catalog": "ecs",
+      "component": "Fargate Linux x86 CPU",
+      "product": {
+        "sku": "8CESGAFWKAJ98PME",
+        "productFamily": "Compute",
+        "attributes": {
+          "servicecode": "AmazonECS",
+          "location": "US East (N. Virginia)",
+          "locationType": "AWS Region",
+          "tenancy": "Shared",
+          "usagetype": "USE1-Fargate-vCPU-Hours:perCPU",
+          "operation": "",
+          "cputype": "perCPU",
+          "regionCode": "us-east-1",
+          "servicename": "Amazon Elastic Container Service"
+        }
+      },
+      "on_demand_terms": {
+        "8CESGAFWKAJ98PME.JRTCKXETXF": {
+          "offerTermCode": "JRTCKXETXF",
+          "sku": "8CESGAFWKAJ98PME",
+          "effectiveDate": "2026-07-01T00:00:00Z",
+          "priceDimensions": {
+            "8CESGAFWKAJ98PME.JRTCKXETXF.6YS6EN2CT7": {
+              "rateCode": "8CESGAFWKAJ98PME.JRTCKXETXF.6YS6EN2CT7",
+              "description": "AWS Fargate - vCPU - US East (N.Virginia)",
+              "beginRange": "0",
+              "endRange": "Inf",
+              "unit": "hours",
+              "pricePerUnit": {
+                "USD": "0.0404800000"
+              },
+              "appliesTo": []
+            }
+          },
+          "termAttributes": {}
+        }
+      }
+    },
+    {
+      "catalog": "ecs",
+      "component": "Fargate Linux x86 memory",
+      "product": {
+        "sku": "PBZNQUSEXZUC34C9",
+        "productFamily": "Compute",
+        "attributes": {
+          "servicecode": "AmazonECS",
+          "location": "US East (N. Virginia)",
+          "locationType": "AWS Region",
+          "tenancy": "Shared",
+          "usagetype": "USE1-Fargate-GB-Hours",
+          "operation": "",
+          "memorytype": "perGB",
+          "regionCode": "us-east-1",
+          "servicename": "Amazon Elastic Container Service"
+        }
+      },
+      "on_demand_terms": {
+        "PBZNQUSEXZUC34C9.JRTCKXETXF": {
+          "offerTermCode": "JRTCKXETXF",
+          "sku": "PBZNQUSEXZUC34C9",
+          "effectiveDate": "2026-07-01T00:00:00Z",
+          "priceDimensions": {
+            "PBZNQUSEXZUC34C9.JRTCKXETXF.6YS6EN2CT7": {
+              "rateCode": "PBZNQUSEXZUC34C9.JRTCKXETXF.6YS6EN2CT7",
+              "description": "AWS Fargate - Memory  - US East (N.Virginia)",
+              "beginRange": "0",
+              "endRange": "Inf",
+              "unit": "hours",
+              "pricePerUnit": {
+                "USD": "0.0044450000"
+              },
+              "appliesTo": []
+            }
+          },
+          "termAttributes": {}
+        }
+      }
+    },
+    {
+      "catalog": "transfer",
+      "component": "Internet outbound standard regional tiers",
+      "product": {
+        "sku": "HQEH3ZWJVT46JHRG",
+        "productFamily": "Data Transfer",
+        "attributes": {
+          "servicecode": "AWSDataTransfer",
+          "transferType": "AWS Outbound",
+          "fromLocation": "US East (N. Virginia)",
+          "fromLocationType": "AWS Region",
+          "toLocation": "External",
+          "toLocationType": "Other",
+          "usagetype": "DataTransfer-Out-Bytes",
+          "operation": "",
+          "fromRegionCode": "us-east-1",
+          "servicename": "AWS Data Transfer",
+          "toRegionCode": ""
+        }
+      },
+      "on_demand_terms": {
+        "HQEH3ZWJVT46JHRG.JRTCKXETXF": {
+          "offerTermCode": "JRTCKXETXF",
+          "sku": "HQEH3ZWJVT46JHRG",
+          "effectiveDate": "2026-06-01T00:00:00Z",
+          "priceDimensions": {
+            "HQEH3ZWJVT46JHRG.JRTCKXETXF.Q3Z75P77EN": {
+              "rateCode": "HQEH3ZWJVT46JHRG.JRTCKXETXF.Q3Z75P77EN",
+              "description": "$0.090 per GB - first 10 TB / month data transfer out beyond the global free tier",
+              "beginRange": "0",
+              "endRange": "10240",
+              "unit": "GB",
+              "pricePerUnit": {
+                "USD": "0.0900000000"
+              },
+              "appliesTo": []
+            },
+            "HQEH3ZWJVT46JHRG.JRTCKXETXF.VF6T3GAUKQ": {
+              "rateCode": "HQEH3ZWJVT46JHRG.JRTCKXETXF.VF6T3GAUKQ",
+              "description": "$0.085 per GB - next 40 TB / month data transfer out",
+              "beginRange": "10240",
+              "endRange": "51200",
+              "unit": "GB",
+              "pricePerUnit": {
+                "USD": "0.0850000000"
+              },
+              "appliesTo": []
+            },
+            "HQEH3ZWJVT46JHRG.JRTCKXETXF.N9EW5UVVPA": {
+              "rateCode": "HQEH3ZWJVT46JHRG.JRTCKXETXF.N9EW5UVVPA",
+              "description": "$0.070 per GB - next 100 TB / month data transfer out",
+              "beginRange": "51200",
+              "endRange": "153600",
+              "unit": "GB",
+              "pricePerUnit": {
+                "USD": "0.0700000000"
+              },
+              "appliesTo": []
+            },
+            "HQEH3ZWJVT46JHRG.JRTCKXETXF.GPHXDESFBB": {
+              "rateCode": "HQEH3ZWJVT46JHRG.JRTCKXETXF.GPHXDESFBB",
+              "description": "$0.050 per GB - greater than 150 TB / month data transfer out",
+              "beginRange": "153600",
+              "endRange": "Inf",
+              "unit": "GB",
+              "pricePerUnit": {
+                "USD": "0.0500000000"
+              },
+              "appliesTo": []
+            }
+          },
+          "termAttributes": {}
+        }
+      }
+    },
+    {
+      "catalog": "transfer",
+      "component": "Internet outbound global free tier",
+      "product": {
+        "sku": "PB257JUQ8U6E6UPM",
+        "productFamily": "Data Transfer",
+        "attributes": {
+          "servicecode": "AWSDataTransfer",
+          "transferType": "AWS Outbound",
+          "fromLocation": "Global",
+          "fromLocationType": "AWS Region",
+          "toLocation": "External",
+          "toLocationType": "Other",
+          "usagetype": "Global-DataTransfer-Out-Bytes",
+          "operation": "",
+          "fromRegionCode": "",
+          "servicename": "AWS Data Transfer",
+          "toRegionCode": ""
+        }
+      },
+      "on_demand_terms": {
+        "PB257JUQ8U6E6UPM.A429C66SYZ": {
+          "offerTermCode": "A429C66SYZ",
+          "sku": "PB257JUQ8U6E6UPM",
+          "effectiveDate": "2026-06-01T00:00:00Z",
+          "priceDimensions": {
+            "PB257JUQ8U6E6UPM.A429C66SYZ.ETY2894C67": {
+              "rateCode": "PB257JUQ8U6E6UPM.A429C66SYZ.ETY2894C67",
+              "description": "$0 for 100GB of data transfer out to the internet, aggregated globally, each month",
+              "beginRange": "0",
+              "endRange": "100",
+              "unit": "GB",
+              "pricePerUnit": {
+                "USD": "0.0000000000"
+              },
+              "appliesTo": [
+                "CRVNRMRA5H83V2WD",
+                "RABTJMKDJXCS3HGB",
+                "9AS8NERTGECRPGT7",
+                "G76TPCZ2YZDWHBS7",
+                "NRU3SDS8TSYM8YTF",
+                "FS8D4ZBTZC7SUQMG",
+                "X683FV9MX2WKH26R",
+                "HQEH3ZWJVT46JHRG",
+                "FSEU4E6BRE95JTX8",
+                "AB77HZFG3K75SMFC",
+                "HDAWR6N3TC9JG9B3",
+                "P8W29YK9AEVGT94F",
+                "42TWUMZ5BH3CJKRX",
+                "MNNUSPE9NHX4S3B8",
+                "HK88XZFB6UCBP764",
+                "2PCT4VCE7VU9ZA9A",
+                "299H935TQMDXYR6E",
+                "B4FDZPU7PUPW9KQN",
+                "XNRN4JUWNHCPRU5R",
+                "SDHP4R7WGBVJPQPY",
+                "36H7S3NU9B7S3UT5",
+                "98NENJDZV28SBXQ6",
+                "PMP8X4WW4QWE4MGM",
+                "D6KTGXDAJPW2JW7H",
+                "PXMGUQBUMZ57SWYS",
+                "63T8CCVERN79A9UF",
+                "ZUYBXJB9EDMGX4WE",
+                "RWNAG8EPMAPN6VGR",
+                "2FMZC5939UNK386P",
+                "ECTP3BJUBCHZH4H7",
+                "UC6KZM2N8C4EDSJ2",
+                "PKX2UMMN9JAK89YN",
+                "C9NU58VKT7GQUFST",
+                "HDJ56KY2V23XMT23",
+                "7W6FHP6D7SEAH4EE",
+                "XYEEZU9NCKCCQ5EY",
+                "AMWSPQUAP2ZAGZ4T",
+                "54UAZFW2RBKVZV3G",
+                "6UMEZT4ZXXYHPU5Z",
+                "UT2RMGBHHJPCHBHS",
+                "RFEMJE2PCZY94RM4",
+                "QZ73H5RGR5JYYB4D",
+                "VQMS46CX5NK8XV3M",
+                "NQT5EFPTVXZE5ZHD",
+                "X5BFEX42WPEB89TC",
+                "993ZEFNY27ZBY7TZ",
+                "T3ZB7Z9V83R7WSH5",
+                "ZQXZURWQEX3KAWYA",
+                "JQPUS395EKGJAF2K",
+                "4HCFHP6H6VZVQ74A",
+                "BXKEYE7ADT7EBZTW",
+                "VUM2J8K8UJEJW4B8",
+                "XGDSGND6MUTT3U74",
+                "RHTV8JPY64EV6GXS",
+                "N4GVKX3X58UM44HX",
+                "6KD65M6RHV7V5Q2E",
+                "DSDMYDNJ7MQXEU2V",
+                "BCP69A6RVUZ9PMM8",
+                "T8U8Q97DEK8DGHGG",
+                "GEPD6SRNJK9DQTE8",
+                "FAB99YP5WBFQW3XX",
+                "5JMQ42BDCQF6C5XP",
+                "NRC2X84NC7NGPKFS",
+                "83AXNP3KVHM7SGFU",
+                "FWPF54UVUR4G8P3A",
+                "3XF9TZNT6VRZFE5U",
+                "UJYCP67PNUR5V2VZ",
+                "HJ4VVW3YMNA9Q26W",
+                "SJS9GM3PBTUXSYNY",
+                "SYDVGMW59NNGKNXA",
+                "27T5YSJBHB3SGRQC",
+                "R5JG2AF383HK4W9U",
+                "CXWFSAS9ETSMBH2Y",
+                "CMEYEEYC485JXPYQ",
+                "72ZH453U7RKZCGDN",
+                "YXY6GTQNQVZSBWUJ",
+                "N44J3VJ5RHPRTG8D",
+                "GZ7W292S58B6PZPH",
+                "564JE6C26YQCZYX4",
+                "M542U2SUZMNSA4AX",
+                "KPEKDXDDQGKW7S6T",
+                "F62Y6TKR8NC6Q2ZB",
+                "48NJHP4M27UNGWY4",
+                "TCQ8QCXJC69VEBRZ",
+                "AHRNA43Y8M88C9BD",
+                "WSS4ANBAWGXGXC34",
+                "Z9CN5NK3WCBZ5KEP",
+                "QKTPK3975YUWDU3Q",
+                "G62VFTQ3CT4GZV9W",
+                "DDAWHKW59YPAQTQN",
+                "RXZRF5DV47TYQ2KB",
+                "SBC36TANNE54BYU7",
+                "6J7ZFAB6VQ5YYYQT",
+                "EZ7K9ETAHN6BAKV8",
+                "CEZ38U7Z5A3RB5US",
+                "TYMC6C8YMFPJS2V8",
+                "ZGDW3UE4SED9HUPP",
+                "R887Y68H9V7ZQRQD",
+                "5M4327XEUKBBTWAT",
+                "DJGAW6CFP8PPSX6T",
+                "4RDQASPKA563JSVH",
+                "8M89HETR2MTWZ9SP",
+                "MB9TZFPYFKH4SH6P",
+                "UYN6VMC5ANUD4H6S",
+                "5UF8HU3K3KB7SKF4",
+                "7SD6RBHJZGEXD3Q6",
+                "T44C9WQVFH9SJFEQ",
+                "P6NMSM6BC3R6A5U9",
+                "9ESU2G5WSY6FMZR3",
+                "SHM374E6Z6QUJCK6",
+                "MSZAHJKXS5P6AQS5",
+                "529SK7Q2XMH8G9FP",
+                "YF6GFTB9WP95A9XC",
+                "ZMC8J4VZQ9XHJHU2",
+                "A6YRDEXMRVAYW6TV",
+                "QEYS8NHYJ5TRWRWZ",
+                "DGR6MKFHTAYJ3QHP",
+                "T5N4YHB64DQFUPDP",
+                "6XEKAD627QFRWFAN",
+                "NYJP6UWWB8B2SK29",
+                "2V5MC7KNFF848QAH",
+                "U5BGAY9MY9MU9UPN",
+                "WF498XDS2SG5BUUC",
+                "VMAJ645H6RR4RKP7",
+                "UKQ34C8EAAJUUK8Q",
+                "DRTM7T5YA7E492Z3",
+                "EKHFDA69JK4PQAEQ",
+                "ZUA6XEPU6ERRATJ6",
+                "KRXM4TG87VW2NPHA",
+                "UQV95YZYZFMZS7AN",
+                "HJBGTC76QP7XKJ7V",
+                "UDF3MCPTCEY4BX4Q",
+                "8A562F3DJ7RB3YG4",
+                "HVHAF7W356YRMBKT",
+                "JMEVEQVMZEKRTJYK",
+                "4GUWTT4HTDRUU6H5",
+                "D74ZYPB8YW7KFWZX",
+                "M338S9DAQY5JUT7X",
+                "ZBCV9QFN6J64C7SR",
+                "JMVAJYUBDVF3WGR9",
+                "67T8V33BFQ7AUKD8",
+                "Q3KWYZ3TM7ZT645U"
+              ]
+            }
+          },
+          "termAttributes": {
+            "Restriction": "Limited SKU Usage"
+          }
+        }
+      }
+    },
+    {
+      "catalog": "vpc",
+      "component": "Public IPv4 in-use address",
+      "product": {
+        "sku": "4GQUNXTFWVSGPUZK",
+        "attributes": {
+          "servicecode": "AmazonVPC",
+          "location": "US East (N. Virginia)",
+          "locationType": "AWS Region",
+          "group": "VPCPublicIPv4Address",
+          "groupDescription": "Hourly charge for In-use Public IPv4 Addresses",
+          "usagetype": "USE1-PublicIPv4:InUseAddress",
+          "operation": "",
+          "regionCode": "us-east-1",
+          "servicename": "Amazon Virtual Private Cloud"
+        }
+      },
+      "on_demand_terms": {
+        "4GQUNXTFWVSGPUZK.JRTCKXETXF": {
+          "offerTermCode": "JRTCKXETXF",
+          "sku": "4GQUNXTFWVSGPUZK",
+          "effectiveDate": "2026-09-01T00:00:00Z",
+          "priceDimensions": {
+            "4GQUNXTFWVSGPUZK.JRTCKXETXF.6YS6EN2CT7": {
+              "rateCode": "4GQUNXTFWVSGPUZK.JRTCKXETXF.6YS6EN2CT7",
+              "description": "$0.005 per In-use public IPv4 address per hour",
+              "beginRange": "0",
+              "endRange": "Inf",
+              "unit": "Hrs",
+              "pricePerUnit": {
+                "USD": "0.0050000000"
+              },
+              "appliesTo": []
+            }
+          },
+          "termAttributes": {}
+        }
+      }
+    },
+    {
+      "catalog": "vpc",
+      "component": "Public IPv4 idle address",
+      "product": {
+        "sku": "T6YDQKTMVWKNJFJ8",
+        "attributes": {
+          "servicecode": "AmazonVPC",
+          "location": "US East (N. Virginia)",
+          "locationType": "AWS Region",
+          "group": "VPCPublicIPv4Address",
+          "groupDescription": "Hourly charge for Idle Public IPv4 Addresses",
+          "usagetype": "USE1-PublicIPv4:IdleAddress",
+          "operation": "",
+          "regionCode": "us-east-1",
+          "servicename": "Amazon Virtual Private Cloud"
+        }
+      },
+      "on_demand_terms": {
+        "T6YDQKTMVWKNJFJ8.JRTCKXETXF": {
+          "offerTermCode": "JRTCKXETXF",
+          "sku": "T6YDQKTMVWKNJFJ8",
+          "effectiveDate": "2026-09-01T00:00:00Z",
+          "priceDimensions": {
+            "T6YDQKTMVWKNJFJ8.JRTCKXETXF.6YS6EN2CT7": {
+              "rateCode": "T6YDQKTMVWKNJFJ8.JRTCKXETXF.6YS6EN2CT7",
+              "description": "$0.005 per Idle public IPv4 address per hour",
+              "beginRange": "0",
+              "endRange": "Inf",
+              "unit": "Hrs",
+              "pricePerUnit": {
+                "USD": "0.0050000000"
+              },
+              "appliesTo": []
+            }
+          },
+          "termAttributes": {}
+        }
+      }
+    },
+    {
+      "catalog": "ecs",
+      "component": "Fargate extra ephemeral storage",
+      "product": {
+        "sku": "7KPDPTDSCT4J3Z64",
+        "productFamily": "Compute",
+        "attributes": {
+          "servicecode": "AmazonECS",
+          "location": "US East (N. Virginia)",
+          "locationType": "AWS Region",
+          "usagetype": "USE1-Fargate-EphemeralStorage-GB-Hours",
+          "operation": "",
+          "regionCode": "us-east-1",
+          "servicename": "Amazon Elastic Container Service",
+          "storagetype": "default"
+        }
+      },
+      "on_demand_terms": {
+        "7KPDPTDSCT4J3Z64.JRTCKXETXF": {
+          "offerTermCode": "JRTCKXETXF",
+          "sku": "7KPDPTDSCT4J3Z64",
+          "effectiveDate": "2026-07-01T00:00:00Z",
+          "priceDimensions": {
+            "7KPDPTDSCT4J3Z64.JRTCKXETXF.6YS6EN2CT7": {
+              "rateCode": "7KPDPTDSCT4J3Z64.JRTCKXETXF.6YS6EN2CT7",
+              "description": "AWS Fargate - Ephemeral Storage - US East (N. Virginia)",
+              "beginRange": "0",
+              "endRange": "Inf",
+              "unit": "GB-Hours",
+              "pricePerUnit": {
+                "USD": "0.0001110000"
+              },
+              "appliesTo": []
+            }
+          },
+          "termAttributes": {}
+        }
+      }
+    },
+    {
+      "catalog": "ec2",
+      "component": "EBS standard snapshot storage",
+      "product": {
+        "sku": "7U7TWP44UP36AT3R",
+        "productFamily": "Storage Snapshot",
+        "attributes": {
+          "servicecode": "AmazonEC2",
+          "location": "US East (N. Virginia)",
+          "locationType": "AWS Region",
+          "storageMedia": "Amazon S3",
+          "usagetype": "EBS:SnapshotUsage",
+          "operation": "",
+          "regionCode": "us-east-1",
+          "servicename": "Amazon Elastic Compute Cloud"
+        }
+      },
+      "on_demand_terms": {
+        "7U7TWP44UP36AT3R.JRTCKXETXF": {
+          "offerTermCode": "JRTCKXETXF",
+          "sku": "7U7TWP44UP36AT3R",
+          "effectiveDate": "2026-09-01T00:00:00Z",
+          "priceDimensions": {
+            "7U7TWP44UP36AT3R.JRTCKXETXF.6YS6EN2CT7": {
+              "rateCode": "7U7TWP44UP36AT3R.JRTCKXETXF.6YS6EN2CT7",
+              "description": "$0.05 per GB-Month of snapshot data stored - US East (Northern Virginia)",
+              "beginRange": "0",
+              "endRange": "Inf",
+              "unit": "GB-Mo",
+              "pricePerUnit": {
+                "USD": "0.0500000000"
+              },
+              "appliesTo": []
+            }
+          },
+          "termAttributes": {}
+        }
+      }
+    },
+    {
+      "catalog": "ec2",
+      "component": "EBS gp3 additional IOPS",
+      "product": {
+        "sku": "7Q58NR58VQEASA4W",
+        "productFamily": "System Operation",
+        "attributes": {
+          "servicecode": "AmazonEC2",
+          "location": "US East (N. Virginia)",
+          "locationType": "AWS Region",
+          "provisioned": "Yes",
+          "group": "EBS IOPS",
+          "groupDescription": "IOPS",
+          "usagetype": "EBS:VolumeP-IOPS.gp3",
+          "operation": "",
+          "regionCode": "us-east-1",
+          "servicename": "Amazon Elastic Compute Cloud",
+          "volumeApiName": "gp3"
+        }
+      },
+      "on_demand_terms": {
+        "7Q58NR58VQEASA4W.JRTCKXETXF": {
+          "offerTermCode": "JRTCKXETXF",
+          "sku": "7Q58NR58VQEASA4W",
+          "effectiveDate": "2026-09-01T00:00:00Z",
+          "priceDimensions": {
+            "7Q58NR58VQEASA4W.JRTCKXETXF.6YS6EN2CT7": {
+              "rateCode": "7Q58NR58VQEASA4W.JRTCKXETXF.6YS6EN2CT7",
+              "description": "$0.005 per provisioned IOPS-month of gp3 - US East (N. Virginia)",
+              "beginRange": "0",
+              "endRange": "Inf",
+              "unit": "IOPS-Mo",
+              "pricePerUnit": {
+                "USD": "0.0050000000"
+              },
+              "appliesTo": []
+            }
+          },
+          "termAttributes": {}
+        }
+      }
+    },
+    {
+      "catalog": "ec2",
+      "component": "EBS gp3 additional throughput",
+      "product": {
+        "sku": "SQUFRQX4K92S4SBB",
+        "productFamily": "Provisioned Throughput",
+        "attributes": {
+          "servicecode": "AmazonEC2",
+          "location": "US East (N. Virginia)",
+          "locationType": "AWS Region",
+          "provisioned": "Yes",
+          "group": "EBS Throughput",
+          "groupDescription": "Charge per Provisioned mbps",
+          "usagetype": "EBS:VolumeP-Throughput.gp3",
+          "operation": "",
+          "regionCode": "us-east-1",
+          "servicename": "Amazon Elastic Compute Cloud",
+          "volumeApiName": "gp3"
+        }
+      },
+      "on_demand_terms": {
+        "SQUFRQX4K92S4SBB.JRTCKXETXF": {
+          "offerTermCode": "JRTCKXETXF",
+          "sku": "SQUFRQX4K92S4SBB",
+          "effectiveDate": "2026-09-01T00:00:00Z",
+          "priceDimensions": {
+            "SQUFRQX4K92S4SBB.JRTCKXETXF.6YS6EN2CT7": {
+              "rateCode": "SQUFRQX4K92S4SBB.JRTCKXETXF.6YS6EN2CT7",
+              "description": "$0.04 per provisioned MiBps-month of gp3 - US East (N. Virginia)",
+              "beginRange": "0",
+              "endRange": "Inf",
+              "unit": "GiBps-mo",
+              "pricePerUnit": {
+                "USD": "40.9600000000"
+              },
+              "appliesTo": []
+            }
+          },
+          "termAttributes": {}
+        }
+      }
+    }
+  ]
+}

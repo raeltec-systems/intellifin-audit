@@ -1,0 +1,10 @@
+$ pnpm --filter @zobba/web test:browser --workers=1 --retries=0 --reporter=list,json knowledge.spec.ts --grep 'private preference offers its supported Undo'
+$ playwright test --workers=1 --retries=0 --reporter=list,json knowledge.spec.ts --grep 'private preference offers its supported Undo'
+
+Running 1 test using 1 worker
+
+(node:1075995) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/browser/knowledge.spec.ts:483:1 › private preference offers its supported Undo and retained outcome names every released destination exactly once (6.0s)
+
+  1 passed (47.8s)

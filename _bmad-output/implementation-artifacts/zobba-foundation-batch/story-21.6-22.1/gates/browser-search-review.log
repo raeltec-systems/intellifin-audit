@@ -1,0 +1,53 @@
+
+Running 14 tests using 1 worker
+
+(node:1133964) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+Source-library runtime ready; owned fixture build completed.
+  ✘   1 tests/browser/evidence-search.spec.ts:70:1 › bounded dense and sparse search pages disclose coverage and reset the cursor for Unicode queries (4.6s)
+(node:1134201) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+Source-library runtime ready; owned fixture build completed.
+  ✓   2 tests/browser/evidence-search.spec.ts:87:1 › late source search cannot replace a newer query and query navigation never mutates (3.9s)
+  ✓   3 tests/browser/evidence-search.spec.ts:105:3 › a held later source page is cancelled after selecting a new query (3.9s)
+  ✓   4 tests/browser/evidence-search.spec.ts:105:3 › a held later source page is cancelled after selecting another engagement (6.0s)
+  ✓   5 tests/browser/evidence-search.spec.ts:177:3 › a held inspector preview never discloses stale private material after assignment revocation (2.8s)
+  ✓   6 tests/browser/evidence-search.spec.ts:177:3 › a held inspector preview never discloses stale private material after same-actor session replacement (4.6s)
+  ✓   7 tests/browser/evidence-search.spec.ts:229:1 › a held successful search is refused after actual assignment revocation (2.3s)
+  ✓   8 tests/browser/evidence-search.spec.ts:245:1 › an unavailable search withdraws results and focuses a permitted retry surface (2.2s)
+  ✓   9 tests/browser/evidence-search.spec.ts:256:3 › routine access checking preserves a held knowledge-source preview until current verification (7.0s)
+  ✓  10 tests/browser/evidence-search.spec.ts:256:3 › routine access checking preserves a held knowledge-source download until current verification (8.6s)
+  ✓  11 tests/browser/evidence-search.spec.ts:322:1 › 390px keyboard search traverses dense and sparse pages and returns from inspection to the exact result (3.8s)
+  ✓  12 tests/browser/evidence-search.spec.ts:350:1 › 390px keyboard inspection preserves exact provenance and verified original bytes, then returns to its opener (4.4s)
+  ✓  13 tests/browser/evidence-search.spec.ts:386:1 › Task knowledge opens its exact source in the library and restores the knowledge opener (6.5s)
+  ✓  14 tests/browser/evidence-search.spec.ts:406:1 › reused knowledge opens its exact original from another engagement and source-only revocation preserves destination work (6.1s)
+
+
+  1) tests/browser/evidence-search.spec.ts:70:1 › bounded dense and sparse search pages disclose coverage and reset the cursor for Unicode queries 
+
+    Error: response.json: Protocol error (Network.getResponseBody): No data found for resource with given identifier
+    Response body is not available for a response that was navigated away from. Read response.body() before triggering any navigation.
+
+      76 |   const queried = page.waitForResponse(response => response.url().includes('/evidence?') && new URL(response.url()).searchParams.get('q') === '%_ NEEDLE');
+      77 |   await search(page, '%_ NEEDLE'); const response = await queried; expect(new URL(response.url()).searchParams.has('after')).toBe(false);
+    > 78 |   expect(await response.json()).toMatchObject({ items: [], coverage: { examined_count: 256, candidate_limit: 256, complete: false } });
+         |                         ^
+      79 |   await expect(page.locator('.evidence-registry li')).toHaveCount(0); await expect(page.locator('.evidence-registry')).toContainText('Continue to examine later candidates.');
+      80 |   await page.getByRole('button', { name: 'More evidence', exact: true }).click(); await expect(page.locator('.evidence-registry li')).toHaveCount(1);
+      81 |   await expect(page.locator('.evidence-open-item')).toHaveAttribute('data-evidence-id', 'zz-search-0299');
+        at /workspace/intellifin-audit/zobba/web/tests/browser/evidence-search.spec.ts:78:25
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../../../tmp/zobba-batch-21-6-22-1/browser-search-review/evidence-search-bounded-de-be23f--cursor-for-Unicode-queries/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../../../tmp/zobba-batch-21-6-22-1/browser-search-review/evidence-search-bounded-de-be23f--cursor-for-Unicode-queries/error-context.md
+
+    Error Context: ../../../../tmp/zobba-batch-21-6-22-1/browser-search-review/evidence-search-bounded-de-be23f--cursor-for-Unicode-queries/error-context.md
+
+  1 failed
+    tests/browser/evidence-search.spec.ts:70:1 › bounded dense and sparse search pages disclose coverage and reset the cursor for Unicode queries 
+  13 passed (1.3m)
+undefined
+/workspace/intellifin-audit/zobba/web:
+[ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL] Command failed with exit code 1: playwright test tests/browser/evidence-search.spec.ts '--workers=1' '--retries=0'

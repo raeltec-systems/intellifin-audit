@@ -1,0 +1,12 @@
+{
+  "method": "POST",
+  "action": "assert",
+  "status": 200,
+  "dependency_scope_keys": [
+    "client_id",
+    "engagement_id",
+    "kind",
+    "organisation_id",
+    "owner_id"
+  ]
+}

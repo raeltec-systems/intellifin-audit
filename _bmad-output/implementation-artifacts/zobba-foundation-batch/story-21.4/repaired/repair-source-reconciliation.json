@@ -1,0 +1,54 @@
+{
+  "baseline": "d38e1daed736415ef13e7606345dac71bd1d9f01",
+  "source_files": 245,
+  "application_manifest_scope": "All tracked and untracked nonignored files under zobba/; root metadata is separate.",
+  "rust_start_to_end_changed": [
+    "zobba/web/src/InspectionPreference.tsx",
+    "zobba/web/src/KnowledgeSupport.tsx",
+    "zobba/web/src/knowledge.ts",
+    "zobba/web/tests/browser/knowledge.spec.ts",
+    "zobba/web/tests/knowledge.test.mjs"
+  ],
+  "rust_backend_behavior_unchanged": true,
+  "rust_backend_bytes_identical": false,
+  "backend_delta": {
+    "paths": [
+      "zobba/crates/infrastructure/src/knowledge.rs"
+    ],
+    "proof": "repair-store-comment-proof.json",
+    "scope": "One comment replacement; exact reversal restores previously tested file. Current workspace binaries rebuilt successfully before final focused/browser startup."
+  },
+  "rust_end_to_first_full_browser_start_changed": [
+    "zobba/web/tests/browser/auth.spec.ts"
+  ],
+  "first_full_browser_source_unchanged": true,
+  "first_full_browser_result": "repair-browser-full-1:142 passed / 3 failed; retained, not acceptance",
+  "first_full_browser_end_to_second_start_changed": [
+    "zobba/web/tests/browser/auth-runtime.ts",
+    "zobba/web/tests/browser/evidence.spec.ts",
+    "zobba/web/tests/browser/knowledge.spec.ts",
+    "zobba/web/tests/browser/skills.spec.ts"
+  ],
+  "second_full_browser_source_unchanged": true,
+  "second_full_browser_result": "repair-browser-full-2:144 passed / 1 failed; unsupported alphabetical destination-order assertion; retained, not acceptance",
+  "second_full_browser_end_to_final_source_changed": [
+    "zobba/crates/infrastructure/src/knowledge.rs",
+    "zobba/web/tests/browser/knowledge.spec.ts"
+  ],
+  "final_followup_three_case_source_unchanged": true,
+  "final_upgrade_source_unchanged": true,
+  "three_case_and_upgrade_to_final_source_changes": [
+    "zobba/crates/infrastructure/src/knowledge.rs",
+    "zobba/web/tests/browser/knowledge.spec.ts"
+  ],
+  "qualification": "Final common browser fixture is unchanged from passing three-case and schema9 upgrade runs. Later changes are only the separately reviewed P9 test assertions and exact backend comment replacement. Final complete browser invocation exercises these final bytes.",
+  "latest_web_gate": "repair-web-check-12: generated API/types/181 units passed before final browser startup; repair-web-build-2 passed on unchanged TypeScript product bytes before browser startup",
+  "post_build_source_changes": "Browser fixture/tests plus one Rust comment only; no shipping behavior change.",
+  "final_browser": "repair-browser-full-3: see receipt for actual result",
+  "no_web_check_or_build_overlap_with_final_browser": true,
+  "final_P9_focused_source_unchanged": true,
+  "final_P9_and_full_start_identical": true,
+  "final_browser_source_unchanged": true,
+  "final_disk_matches_browser": true,
+  "final_source_manifest": "source-repair-final.json"
+}

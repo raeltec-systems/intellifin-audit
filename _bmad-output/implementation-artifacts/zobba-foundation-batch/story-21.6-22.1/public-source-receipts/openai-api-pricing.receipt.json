@@ -1,0 +1,20 @@
+{
+  "requested_url": "https://openai.com/api/pricing/",
+  "effective_url": "https://openai.com/business/pricing/#api",
+  "retrieved_at_utc": "2026-10-03T04:26:50.205177+00:00",
+  "completed_at_utc": "2026-10-03T04:26:50.728680+00:00",
+  "method": "GET",
+  "curl_exit_code": 0,
+  "http_status": 200,
+  "content_type": "text/html; charset=utf-8",
+  "ssl_verify_result": 0,
+  "tls_verification_disabled": false,
+  "auth_headers_added": false,
+  "body_file": "openai-api-pricing.html",
+  "bytes": 843475,
+  "sha256": "fd99a6b97645ca94831adf45469e4e2c042c93660c2a56d0fbbb3abc48fb0cbd",
+  "stderr": "",
+  "readable_extraction_file": "/tmp/zobba-story-22-1/public-source-receipts/openai-api-pricing.txt",
+  "readable_extraction_sha256": "ab1da7c6048c95eb4d37194fab53eb41185005dbe380e78a687a118c4fe0f69f",
+  "raw_body_in_checkpoint": false
+}

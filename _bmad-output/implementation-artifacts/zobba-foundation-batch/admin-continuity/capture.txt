@@ -1,0 +1,266 @@
+DO
+psql:/tmp/zobba-admin-continuity/capture.sql:2: NOTICE:  drop cascades to 45 other objects
+DETAIL:  drop cascades to table _sqlx_migrations
+drop cascades to table zobba_bootstrap
+drop cascades to table identities
+drop cascades to table login_attempts
+drop cascades to table sessions
+drop cascades to table organisations
+drop cascades to table clients
+drop cascades to table engagements
+drop cascades to table organisation_memberships
+drop cascades to table engagement_assignments
+drop cascades to table task_counters
+drop cascades to table tasks
+drop cascades to table task_cycles
+drop cascades to table task_commands
+drop cascades to table task_events
+drop cascades to table task_wakeups
+drop cascades to table task_deliveries
+drop cascades to table task_claims
+drop cascades to table task_receipt_slots
+drop cascades to table task_observations
+drop cascades to table permission_versions
+drop cascades to table permission_heads
+drop cascades to table trusted_attachment_metadata
+drop cascades to table operations
+drop cascades to table operation_decisions
+drop cascades to table operation_attempts
+drop cascades to table operation_claims
+drop cascades to table operation_receipt_producers
+drop cascades to table operation_receipt_slots
+drop cascades to table operation_receipts
+drop cascades to table membership_versions
+drop cascades to table membership_invitations
+drop cascades to table membership_events
+drop cascades to function membership_admin(text,text)
+drop cascades to function membership_session(text,text)
+drop cascades to function membership_validate(text,jsonb)
+drop cascades to function membership_read(text,text,text,text,text,text)
+drop cascades to function membership_assignments(text,text,text,text,text)
+drop cascades to function membership_fence(text,text,text[],jsonb,boolean,text)
+drop cascades to function membership_write(text,text,text,text,jsonb,text,text,text)
+drop cascades to function membership_accept(text,text,text,text,text,text)
+drop cascades to function membership_preview(text,text,text,text)
+drop cascades to table evidence_reservations
+drop cascades to table evidence_originals
+drop cascades to function evidence_session_locked(text,text)
+DROP SCHEMA
+CREATE SCHEMA
+REVOKE
+CREATE TABLE
+CREATE TABLE
+INSERT 0 1
+REVOKE
+CREATE TABLE
+CREATE TABLE
+CREATE INDEX
+CREATE TABLE
+CREATE INDEX
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+ALTER TABLE
+ALTER TABLE
+CREATE POLICY
+ALTER TABLE
+ALTER TABLE
+CREATE POLICY
+ALTER TABLE
+ALTER TABLE
+CREATE POLICY
+ALTER TABLE
+ALTER TABLE
+CREATE POLICY
+ALTER TABLE
+ALTER TABLE
+CREATE POLICY
+CREATE POLICY
+REVOKE
+ALTER TABLE
+ALTER TABLE
+UPDATE 1
+ALTER TABLE
+ALTER TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE INDEX
+CREATE TABLE
+ALTER TABLE
+CREATE TABLE
+CREATE INDEX
+CREATE TABLE
+CREATE INDEX
+CREATE TABLE
+CREATE INDEX
+CREATE TABLE
+CREATE INDEX
+CREATE TABLE
+CREATE INDEX
+CREATE INDEX
+CREATE TABLE
+CREATE TABLE
+ALTER TABLE
+ALTER TABLE
+CREATE POLICY
+ALTER TABLE
+ALTER TABLE
+CREATE POLICY
+ALTER TABLE
+ALTER TABLE
+CREATE POLICY
+ALTER TABLE
+ALTER TABLE
+CREATE POLICY
+CREATE POLICY
+ALTER TABLE
+ALTER TABLE
+CREATE POLICY
+CREATE POLICY
+ALTER TABLE
+ALTER TABLE
+CREATE POLICY
+ALTER TABLE
+ALTER TABLE
+CREATE POLICY
+ALTER TABLE
+ALTER TABLE
+CREATE POLICY
+ALTER TABLE
+ALTER TABLE
+CREATE POLICY
+CREATE POLICY
+ALTER TABLE
+ALTER TABLE
+CREATE POLICY
+CREATE POLICY
+CREATE POLICY
+CREATE POLICY
+CREATE POLICY
+CREATE POLICY
+CREATE POLICY
+REVOKE
+ALTER TABLE
+ALTER TABLE
+UPDATE 1
+ALTER TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE INDEX
+CREATE TABLE
+CREATE INDEX
+CREATE TABLE
+CREATE TABLE
+CREATE INDEX
+CREATE INDEX
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE INDEX
+ALTER TABLE
+ALTER TABLE
+CREATE POLICY
+CREATE POLICY
+ALTER TABLE
+ALTER TABLE
+CREATE POLICY
+CREATE POLICY
+CREATE POLICY
+ALTER TABLE
+ALTER TABLE
+CREATE POLICY
+CREATE POLICY
+ALTER TABLE
+ALTER TABLE
+CREATE POLICY
+CREATE POLICY
+ALTER TABLE
+ALTER TABLE
+CREATE POLICY
+CREATE POLICY
+ALTER TABLE
+ALTER TABLE
+CREATE POLICY
+CREATE POLICY
+ALTER TABLE
+ALTER TABLE
+CREATE POLICY
+CREATE POLICY
+CREATE POLICY
+ALTER TABLE
+ALTER TABLE
+CREATE POLICY
+CREATE POLICY
+ALTER TABLE
+ALTER TABLE
+CREATE POLICY
+ALTER TABLE
+ALTER TABLE
+CREATE POLICY
+CREATE POLICY
+CREATE POLICY
+CREATE POLICY
+REVOKE
+ALTER TABLE
+ALTER TABLE
+UPDATE 1
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+CREATE INDEX
+CREATE INDEX
+CREATE TABLE
+CREATE TABLE
+CREATE INDEX
+CREATE TABLE
+CREATE INDEX
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+DO
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+REVOKE
+REVOKE
+ALTER TABLE
+ALTER TABLE
+UPDATE 1
+ALTER TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE INDEX
+CREATE INDEX
+ALTER TABLE
+ALTER TABLE
+CREATE POLICY
+CREATE POLICY
+ALTER TABLE
+ALTER TABLE
+CREATE POLICY
+CREATE POLICY
+REVOKE
+ALTER TABLE
+ALTER TABLE
+UPDATE 1
+ALTER TABLE
+CREATE FUNCTION
+REVOKE
+psql:/tmp/zobba-admin-continuity/capture.sql:874: ERROR:  LOCK TABLE can only be used in transaction blocks

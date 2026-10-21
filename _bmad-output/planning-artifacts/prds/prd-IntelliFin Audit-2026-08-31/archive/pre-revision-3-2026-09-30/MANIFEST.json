@@ -1,0 +1,16 @@
+{
+  "status": "superseded history; not active requirements",
+  "archived": "2026-09-30",
+  "files": [
+    {
+      "path": "prd.md",
+      "sha256": "686826a0a5464d93ae7420cb737c106ea22f5e61a64c0443cfd26c47a3003eab",
+      "bytes": 157213
+    },
+    {
+      "path": "addendum.md",
+      "sha256": "44622f2d2545bb322ab9c33918bcf91c761187ccf3c5e829056edadffeb0efe4",
+      "bytes": 40656
+    }
+  ]
+}

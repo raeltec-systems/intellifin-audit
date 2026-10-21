@@ -1,0 +1,7 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.30s
+     Running tests/membership_http.rs (target/debug/deps/membership_http-9bf2310c04080123)
+
+running 1 test
+test membership_http_current_authority_exact_retries_and_verified_recipient ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 4.60s

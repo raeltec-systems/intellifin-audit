@@ -1,0 +1,1 @@
+Invoices above 1,000.00 USD require an approver. No invoice may exceed 5,000.00 USD.

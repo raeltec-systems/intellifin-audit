@@ -1,0 +1,69 @@
+   Compiling zobba-domain v0.1.0 (/workspace/intellifin-audit/zobba/crates/domain)
+   Compiling zobba-application v0.1.0 (/workspace/intellifin-audit/zobba/crates/application)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.54s
+     Running unittests src/lib.rs (target/debug/deps/zobba_application-667dcd2da83599ce)
+
+running 9 tests
+test methodology::tests::recall_needs_current_revision_version_identity_and_reason ... ok
+test methodology::tests::conversion_retains_exact_template_and_requirement_versions ... ok
+test methodology::tests::historical_business_period_is_not_compared_to_availability_date ... ok
+test methodology::tests::historical_template_conversion_retains_source_revision_neutrality_and_recall ... ok
+test methodology::tests::sourced_proposals_need_attribution_and_neutral_source_keeps_its_label ... ok
+test methodology::tests::validated_save_has_bounded_scope_revision_and_separate_activation ... ok
+test tests::diagnostics_are_allowlisted_codes_only ... ok
+test methodology::tests::undo_is_a_new_successor_command_and_retains_exact_retry_meaning ... ok
+test task::tests::diagnostics_are_fixed_secret_free_codes ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/zobba_domain-e3cd4001b4dd28f1)
+
+running 45 tests
+test identity::tests::administrative_roles_never_imply_audit_authority ... ok
+test identity::tests::scope_bounds_match_unicode_and_ascii_contracts ... ok
+test membership::tests::commands_are_bounded_and_roles_do_not_invent_authority ... ok
+test membership::tests::expiry_bounds_match_the_owned_wire_timestamp_range ... ok
+test methodology::tests::conditional_assignment_cannot_supply_its_own_missing_context ... ok
+test methodology::tests::adopted_empty_and_default_only_overrides_cannot_relabel_neutral_requirements ... ok
+test membership::tests::recipient_identity_preserves_local_case_and_rejects_ambiguous_addresses ... ok
+test methodology::tests::equal_rank_overlap_is_explicit_and_independent_of_input_order ... ok
+test methodology::tests::exact_historical_template_survives_successor_without_reintroducing_old_policy ... ok
+test methodology::tests::label_only_adopted_override_preserves_substantive_neutral_standing ... ok
+test methodology::tests::labels_text_and_templates_share_rust_unicode_whitespace_edges ... ok
+test methodology::tests::neutral_defaults_cannot_hide_an_unresolved_conditional_assignment ... ok
+test methodology::tests::neutral_starter_and_incomplete_criteria_do_not_claim_firm_adoption ... ok
+test methodology::tests::optional_fields_replace_individually_without_erasing_other_inheritance ... ok
+test methodology::tests::optional_task_context_uses_firm_defaults_and_explicit_context_wins ... ok
+test methodology::tests::partial_adoption_identifies_remaining_neutral_fields_without_new_completeness_gate ... ok
+test methodology::tests::recall_blocks_affected_basis_and_foreign_scope_never_contributes ... ok
+test methodology::tests::historical_template_sources_respect_scope_and_availability ... ok
+test methodology::tests::replaced_optional_neutral_fields_do_not_taint_adopted_requirement_provenance ... ok
+test methodology::tests::straddling_business_period_is_incomplete_instead_of_selecting_one_policy ... ok
+test methodology::tests::scoped_partial_override_preserves_every_inherited_mandatory_field ... ok
+test methodology::tests::template_prose_preserves_multiline_layout_without_accepting_other_controls ... ok
+test methodology::tests::template_copy_preserves_original_neutrality_and_recall_independent_of_input_order ... ok
+test methodology::tests::same_template_version_cannot_silently_change_content_in_narrower_scope ... ok
+test methodology::tests::unrelated_recalled_historical_template_does_not_restrict_current_basis ... ok
+test methodology::tests::unavailable_future_assignment_does_not_displace_historical_business_policy ... ok
+test methodology::tests::template_reference_binds_exact_content_and_missing_version_is_incomplete ... ok
+test methodology::tests::validates_real_business_dates_and_complete_ordered_periods ... ok
+test permissions::tests::accepted_scope_actor_task_and_immutable_versions_cannot_be_substituted ... ok
+test permissions::tests::audit_coordination_never_grants_operational_resource_writes ... ok
+test permissions::tests::all_three_purposes_need_their_verified_account_boundary ... ok
+test evidence::tests::preview_is_inert_bounded_and_utf8_safe ... ok
+test permissions::tests::decisions_bind_every_material_field_revision_and_expiry ... ok
+test permissions::tests::expiry_and_attachment_recipient_bounds_apply_to_all_policy_layers ... ok
+test permissions::tests::every_required_layer_narrows_immediately_and_widening_cannot_enlarge_acceptance ... ok
+test permissions::tests::complete_delegation_chain_is_ordered_versioned_bounded_and_revocable ... ok
+test permissions::tests::malformed_unbounded_and_ambiguous_requests_have_no_canonical_encoding ... ok
+test permissions::tests::source_facts_never_infer_completion_or_absence_from_pending ... ok
+test task::tests::command_matrix_requires_exact_target_and_content ... ok
+test permissions::tests::live_write_and_unrestricted_takeover_remain_hard_denials ... ok
+test task::tests::exact_text_is_retained_but_invalid_or_unbounded_content_is_refused ... ok
+test task::tests::explicit_create_and_guide_context_is_exact_meaning_and_never_chat_policy ... ok
+test task::tests::resumption_requires_explicit_command_and_observed_cessation ... ok
+test permissions::tests::test_labels_do_not_replace_verification_scope_or_cleanup ... ok
+test methodology::tests::validates_stable_ids_duplicates_unicode_and_aggregate_size ... ok
+
+test result: ok. 45 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+

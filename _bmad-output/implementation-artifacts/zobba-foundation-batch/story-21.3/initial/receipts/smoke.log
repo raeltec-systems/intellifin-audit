@@ -1,0 +1,22 @@
+Smoke uses only the dedicated *_test database; its schema is reset.
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.33s
+   Compiling zobba-infrastructure v0.1.0 (/workspace/intellifin-audit/zobba/crates/infrastructure)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.92s
+     Running tests/bootstrap.rs (target/debug/deps/bootstrap-b490d08a054a0e83)
+
+running 3 tests
+test bootstrap_contract ... ok
+test support::destructive_guard_refuses_development_and_endpoint_aliases ... ok
+test support::partial_dns_overlap_refuses_test_pair_but_still_blocks_development_overlap ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 339.49s
+
+API and worker refused invalid URLs and unmigrated schemas without disclosing configuration.
+cli: schema_ready
+cli: schema_ready
+Explicit CLI migration succeeded twice.
+API and worker returned exact live/ready health responses.
+Database connection loss returned 503 readiness; both processes stayed live.
+The same API and worker processes recovered readiness after database connections resumed.
+Startup and dependency-loss telemetry contained only allowlisted service/error codes.
+Zobba process smoke passed.

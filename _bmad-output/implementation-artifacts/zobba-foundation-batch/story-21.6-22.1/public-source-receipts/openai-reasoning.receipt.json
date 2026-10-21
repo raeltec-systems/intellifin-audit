@@ -1,0 +1,20 @@
+{
+  "requested_url": "https://developers.openai.com/api/docs/guides/reasoning",
+  "effective_url": "https://developers.openai.com/api/docs/guides/reasoning",
+  "retrieved_at_utc": "2026-10-03T04:28:09.078831+00:00",
+  "completed_at_utc": "2026-10-03T04:28:09.281318+00:00",
+  "method": "GET",
+  "curl_exit_code": 0,
+  "http_status": 200,
+  "content_type": "text/html; charset=utf-8",
+  "ssl_verify_result": 0,
+  "tls_verification_disabled": false,
+  "auth_headers_added": false,
+  "body_file": "openai-reasoning.html",
+  "bytes": 1085290,
+  "sha256": "33bdda7b49c7c20769807f94b68fb487296fe7428dce3129fb75be5d8d328f51",
+  "stderr": "",
+  "readable_extraction_file": "/tmp/zobba-story-22-1/public-source-receipts/openai-reasoning.txt",
+  "readable_extraction_sha256": "620397cc4c2b2d520f3ec89d7741fd6592b2f178c6a1d80b5abb9da74c11f9e3",
+  "raw_body_in_checkpoint": false
+}

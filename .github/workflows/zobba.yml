@@ -1,0 +1,277 @@
+name: Zobba foundation
+
+# Keep this name distinct from CI: the historical Release workflow listens for
+# that workflow name. This workflow only uses a disposable PostgreSQL service.
+on:
+  pull_request:
+    paths:
+      - 'zobba/**'
+      - '.github/workflows/zobba.yml'
+      - '.github/workflows/zobba-qualification-release.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'zobba/**'
+      - '.github/workflows/zobba.yml'
+      - '.github/workflows/zobba-qualification-release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zobba-foundation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  foundation:
+    runs-on: ubuntu-24.04
+    # Includes the S3 protocol suite, schema-prefix refusals and full Chromium coverage.
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: zobba
+        shell: bash
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: disposable-ci-admin
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      CARGO_TERM_COLOR: always
+      ZOBBA_TEST_MIGRATION_DATABASE_URL: postgres://zobba_migrator:disposable-ci-migrator@127.0.0.1:5432/zobba_ci_test
+      ZOBBA_TEST_RUNTIME_DATABASE_URL: postgres://zobba_app:disposable-ci-runtime@127.0.0.1:5432/zobba_ci_test
+      ZOBBA_TEST_ADMIN_DATABASE_URL: postgres://postgres:disposable-ci-admin@127.0.0.1:5432/zobba_ci_test
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install pinned Rust tools
+        run: rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy
+      - name: Cache only the Zobba Cargo workspace
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            zobba/target
+          key: ${{ runner.os }}-zobba-rust-1.98.1-${{ hashFiles('zobba/Cargo.lock') }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+          package_json_file: zobba/package.json
+          run_install: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24.20.0
+          cache: pnpm
+          cache-dependency-path: zobba/pnpm-lock.yaml
+      - name: Provision separate migration and runtime roles
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: '5432'
+          PGUSER: postgres
+          PGPASSWORD: disposable-ci-admin
+          PGDATABASE: postgres
+        run: |
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE zobba_migrator LOGIN PASSWORD 'disposable-ci-migrator' NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS;
+          CREATE ROLE zobba_app LOGIN PASSWORD 'disposable-ci-runtime' NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS;
+          CREATE DATABASE zobba_ci_test OWNER zobba_migrator;
+          REVOKE ALL ON DATABASE zobba_ci_test FROM PUBLIC;
+          GRANT CONNECT ON DATABASE zobba_ci_test TO zobba_app;
+          SQL
+      - name: Install the independent locked web workspace
+        run: pnpm install --frozen-lockfile
+      - name: Prepare and verify the independent HTTPS identity fixture
+        run: |
+          export ZOBBA_FIXTURE_DIR="$RUNNER_TEMP/zobba-oidc-fixture"
+          printf 'ZOBBA_FIXTURE_DIR=%s\n' "$ZOBBA_FIXTURE_DIR" >> "$GITHUB_ENV"
+          pnpm fixture:setup
+          test -s "$ZOBBA_FIXTURE_DIR/env.sh"
+          test -s "$ZOBBA_FIXTURE_DIR/fixture.json"
+          pnpm fixture:test
+      - name: Test disposable-database guard regressions
+        run: python3 -B -m unittest discover -s scripts -p 'test_*.py'
+      - name: Verify crate and web isolation
+        run: python3 scripts/check-boundaries.py
+      - name: Check Rust formatting
+        run: cargo fmt --check
+      - name: Lint Rust
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Release builds carry no Docker sandbox or test-only loopback adapter
+        run: |
+          # Normal and build edges only: dev-dependencies (which enable the
+          # test sandbox for the hostile fixtures) never reach a release binary.
+          features="$(cargo tree --locked --workspace -e normal,build,features)"
+          if grep -E 'test-docker-sandbox|test-loopback' <<<"$features"; then
+            echo "::error::a test-only feature reaches a release build"
+            exit 1
+          fi
+          # Control: the dev graph does enable it, so the check above is live.
+          cargo tree --locked -p zobba-worker -e normal,dev,features | grep -q 'test-docker-sandbox'
+      # build.sh refuses any other buildx release: the image digest depends on it.
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          version: v0.37.1
+          driver: docker
+      - name: Build the pinned general analysis image reproducibly (hostile Docker and reading fixtures)
+        # The digest must equal zobba_domain::analysis::GENERAL_IMAGE_DIGEST.
+        # build.sh fetches hash-pinned wheels and builds with fixed timestamps;
+        # the worker suites (analysis_sandbox.rs, citations.rs) run real programs
+        # in it from a local registry and fail, never skip, without it.
+        run: |
+          # The disposable local registry is itself pinned by digest.
+          docker run -d --name zobba-registry -p 127.0.0.1:5000:5000 mirror.gcr.io/library/registry@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373
+          digest=$(zobba/deploy/qualification/analysis/general/build.sh 127.0.0.1:5000/zobba/analysis-general:ci | tail -n 1)
+          test "$digest" = "sha256:8241deca19d20b576c0d4b2ad75deac753492d335de45d284766df3d5666ea5f"
+          docker pull "127.0.0.1:5000/zobba/analysis-general@$digest"
+      - name: Install LibreOffice headless (Story 24.4 export fixtures must open in it)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libreoffice-writer-nogui libreoffice-calc-nogui
+          soffice --version
+      - name: Test Rust, immutable S3 protocol, PostgreSQL refusal cases and hostile analysis fixtures
+        run: |
+          source "$ZOBBA_FIXTURE_DIR/env.sh"
+          node fixtures/oidc/server.mjs > /tmp/zobba-oidc-fixture.log 2>&1 &
+          fixture_pid=$!
+          trap 'kill "$fixture_pid" 2>/dev/null || true' EXIT
+          curl --cacert "$ZOBBA_OIDC_CA_FILE" --retry 10 --retry-connrefused --retry-delay 1 --max-time 2 --fail --silent --output /dev/null "$ZOBBA_OIDC_ISSUER/.well-known/openid-configuration"
+          cargo test --workspace --locked
+      - name: Build Rust processes
+        run: cargo build --workspace --locked
+      - name: Test synthetic qualification approval guards without provider access
+        run: cargo test --locked -p zobba-infrastructure --example model_qualification
+      - name: Check owned web types and generated interface
+        run: pnpm check
+      - name: Build Pair web shell
+        run: pnpm build
+      - name: Exercise explicit migrations, process refusal, health and connection loss
+        run: python3 scripts/smoke.py
+      - name: Install Chromium for the owned browser regression
+        run: pnpm --filter @zobba/web exec playwright install --with-deps chromium
+      - name: Verify HTTPS sign-in, immutable evidence, audience fences and keyboard recovery
+        run: pnpm test:browser
+      - name: Preserve browser regression evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zobba-browser-regression
+          path: /tmp/zobba-browser-results
+          if-no-files-found: ignore
+      - name: Verify lockfiles and generated interface were not changed
+        run: git diff --exit-code -- Cargo.lock pnpm-lock.yaml openapi.json web/src/generated web/tests/fixtures
+      - name: Remove the disposable image registry and test images
+        if: always()
+        run: |
+          docker rm -f zobba-registry 2>/dev/null || true
+          docker image ls -q --filter 'reference=127.0.0.1:5000/zobba/*' | sort -u | xargs -r docker image rm -f || true
+
+  # Story 20.7a: the qualification environment, verified with no AWS access.
+  # No AWS credentials exist in this job; Terraform tests use mocked providers.
+  qualification-infrastructure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: disposable-ci-admin
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      TERRAFORM_VERSION: 1.16.3
+      CHECKOV_VERSION: 3.3.20
+      ACTIONLINT_VERSION: 1.7.11
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+      - name: Terraform format, validate and offline tests (mocked AWS provider)
+        working-directory: zobba/deploy/qualification
+        run: |
+          terraform fmt -check -recursive
+          terraform init -backend=false -input=false -lockfile=readonly
+          terraform validate
+          terraform test
+      - name: CloudFront Function behaviour
+        run: node --test zobba/deploy/qualification/tests/functions.test.mjs
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Policy scan (checkov; every suppression carries a written reason)
+        run: |
+          python -m pip install --disable-pip-version-check "checkov==$CHECKOV_VERSION"
+          checkov -d zobba/deploy/qualification --framework terraform --skip-path tests --quiet --compact
+          checkov -f .github/workflows/zobba-qualification-release.yml --framework github_actions --quiet --compact
+          # Every suppression needs an ID, a colon and a non-empty reason.
+          if grep -rhE '#checkov:skip=' zobba/deploy/qualification --include='*.tf' \
+             | grep -vE '#checkov:skip=[A-Z0-9_]+:[[:space:]]*[^[:space:]]'; then
+            echo "::error::every checkov suppression must carry a reason"
+            exit 1
+          fi
+      - name: Release workflow order, trigger and pinning (static)
+        run: python zobba/deploy/qualification/tests/check_release_workflow.py
+      - name: Release scripts against a stubbed aws CLI (exit 1/None/empty, timeout, rollback)
+        run: |
+          python -m pip install --disable-pip-version-check "jmespath==1.0.1"
+          zobba/deploy/release/tests/release-scripts.test.sh
+      - name: Lint workflows (actionlint with shellcheck)
+        run: |
+          archive="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl -fsSLO "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${archive}"
+          curl -fsSLO "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_checksums.txt"
+          grep " ${archive}\$" "actionlint_${ACTIONLINT_VERSION}_checksums.txt" | sha256sum -c -
+          tar xzf "$archive" actionlint
+          ./actionlint .github/workflows/zobba.yml .github/workflows/zobba-qualification-release.yml
+          shellcheck -s sh zobba/deploy/qualification/bootstrap-roles.sh
+          shellcheck zobba/deploy/release/*.sh zobba/deploy/release/tests/*.sh zobba/deploy/qualification/tests/*.sh
+      - name: Build the qualification image
+        run: docker build -f zobba/deploy/Containerfile -t zobba-qualification:ci zobba
+      - name: Image smoke (openapi matches, non-root, no default process)
+        run: |
+          docker run --rm --read-only zobba-qualification:ci /usr/local/bin/zobba-cli openapi > "$RUNNER_TEMP/openapi.json"
+          cmp "$RUNNER_TEMP/openapi.json" zobba/openapi.json
+          test "$(docker inspect zobba-qualification:ci --format '{{.Config.User}}')" = "10001:10001"
+          test "$(docker inspect zobba-qualification:ci --format '{{json .Config.Cmd}}{{json .Config.Entrypoint}}')" = "nullnull"
+      - name: Role bootstrap as a non-superuser master, including refusal cases
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: '5432'
+          SUPERUSER_PASSWORD: disposable-ci-admin
+        run: zobba/deploy/qualification/tests/bootstrap-roles.test.sh
+      - name: Migrate, then API and worker readiness from the image (read-only, worker with no arguments)
+        run: |
+          migrator_url='postgres://zobba_migrator:ciMigratorPassword1@127.0.0.1:5432/zobba?sslmode=prefer'
+          runtime_url='postgres://zobba_app:ciRuntimePassword1@127.0.0.1:5432/zobba?sslmode=prefer'
+          docker run --rm --read-only --network host -e ZOBBA_MIGRATION_DATABASE_URL="$migrator_url" \
+            zobba-qualification:ci /usr/local/bin/zobba-cli migrate --runtime-role zobba_app
+          docker run -d --name zobba-api-smoke --read-only --network host \
+            -e ZOBBA_API_BIND=127.0.0.1:4310 -e ZOBBA_RUNTIME_DATABASE_URL="$runtime_url" \
+            --entrypoint /usr/local/bin/zobba-api zobba-qualification:ci
+          docker run -d --name zobba-worker-smoke --read-only --network host \
+            -e ZOBBA_WORKER_BIND=127.0.0.1:4311 -e ZOBBA_RUNTIME_DATABASE_URL="$runtime_url" \
+            --entrypoint /usr/local/bin/zobba-worker zobba-qualification:ci
+          test "$(docker inspect zobba-worker-smoke --format '{{json .Args}}')" = "[]"
+          curl --retry 10 --retry-connrefused --retry-delay 1 --max-time 3 --fail --silent http://127.0.0.1:4310/health/ready
+          curl --retry 10 --retry-connrefused --retry-delay 1 --max-time 3 --fail --silent http://127.0.0.1:4311/health/ready
+          docker rm -f zobba-api-smoke zobba-worker-smoke

@@ -1,0 +1,36 @@
+
+Running 1 test using 1 worker
+
+(node:239298) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  1 tests/browser/auth-database-endpoint.spec.ts:18:1 › portless PGPORT routes actual migration, admin SQL and authenticated recovery through an owned relay (3.8s)
+
+
+  1) tests/browser/auth-database-endpoint.spec.ts:18:1 › portless PGPORT routes actual migration, admin SQL and authenticated recovery through an owned relay
+
+    Error: expect(received).toThrow(expected)
+
+    Expected substring: "Synthetic browser database mutation failed."
+
+    Received function did not throw
+
+      90 |     runtime.sql(restoreAuthority);
+      91 |     await exchange('disconnect');
+    > 92 |     try { expect(() => runtime!.sql('SELECT 1;')).toThrow('Synthetic browser database mutation failed.'); }
+         |                                                   ^
+      93 |     finally { await exchange('restore'); }
+      94 |     runtime.sql('SELECT 1;');
+      95 |
+        at /workspace/intellifin-audit/zobba/web/tests/browser/auth-database-endpoint.spec.ts:92:51
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../../../tmp/zobba-owner-endpoint-admin-bypass-results/auth-database-endpoint-por-2ae13-very-through-an-owned-relay/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../../../tmp/zobba-owner-endpoint-admin-bypass-results/auth-database-endpoint-por-2ae13-very-through-an-owned-relay/error-context.md
+
+  1 failed
+    tests/browser/auth-database-endpoint.spec.ts:18:1 › portless PGPORT routes actual migration, admin SQL and authenticated recovery through an owned relay
+undefined
+/workspace/intellifin-audit/zobba/web:
+[ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL] Command failed with exit code 1: playwright test tests/browser/auth-database-endpoint.spec.ts

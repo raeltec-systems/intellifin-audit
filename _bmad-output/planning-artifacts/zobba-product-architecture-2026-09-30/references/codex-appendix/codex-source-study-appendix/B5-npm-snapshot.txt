@@ -1,0 +1,18 @@
+captured 2026-09-29T19:31:05.858797Z from https://registry.npmjs.org/<name> and api.npmjs.org downloads (last-month)
+ai                         latest=7.0.122    modified=2026-09-28 last_month_dl=  96,749,799
+@ai-sdk/openai             latest=4.0.81     modified=2026-09-29 last_month_dl=  50,613,366
+@ai-sdk/anthropic          latest=4.0.68     modified=2026-09-28 last_month_dl=  48,930,030
+pg-boss                    latest=12.35.0    modified=2026-09-26 last_month_dl=   6,816,590
+postgres                   latest=3.4.9      modified=2026-04-05 last_month_dl=  65,756,151
+drizzle-orm                latest=0.45.3     modified=2026-09-21 last_month_dl=  87,287,361
+playwright-core            latest=1.63.0     modified=2026-09-29 last_month_dl= 400,052,004
+docx                       latest=9.8.1      modified=2026-09-28 last_month_dl=  22,146,924
+exceljs                    latest=4.4.0      modified=2024-12-20 last_month_dl=  57,500,696
+pdf-parse                  latest=2.4.5      modified=2025-10-29 last_month_dl=  33,527,471
+pdfjs-dist                 latest=6.3.289    modified=2026-08-29 last_month_dl= 104,607,321
+mailparser                 latest=3.9.31     modified=2026-09-28 last_month_dl=  23,419,693
+tesseract.js               latest=7.0.0      modified=2025-12-15 last_month_dl=  11,812,498
+@aws-sdk/client-s3         latest=3.1143.0   modified=2026-09-29 last_month_dl= 171,013,438
+better-auth                latest=1.7.6      modified=2026-09-24 last_month_dl=  33,137,184
+zod                        latest=4.6.5      modified=2026-09-25 last_month_dl=1,113,746,315
+@modelcontextprotocol/sdk  latest=1.31.0     modified=2026-09-28 last_month_dl= 212,602,917

@@ -1,0 +1,431 @@
+38c9ba73cf269a3671608197c427a7a09e60268edfebb4fd9ced7a1e304c6d02  AGENTS.md
+1e849da130ba505296fed291ed1e49c1034a18775d3896f51098ce697a35eb53  CLAUDE.md
+abb8e8c5e2b2aa23c1fcb652fbf4851653174fee4ac8c35fe39f8b74fac8ddf0  README.md
+0bdf317569330453482b6e23f6158ea48280602e37e20fc6695fc265559f7e72  START-HERE.html
+d0f0cd73534c2bbca436751da55896ef24f1b7fa1476a133fc86e62f37a018a6  START-HERE.md
+6ec266961bc695ca5ceedcc0c4de9a4ef42252662c1698d6b5dda5f7ac73bd37  _bmad-output/implementation-artifacts/archive/pre-revision-3-2026-09-30/README.md
+e23038ea1e96f85de3d3da22d3c70b519eedbda3fbd7676921601a51b0d07fae  _bmad-output/implementation-artifacts/archive/pre-revision-3-2026-09-30/sprint-status.yaml
+8685ca464fdd31077a7f20c03cdcc9ca375e3076cb2f6debe6c697904ccc849b  _bmad-output/implementation-artifacts/sprint-status.yaml
+abb9a962faefd8d5efbc80948beac6ec9df585c4f7e0e8f349a8016f41169105  _bmad-output/planning-artifacts/ACTIVE-BASELINE.md
+8d3b747dec3b27622b023b671a2bd2a9e73423a317ddfef0f423b1e799cd3a92  _bmad-output/planning-artifacts/architecture/architecture-IntelliFin Audit-2026-09-01/.memlog.md
+d9b366fc53f0ca3c3eabd870d2ce0e190c5a1b8571db4a0f06c11d405ec8ace0  _bmad-output/planning-artifacts/architecture/architecture-IntelliFin Audit-2026-09-01/ARCHITECTURE-SPINE.md
+f549dcc57faa2c2a5b707cf0dc1b48857589fee8c0ad844307c9861ead4b485e  _bmad-output/planning-artifacts/architecture/architecture-IntelliFin Audit-2026-09-01/CONTRACT-REGISTER.md
+8df4e33353bca3d25bcce8256986fc1abc49727541fb0e689865ec6250c94337  _bmad-output/planning-artifacts/architecture/architecture-IntelliFin Audit-2026-09-01/archive/2026-09-30-pre-rust-rev5/.memlog.md
+cc40ac3c99e2e7f4d1ff494afc94ef352ebd1d6a494178d0de5909264f49fc2a  _bmad-output/planning-artifacts/architecture/architecture-IntelliFin Audit-2026-09-01/archive/2026-09-30-pre-rust-rev5/ARCHITECTURE-SPINE.md
+efc0d6a18ac64e0523f3da34c765a582b592f4332a4ad7625c2a64e80bb045b7  _bmad-output/planning-artifacts/architecture/architecture-IntelliFin Audit-2026-09-01/archive/2026-09-30-pre-rust-rev5/CONTRACT-REGISTER.md
+85ed20358d3acf8b85e4e7872f7f8d0b6df66daccbc7fc23776898fefafaee98  _bmad-output/planning-artifacts/architecture/architecture-IntelliFin Audit-2026-09-01/archive/2026-09-30-pre-rust-rev5/README.md
+e1a34fdf0853ca4eb15eaace7d548aa5b441a8292d41ebdef5c58bdae50f63ae  _bmad-output/planning-artifacts/architecture/architecture-IntelliFin Audit-2026-09-01/reviews/recheck-adversarial-divergence.md
+48edad10677d682d4d90bc326cf1a223a96e21f98f519b3c2154641956c22875  _bmad-output/planning-artifacts/architecture/architecture-IntelliFin Audit-2026-09-01/reviews/recheck-rubric-integrity.md
+19b1515972205e5124d66a5e8b261cb9cc9198f6e12574f5c495455970ef82d1  _bmad-output/planning-artifacts/architecture/architecture-IntelliFin Audit-2026-09-01/reviews/recheck-technology-reality.md
+2fb78628bcce83f941161369df75ef1817c631d9722373ca0e084b0a153564bd  _bmad-output/planning-artifacts/architecture/architecture-IntelliFin Audit-2026-09-01/reviews/reconcile-rev2-inputs.md
+0a42a0bd356b7475fe26732ae28589cd9882f476031e8c1bbe85d7a8eb52f380  _bmad-output/planning-artifacts/architecture/architecture-IntelliFin Audit-2026-09-01/reviews/review-adversarial-divergence-rev2.md
+dddeed91929399fd342b80710e3c843308b878d7a429b548c89b7b705017cc14  _bmad-output/planning-artifacts/architecture/architecture-IntelliFin Audit-2026-09-01/reviews/review-adversarial-divergence.md
+5ca680ed7ff9db994556c60964b3c6c320bd57adb3e057f957845a5dbc725e7c  _bmad-output/planning-artifacts/architecture/architecture-IntelliFin Audit-2026-09-01/reviews/review-rubric-integrity.md
+3f1a63f5385cb1b38d82088da2f2bc56b2a349c2553e01e9a3933797d01edc7b  _bmad-output/planning-artifacts/architecture/architecture-IntelliFin Audit-2026-09-01/reviews/review-rubric-rev2.md
+e53fcd9fbb0eaf7bc9f3085fc9888fa8d1af2c68cd481bbfcd0919535b507a6a  _bmad-output/planning-artifacts/architecture/architecture-IntelliFin Audit-2026-09-01/reviews/review-technology-reality-rev2.md
+721fa6ab9c16644473f7a419eea8854e2b125fcf382437776f72c87d4978702e  _bmad-output/planning-artifacts/architecture/architecture-IntelliFin Audit-2026-09-01/reviews/review-technology-reality.md
+25c2761d1454ba434d3990da79f4f32bd75b4c602052e40159c13f00eec95af0  _bmad-output/planning-artifacts/epics.md
+bca8ed3ab7ecc0b311e4e143a915decf5c45359cff6d8635a94ae26e17df3764  _bmad-output/planning-artifacts/prds/prd-IntelliFin Audit-2026-08-31/.memlog.md
+d3cbdb5f0fa82afd1b849e34b76ed1453dc1b8c0b063ddd1aa8d10787042732f  _bmad-output/planning-artifacts/prds/prd-IntelliFin Audit-2026-08-31/addendum.md
+205bb69cdd262562df37b9bc886c5c5ed29120d58ffbb83429ec2d51bec30f7a  _bmad-output/planning-artifacts/prds/prd-IntelliFin Audit-2026-08-31/archive/consolidation-validation-2026-09-30.md
+99d291f9623fdc71dfc104d7c733ce309b4438dcb498a135baa61c0287d0cecb  _bmad-output/planning-artifacts/prds/prd-IntelliFin Audit-2026-08-31/archive/pre-revision-3-2026-09-30/MANIFEST.json
+3aa7616d41c6accc89b20ebe373e63cc0cfaf4e9458c0db532b0430bc28f86b4  _bmad-output/planning-artifacts/prds/prd-IntelliFin Audit-2026-08-31/archive/pre-revision-3-2026-09-30/README.md
+44622f2d2545bb322ab9c33918bcf91c761187ccf3c5e829056edadffeb0efe4  _bmad-output/planning-artifacts/prds/prd-IntelliFin Audit-2026-08-31/archive/pre-revision-3-2026-09-30/addendum.md
+686826a0a5464d93ae7420cb737c106ea22f5e61a64c0443cfd26c47a3003eab  _bmad-output/planning-artifacts/prds/prd-IntelliFin Audit-2026-08-31/archive/pre-revision-3-2026-09-30/prd.md
+4f2b30b38354aea41592544908703c1f1185972e9bee2472cbae5701003c334f  _bmad-output/planning-artifacts/prds/prd-IntelliFin Audit-2026-08-31/prd.md
+04b6312ea7dd931c05845aa87a9a724893d4971693c377c9cd0561fa2ab1e7da  _bmad-output/planning-artifacts/prds/prd-IntelliFin Audit-2026-08-31/recheck-adversarial-thesis.md
+dce0ef326e6670ffdb0a64f0621b6500d9c5d3c489cc54dc0bd29ffca75dc013  _bmad-output/planning-artifacts/prds/prd-IntelliFin Audit-2026-08-31/reconcile-change-signal.md
+bfdf4ccc65ee88adbb1b7f7781931b69d8fcd832e2d150c2d41b2c5299bd1c76  _bmad-output/planning-artifacts/prds/prd-IntelliFin Audit-2026-08-31/reconcile-product-brief.md
+ef9de3fbb4f3c085210b7a3bdda8248606833bdca9e27fed78c00439df54fd6d  _bmad-output/planning-artifacts/prds/prd-IntelliFin Audit-2026-08-31/review-adversarial-thesis.md
+90c484b7fca3eadaff42040fb1cae8115503fb87f4fb71563d31178b5355bdea  _bmad-output/planning-artifacts/prds/prd-IntelliFin Audit-2026-08-31/review-editorial.md
+7054ea29431f5c26aa0d3544d9ed01cd35cb87b3a9a507923eb8ec4979f3d15a  _bmad-output/planning-artifacts/prds/prd-IntelliFin Audit-2026-08-31/review-rubric.md
+76e17bb8dc722ba7dfce266ea1d06d23d48db78a3ce0dd49de858584153ce26d  _bmad-output/planning-artifacts/sprint-change-proposal-2026-09-30.md
+bec8ac7587b08a3373f986d0f421427234a0865a09da42393fba874c549e10e3  _bmad-output/planning-artifacts/ux-designs/ux-IntelliFin Audit-2026-09-01/.memlog.md
+395762abe88918b6bec0b7fc1db5dbc1bb300b3bf917ea11cd8634abe4dda0e1  _bmad-output/planning-artifacts/ux-designs/ux-IntelliFin Audit-2026-09-01/.working/mockup-extract.md
+0a6ca9b02257f91e94cee5fe54399324edf137775a6e639d3d55498949b0ae41  _bmad-output/planning-artifacts/ux-designs/ux-IntelliFin Audit-2026-09-01/CLAUDE-DESIGN-HANDOFF.md
+bee144459f0c207b13efe1e4c194dab3457574075a307b3cf3f767645e05f3a3  _bmad-output/planning-artifacts/ux-designs/ux-IntelliFin Audit-2026-09-01/DESIGN.md
+781ae9f85f3c2d77567f6556a3550fec8c0ce37c1242620a757f8f74a27a70df  _bmad-output/planning-artifacts/ux-designs/ux-IntelliFin Audit-2026-09-01/EXPERIENCE.md
+7da51d034dd9044ccb35f90d3657360f1f40964f6c5b9f63eed5ac3b1afabb2a  _bmad-output/planning-artifacts/ux-designs/ux-IntelliFin Audit-2026-09-01/archive/pre-rust-direction-2026-09-30/DESIGN.md
+2f934b63dd35da977689141a0df2ee9fab604549b355cee52244d578f2ff50a5  _bmad-output/planning-artifacts/ux-designs/ux-IntelliFin Audit-2026-09-01/archive/pre-rust-direction-2026-09-30/EXPERIENCE.md
+7b9c7f5429ad447e9c144810147da4448f2872ce81340d959379cea05fe679b1  _bmad-output/planning-artifacts/ux-designs/ux-IntelliFin Audit-2026-09-01/claude/DESIGN-HANDOFF-NOTES.md
+eb27171ea3dd1590863bc5ad228ce9fcefb9de7f9e5700b0f51fd297e8d88db6  _bmad-output/planning-artifacts/ux-designs/ux-IntelliFin Audit-2026-09-01/claude/DESIGN.md
+78e072b65c9b26b7326acc602e127ea6f553c7340ba2cb2414bf9afe5b33e01f  _bmad-output/planning-artifacts/ux-designs/ux-IntelliFin Audit-2026-09-01/claude/mockups/IntelliFin Audit.dc.html
+8097859288ad40fc809e19d42198858d211e93205e83b2e4ba887fa4a12e960a  _bmad-output/planning-artifacts/ux-designs/ux-IntelliFin Audit-2026-09-01/claude/mockups/assets/intellifin-mark-light.svg
+a5ac40271a625253946e041cf4a479b016225a415772fba49c956891c116643f  _bmad-output/planning-artifacts/ux-designs/ux-IntelliFin Audit-2026-09-01/claude/mockups/assets/interlock-master-reverse.svg
+6e2be08f998b758912f31b20227e8891d56ff684fb259c60b9838f91a48e235a  _bmad-output/planning-artifacts/ux-designs/ux-IntelliFin Audit-2026-09-01/claude/mockups/assets/interlock-master.svg
+ce05ea89bd1c699127f4e892350a869de8997e977064932b88e22ed43965d59b  _bmad-output/planning-artifacts/ux-designs/ux-IntelliFin Audit-2026-09-01/claude/mockups/assets/interlock-smallcut.svg
+118bb45951a4831c1ce1b7eb96c89994b2bc40c68adffcc00797b10b94f0602f  _bmad-output/planning-artifacts/ux-designs/ux-IntelliFin Audit-2026-09-01/claude/mockups/assets/lucide-icons.js
+8fe7df74405f3c55f49b7249c74ea1397e65d07dea2b1bd3b4a489bec2e28cbe  _bmad-output/planning-artifacts/ux-designs/ux-IntelliFin Audit-2026-09-01/claude/mockups/support.js
+3d9a8ba2c681a311dd2b6dc14135fdb9a0aed98da9c344422badfdd78f3b8a47  _bmad-output/planning-artifacts/ux-designs/ux-IntelliFin Audit-2026-09-01/reconcile-claude-design.md
+21b00bdb41a57bb697e2caeaf1966b7aec0fda530f7eb2d407ba9ba97f5898dc  _bmad-output/planning-artifacts/ux-designs/ux-IntelliFin Audit-2026-09-01/review-editorial.md
+80451e62da6a1a35334ce20c00665bb4ac41be080e8804b6553139979ba79039  _bmad-output/planning-artifacts/ux-designs/ux-IntelliFin Audit-2026-09-01/review-rubric.md
+d4ca7edb72be27a7f4400ccd8826788247fc52568f2d8b342b160339f5b75532  _bmad-output/planning-artifacts/ux-designs/ux-Zobba-2026-09-25/.memlog.md
+00099bc6f0c50666b2ccf7aa1833f6db16562089c97f8a3bd5e8ab1bed30360e  _bmad-output/planning-artifacts/ux-designs/ux-Zobba-2026-09-25/DESIGN.md
+caf231b66de77389875bdfe7b774324a67ebfc225b39e110ca595f8a0554ab8e  _bmad-output/planning-artifacts/ux-designs/ux-Zobba-2026-09-25/EXPERIENCE.md
+dd810e27d542fc4e34ba43106c9deb7b305bbc6d44057398f3d70b9423ae19ee  _bmad-output/planning-artifacts/ux-designs/ux-Zobba-2026-09-25/archive/revision-2/DESIGN.md
+3d0bbff27e0f6dfdb9ee3c700e27e35a36f07432d9763bfacef275a1be4458b9  _bmad-output/planning-artifacts/ux-designs/ux-Zobba-2026-09-25/archive/revision-2/EXPERIENCE.md
+1248fc41824bd94a4a2732a0c41665bcaf4302cf251dae67d399854c49239a86  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/ASSET-MANIFEST.md
+7a4b032092e8c39d06926c7d19278f9c5866fdfa17480f7c5f6baea654e61641  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/BRAND.md
+8c0cf6766ae059f5dfcbe6f9ccfdc40070769f540efb9a6b3c0b7662e08ae8d4  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/COMPONENT-INVENTORY.md
+23a82971855244fdf989f329f8c8ec7d146aa4e45fc7f8454a8b98d4a402e285  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/DESIGN-SYSTEM.md
+1cb8f190846e27ad78f90bd39d745d61a4e70a3604d016f3b1c06f96b0543413  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/DESIGN-TOKENS.md
+c1a76eef78701f7af7adf92027edf8b648a131ee77a37e881061cd697dd529d8  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/EXPERIENCE-RULES.md
+34c0c5bf1c2787cbb451b998365d6255b16912c3c55c7f531df4a691c684db68  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/FILE-LEDGER.md
+6358b7f5f994f6b7a20f5f9982910ae9ab75f0d55219e6460a2de5ab76011f4f  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/HANDOFF.md
+ece31d9df4fe6e88c5816df1bac6e77dd06b99495ca677b6196ddc879bee2eb2  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/OPEN-QUESTIONS.md
+35c77473e7d5a02383b980ccbc6247da4975e68c63347ac72f8fbd1c5e8e7857  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/PATTERNS.md
+3b933ae881bef59ea160905005cbe4825b1aca8558a7df094e1d5a011941a031  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/README.md
+d1cbb1debbf298a50b298e6f70255627cf04002f6e993a72d85ee023bab7b388  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/archive/pair-2026-09-25/ASSET-MANIFEST.md
+a6b0ea28d33ddec71c3b6c1bd88b98006dc707681ecf40b0912d3fd9e69fe5db  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/archive/pair-2026-09-25/COMPONENT-INVENTORY.md
+96ec0bc1680f4858e09e1a706161da4b04931ff82a8010828c639442a6a668ea  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/archive/pair-2026-09-25/DESIGN-SYSTEM.md
+ac21fda1fc6283d94a66dc63cfdae4eab4109c15f5ebebbd94c8a778b7ff868b  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/archive/pair-2026-09-25/EXPERIENCE-RULES.md
+fe395305ea919f9cb0867f58dac0993ff63e9a3f541f66c6e7ce9f301da91952  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/archive/pair-2026-09-25/HANDOFF.md
+5706a4c0bd2ee5d23aad1ab31ba5b08c3404828e25e4227d7c90f4f3527c6b78  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/archive/pair-2026-09-25/OPEN-QUESTIONS.md
+19d4379fffd7d088fe68999aabba8a08e67b62ede2b9211862a31ef3017a1ef7  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/archive/pair-2026-09-25/PATTERNS.md
+4f5fdbcf35292a2be2bbf755efc73c90140a4b9c197bf1de86aa1ee4e8c55961  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/archive/pair-2026-09-25/README.md
+01735b186947c83697540550e387ee75982a9027996552a0ae30d29eac330594  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/archive/pair-2026-09-25/Zobba Final Screen.dc.html
+c8ba8a7a242507e2f716c1a43bf0a33f29269bdcada9ce30ef7ed4fb7b6cc077  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/archive/pair-2026-09-25/Zobba Reference Board.dc.html
+f6ea0753e465755989313c699f9cd3dc6556b5141c07a455ee7a8fb0feb9739b  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/archive/pair-2026-09-25/Zobba Reference Screen.dc.html
+413a8415c3348f30ccc476805b3209e0935ee04dcf6393113c0e1ab6efb794c0  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/archive/pair-2026-09-25/reference-screens/01-home-desktop-1280x800.png
+9cca6889180ead342beb4fa3e57314f2786c3c2765cb6712bb1a407e2870cd10  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/archive/pair-2026-09-25/reference-screens/02-active-task-desktop-1280x800.png
+412bb7c17492f7590f9e5a2a251f00fd912e32bbd31f433292af09018e3a7fc4  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/archive/pair-2026-09-25/reference-screens/03-active-task-working-data-desktop-1280x800.png
+e62a9c6e03faab05abdd0cb3f3dc5d0e1ce805cf575f6ae50dad01bb6f108112  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/archive/pair-2026-09-25/reference-screens/04-browser-workspace-desktop-1280x800.png
+aab8ad4a677af17b60136937611cf6bc7b5cf3fdc7b0ed91103ab23d5e240d85  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/archive/pair-2026-09-25/reference-screens/05-artifact-inspection-desktop-1280x800.png
+15cca943f7254422ceac975bf427f892d66d6e8f9966e42c2b9ea7afc79e5687  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/archive/pair-2026-09-25/reference-screens/06-evidence-inspection-desktop-1280x800.png
+2c3306b0230b49fed23b96b1ad7387d0556626cbc5ed32832e625b22e51bd0eb  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/archive/pair-2026-09-25/reference-screens/07-changes-desktop-1280x800.png
+593785827f0cc09f3efbf5c4ab999269bc293b93472c0666c208998da882fb5e  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/archive/pair-2026-09-25/reference-screens/08-clarification-desktop-1280x800.png
+7641862a7079c03120d47064615567b90f1b8551cae9d38ac5215a401e645d83  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/archive/pair-2026-09-25/reference-screens/09-permission-request-desktop-1280x800.png
+2652f6ede1a0fc29d09139e9dd56cb78fd8dc1fe5dfd271f99a367dd8e72d7df  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/archive/pair-2026-09-25/reference-screens/10-engagement-desktop-1280x800.png
+7b57de70cd2456544de011cb6e2fee34e2908e285f4637553c03b5b9efb55731  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/archive/pair-2026-09-25/reference-screens/11-search-desktop-1280x800.png
+a92694633dfbf08ab9c373c09c8e3d517979f89b0c1f72dc5b0f77c00d577721  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/archive/pair-2026-09-25/reference-screens/12-scheduled-checks-desktop-1280x800.png
+d617d1748dda50d57c39ebfc206e52f20b5cb097c803bcea2b193a1eb972e287  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/archive/pair-2026-09-25/reference-screens/13-scheduled-result-desktop-1280x800.png
+0fe7af10996dc44efd19554d1180349c33c81f67e9c60f6522b42dccef0aed3a  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/archive/pair-2026-09-25/reference-screens/14-connections-desktop-1280x800.png
+3ce1395631a3e018a2184c048c85b4f6623b166d103e3ba9f67a5a5aaf9c632f  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/archive/pair-2026-09-25/reference-screens/15-settings-methodology-skills-desktop-1280x800.png
+c2074df9950199b3a02621b8592feadc8fbc46891f2f2652b5cb3ad15fec0e37  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/archive/pair-2026-09-25/reference-screens/16-permissions-detail-desktop-1280x800.png
+533aab1f10513001c33cb45ff32dddec328bb4169b0c11c2a595bd801c01a300  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/archive/pair-2026-09-25/reference-screens/17-narrow-active-task-390x844.png
+e480d9075d37ca9ce78d8acc3528ed46635b0cd9f766264a4a11968a45fdd477  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/archive/pair-2026-09-25/reference-screens/18-narrow-scheduled-result-390x844.png
+a99dab4cafb836f0321c3e8f59ed188f9754fee50cb9ba8a85662e067d4fec80  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/archive/pair-2026-09-25/reference-screens/19-composer-model-effort-desktop-1280x800.png
+73803cfa530d7c5c91da17c5a4d6d85619048658a57ddcf65eb98d5eac3af6ef  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/archive/pair-2026-09-25/reference-screens/20-manager-reviews-desktop-1280x800.png
+de7c789af8b61090a3b495e1936669ad181b630fe785799d2a07f01a77644ed3  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/archive/pair-2026-09-25/reference-screens/21-manager-review-paper-desktop-1280x800.png
+40095664bb5ba528224911c4e68bad043b173844284203dec58b54af852bc532  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/archive/pair-2026-09-25/reference-screens/22-admin-models-providers-desktop-1280x800.png
+408867a7e16cf1229f8ede39b65487896d03e58b3c92bfa53f76b125c4de4651  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/archive/pair-2026-09-25/reference-screens/23-admin-users-roles-desktop-1280x800.png
+74518feae35800f36f235c583a1ad9d90e409533bd8c1c745e0431b256baf66c  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/archive/pair-2026-09-25/reference-screens/README.md
+93034955ab36bad73618657d624f5f9eb3762aadf4466f1baa98159866280514  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/favicon/favicon-16.png
+c6f70fa85d8f213831f311a6df253ba4b2d7f790fd70bc9b16e0ac8d88293ba2  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/favicon/favicon-32.png
+329b77806889a970ec844746e4b8a757d38a7a838e2233bfc40afc77497d05f6  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/favicon/favicon-48.png
+0c79bcd4be4b180e0b1fa117306721f870796e64f5992bddef92d93ad4838d4b  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/favicon/favicon.svg
+813b3f8fa0965405669a89b38e51bbefd95eef6b8e20d1cb2d8c10cce062662f  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/fonts/HankenGrotesk-wght.ttf
+e02ccb89a86839b22feff7872ff5cc355cc0f58318d29eee20e2cf83a612f16d  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/fonts/OFL-HankenGrotesk.txt
+88e4b43c652bf09d21a71de4faa3a641a3c97efb29d4d24bbb2f3a87d789c218  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/icon/png/zobba-app-icon-dark-16.png
+5645f58fc99d95faa1af1e150a4766406473289d163a406e6e3944f8a825729b  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/icon/png/zobba-app-icon-dark-24.png
+f3146586c23efaa20eaf0dd056f14dd23f779de83549193313e12be5aff39a56  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/icon/png/zobba-app-icon-dark-256.png
+4a1caf00e511817a17a5b0d3a3daacf9f88f0b19b59b4c07544831bd585f7a2e  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/icon/png/zobba-app-icon-dark-32.png
+e20bbbe352ebf495b3633ce0bcf0c4d335149f284b70eb21ef96052e259acc06  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/icon/png/zobba-app-icon-dark-48.png
+caad31e14153db49ee8c445939879c57e8dc13789df795b5e0bbe5d9664a9829  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/icon/png/zobba-app-icon-dark-512.png
+50d4bfcdd604c34d09cf04242e066388cfb8ab345d18f4fc1079dfc2523feed1  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/icon/png/zobba-app-icon-dark-96.png
+ace8b1bfecfdc85ea0b376e428ad4b7423257de9ff13fd2bc706361770e70be9  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/icon/png/zobba-app-icon-light-16.png
+f334bdaa31c84d4ca33d6e927f5045d19c74c686db022c5be8ad231a77fe2f36  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/icon/png/zobba-app-icon-light-24.png
+607ed50288736feaeedd5d3d61407c83ff18da93f7b59891d27c1db70bdf22f0  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/icon/png/zobba-app-icon-light-256.png
+c84771cfc38c44591b8cb5b45ca78e3e139a118edcd3ea3156da4602b61b3037  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/icon/png/zobba-app-icon-light-32.png
+afba40571b3ae12b0ac239b16af5eefcc4fc9c8dd31265030d3b43b8d4d94ef9  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/icon/png/zobba-app-icon-light-48.png
+7f542b961e870bdbd25bb5199c47174bf77442a6bde442f0404f484b66ca9c09  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/icon/png/zobba-app-icon-light-512.png
+a0e27022e11585d0dc1840ded2d6ce23391d916337fdd2dcba7cd6625155102c  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/icon/png/zobba-app-icon-light-96.png
+781eaf19594c3b44ba5029fea03d1bd3cb5a465758c35574e1f45a960a2059b4  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/icon/zobba-app-icon-dark-small.svg
+4e993b0965f1b3983a63432a30715e60d9c6966398d38f23e87c8cdac98ba4a0  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/icon/zobba-app-icon-dark.svg
+54fdfd158ac9b170b000e7f8768fb23a3475f7505078bc7460bc1490c7393419  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/icon/zobba-app-icon-light-small.svg
+3d9fa8caed088eb595571eb5f9add6f39cad9fa88cfc223db51d9b297d365ee7  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/icon/zobba-app-icon-light.svg
+7bfb25f7a6d663c8446044fa985b499af081026e2071810cfec63b66f35815fc  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/icon/zobba-notification-template-black.svg
+d0c9f36bb8d4fb609961591b543958508244315e76d1be0401e8c2a8adb12b4e  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/icon/zobba-notification-template-white.svg
+4d7ac4d7fc0f236b3c76ec2884977ea83984cfe642327bdb86d8ef802360a8b5  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/lockup/zobba-lockup-color.svg
+abd47dc45732cdf1e69ca5baf108945b483a78b4e9e8ff6a5b41f00c28ca25d8  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/lockup/zobba-lockup-endorsed-color.svg
+21cc0b0fc4c439815db612d266c7a773f619c8418b5f723ffde404b357e861d4  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/lockup/zobba-lockup-endorsed-reverse.svg
+a4a0605a15872aba95bae041b782399acbba56eec1c498c373dc677ca8300ab8  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/lockup/zobba-lockup-mono.svg
+a7b7b5c6744dc3bc511bb90d3dfbb2feb9b6c5330a1731da8924a1ad54dd3440  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/lockup/zobba-lockup-reverse.svg
+d2a0bc82accad084dbd5ca1f1638f10f4ab9065317361a831fd77e8216391428  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/lockup/zobba-provenance-mono.svg
+f5fa6137039c740528454bc2534383ebfcca870e4e60cee68e351beca9b1dae6  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/reference/zobba-wordmark-lowercase-reference.svg
+df2d9999a948e6ecc2bc733c9bb0bc837bf0bf7b0fc47a55c706b7de524d9021  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/reference/zobba-wordmark-unstepped-reference.svg
+b0225b0477ff0a744804cfef52e5a921c409ee70aaf3cd8169cce05bee7e167f  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/symbol/png/zobba-symbol-micro-mono-10.png
+eabb0fce81a959c7766292bd06b38cb67977749a857e3192ae6b9c07e41ad476  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/symbol/png/zobba-symbol-micro-mono-12.png
+b55dc95bb95fa4570ab718af6f46d7d0f82df9fe5e7e85fee060b4a9103951a9  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/symbol/zobba-symbol-color.svg
+cef2a940159eac39ca4ed1332c278c6996569b55e4a8e115286fc8a6b0bc8c60  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/symbol/zobba-symbol-micro-color.svg
+9b9c26d33d426f6a2694191a7798fcde5056a367463a6ce56a35f87f09f9cc56  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/symbol/zobba-symbol-micro-mono.svg
+9c975c633d77e6369c2ed826a2aee93df69f243fa2274edeeaf0d3462e7789f2  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/symbol/zobba-symbol-micro-reverse-mono.svg
+841ec2221b6e14fee56b5f60941ae6826390d68fb1cd7caa6b572911dd2288f2  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/symbol/zobba-symbol-micro-reverse.svg
+8f007c740f13f0f2e289cd02ae7f636ed832a5bae8213c19d7b6e84d5ce124b2  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/symbol/zobba-symbol-mono.svg
+8f99c2bf88a77e2f23886482302b0cb176ac83adc547152956e6302ac0925304  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/symbol/zobba-symbol-reverse-mono.svg
+80662955da23e2b85286088622b016ad4cb23e74211461dcb2bf298ceb1c637a  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/symbol/zobba-symbol-reverse.svg
+5d8383b9c4a44d3105b54957e460462967325a47f58aef6671b3f3776481eaa0  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/symbol/zobba-symbol-small-color.svg
+08ae548fe14077fb15ecdef8afb7c43f8af6547c8a695108b25222f0c9935c22  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/symbol/zobba-symbol-small-mono.svg
+5053e18bf2d569694c2f49d60deef11000bc3215c33a92f13a5745bfca680207  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/symbol/zobba-symbol-small-reverse-mono.svg
+d37a6c2aac579afa0e3533f50557876fedd1b32addafb5a269a519f22182b286  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/symbol/zobba-symbol-small-reverse.svg
+27e0add95b2f874dd3f3753f5a95bf132c08d73992e16a1c4b73508c1ab8229a  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/wordmark/zobba-wordmark-graphite.svg
+839b17beb785b8ec9997878622a1237afa2ef29f1020a71f47cdd09679744bc5  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/assets/wordmark/zobba-wordmark-reverse.svg
+0a6682ed5081cbde05c6ce163ea69e9492637eaede0fa540071e440fc76a6f10  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/reference-screens/24-engagement-conversation-1280x800.png
+f426767ba6cf7f509be3631726bcfa94c7d10a716ff0dacd305644d3d17728bc  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/reference-screens/25-needs-you-1280x800.png
+438510f8ffc0ee182b6405be148dfbdc443665686267b39a16dc16aafa2998bf  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/reference-screens/26-pinned-work-product-1280x800.png
+1eb6d3ea03ce15d654d935803a1a966d58c6ab7f6db048b7427ff55456be7725  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/reference-screens/27-private-sign-in-1280x800.png
+68c6e8a9a2605940237397c4eeb29fcfe74dc9ffd5b60959eafb9f5f9d44660f  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/reference-screens/28-details-submitted-1280x800.png
+62125b5bf20df1acc1b5045c61bca6ddcc41acc4e187ee256699ba97b575a91c  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/reference-screens/29-verifying-access-1280x800.png
+d1912ea4118dddf5869a7b6335e2802e1d3807a64ffaa9f24c5739fe696d8794  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/reference-screens/30-account-verified-computer-1280x800.png
+c3270e1b01e9e86c23dae597e053903cb9e5af66e2df261dc4f182874bbb6172  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/reference-screens/31a-transferring-control-1280x800.png
+0bf177bdfef66020974405c07aa898d0a194e131db3fbd0c2ff64dc988c66ced  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/reference-screens/31b-human-controlling-1280x800.png
+355b6ed3068ffa371c39ff01c4c128d84885c5b6a07693048bbdb18a1ae4aa5f  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/reference-screens/31c-handback-verification-1280x800.png
+9e589ab272bccff49e51c7b6af26fa5d6f452c3843e80c3f4cc3b1df68df20b0  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/reference-screens/32a-task-pausing-1280x800.png
+0c2c43e8d4b55f30ec4c656d0bd9e1cd39fe8435aa2dcfd558699d50bc84d12d  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/reference-screens/32b-task-paused-1280x800.png
+a4af583dbc5e5631d95cdf4144569ba6583f571324685284266702b6ad5c6b1a  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/reference-screens/32c-task-stopping-1280x800.png
+27c5f8e581d08495249f2025e2c2ff24d148bcf50df829c2c5b4ce327dfade49  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/reference-screens/32d-task-stopped-1280x800.png
+6c4ad4438a6cd08135f0d08c4e6cfc663e504ce4325b62ac34288932aa0ce47d  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/reference-screens/32e-computer-reconnecting-1280x800.png
+0b78697823b5419cf05cad60e14e388a1109751e66a05b6d0727baf84df69673  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/reference-screens/33-narrow-conversation-390x844.png
+383fb7721c5b521976a1645e69a6dc8eac7f71a2648f72bcbe7201cab93ef03e  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/reference-screens/34-narrow-workspace-390x844.png
+52181bffcd260032124449610385cd1656af603a0c617dd5efb17f1ffe82a99f  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/reference-screens/README.md
+be262aeaeac63cca22316ac3021ec97db6e91c5305be84834d2244c9af5eff3b  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/reference-screens/verification.json
+2c8f917ee9db9a891df680085e7d487b1581f29b6fbc887475cf0b1d379425c9  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/source/Zobba Identity Final.dc.html
+9c34036025df64f9c91708ec8eab83298a1fd18a6c2d3a906c572356a86a2add  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/source/Zobba Pair Mark.dc.html
+496653ada4ef08f2b6d27a7b6af37151b37c8681f42227834d50546c5e56e579  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/source/Zobba Wordmark.dc.html
+8fe7df74405f3c55f49b7249c74ea1397e65d07dea2b1bd3b4a489bec2e28cbe  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/source/support.js
+60aeb0d0ce2876b826f7904963e08f2b38210b200b512571b99daf4212c5ae68  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/source/verify-reference.cjs
+df61e87fa1f219153bb2b0d64637bed7c999bf2c22f67a42ba0ba9026a86d3d1  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/source/zobba-working-environment.css
+8aa5610516abb7fc71d82ecf8e53ee3275c14b6daba219348f43b724c689ca0a  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/source/zobba-working-environment.html
+95472174b532ec356ebc339d8073aa3471092f3bf8369cf48be267897e460fd2  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/source/zobba-working-environment.js
+feafa32ea4f50171df702578e3f35489b6782715287192b0def872e7dabb69ff  _bmad-output/planning-artifacts/ux-designs/zobba-design-system-v1.0/tokens/zobba-tokens.json
+7381b93cf1d65f4e84e9fa4315f9f4c6edf0115bdab5dd72b7448c9b9e821200  _bmad-output/planning-artifacts/zobba-build-plan-2026-09-30/BUILD-SEQUENCE.md
+0da313f548467aeda49377e29f1480c02242aab55074b52f5b8fcb596f483fe2  _bmad-output/planning-artifacts/zobba-build-plan-2026-09-30/FIRST-BATCH.md
+65796b130fbed533de386a9d6b440c2c226d9df5a9cd66839db15e960a46f8d5  _bmad-output/planning-artifacts/zobba-build-plan-2026-09-30/READINESS.md
+34750b8bf0584dbc20b5aa25804963e05a768c78057c663177864f60e099e055  _bmad-output/planning-artifacts/zobba-build-plan-2026-09-30/README.md
+40af6373bf45525ecc22cb0cf3d19dc04f04b4ae52ecd7d6ad71067e92983d19  _bmad-output/planning-artifacts/zobba-build-plan-2026-09-30/START-HERE.md
+ae546c7817816a76019ebbc4eb83dfc7f133375494f930ddf87ec1b6b6bdb8de  _bmad-output/planning-artifacts/zobba-build-plan-2026-09-30/VALIDATION.md
+184e969cc19b921ea2e103f769915425e075f3b2bbe66ab7237d3109fb2e071a  _bmad-output/planning-artifacts/zobba-build-plan-2026-09-30/coverage.json
+9a604e252a62707304131a237689edd792dd57cf48b77c8c9778ac104e0b6d7b  _bmad-output/planning-artifacts/zobba-build-plan-2026-09-30/dependencies.json
+b08486d511a2aac049c91d1f81f14de6a0cf582aa759733dd514028145e8ae56  _bmad-output/planning-artifacts/zobba-build-plan-2026-09-30/legacy/README.md
+21f225003a77e4b96d50627190a75d50f49a98efeedd9ff220de2799f30af4c5  _bmad-output/planning-artifacts/zobba-build-plan-2026-09-30/legacy/archive-metadata.json
+d257dcd2b5202cb71e7675365d53a3e56ca09f715c74944173b1a132b044e5f3  _bmad-output/planning-artifacts/zobba-build-plan-2026-09-30/legacy/epics-before-rev3.md
+0874ddeb1f360318e9567dc25abecbbd0a47ca5e318add70c22a9dfcd76cec9a  _bmad-output/planning-artifacts/zobba-build-plan-2026-09-30/package_handoff.py
+0b8991aabb30407d2dadfc65e764adb36b75fbc48abcd7e07f3e3fd06d917f88  _bmad-output/planning-artifacts/zobba-build-plan-2026-09-30/sprint-generation.json
+4165b8a9694347ba79268e1275a716cffdff4fc207f4114b7e27b11f8d21ba0c  _bmad-output/planning-artifacts/zobba-build-plan-2026-09-30/validate_plan.py
+e65f5e1cf2de3f077a34e6214a2cec36aaa727671d7c134a3d80444bad98ae82  _bmad-output/planning-artifacts/zobba-operating-budget-2026-09-30/MANIFEST.json
+be76653fa16cd35e50974b3c629c2a16b4b1088595170ec27fe2689ea60d4282  _bmad-output/planning-artifacts/zobba-operating-budget-2026-09-30/MODEL-USAGE.md
+74785ea869b8765f98a9c1b6b5fa0c42720ad815aaca07085a5e1bb5d6688ed0  _bmad-output/planning-artifacts/zobba-operating-budget-2026-09-30/OPERATING-BUDGET.md
+63ead1881793fdfb99dca95ffd286b6a0fad1ad8cbc58d70fda8813fe517eea4  _bmad-output/planning-artifacts/zobba-operating-budget-2026-09-30/README.md
+948230277b11e68ba2a3f52f75546df8c11c5712697c2450cc4f64c6b5396fb0  _bmad-output/planning-artifacts/zobba-operating-budget-2026-09-30/assumptions.json
+54644044dc6fc0a1c2833c91a77d2847f27a3826907dc795299284bb54035b24  _bmad-output/planning-artifacts/zobba-operating-budget-2026-09-30/base-table.md
+4c7adcfd8777ae70fe2e09a6b5e9db681ce1fc62bfbbb6df5fb591d866e85ee6  _bmad-output/planning-artifacts/zobba-operating-budget-2026-09-30/calculate_budget.py
+84b1d2c729ace358fc3637f6047a1ce492bb197b3137dd8c466a266d90ba02d5  _bmad-output/planning-artifacts/zobba-operating-budget-2026-09-30/line-items.csv
+ed10c7240730c2596d961690465ffcfb56dbe517218ce33bbb37e157de27bb61  _bmad-output/planning-artifacts/zobba-operating-budget-2026-09-30/model-quantities.json
+cd89001fad7ace4f7294de51162eca55e11a746c2079f5b706e7786753876239  _bmad-output/planning-artifacts/zobba-operating-budget-2026-09-30/model-rates.json
+a94883562f040dc805046e5b87431da1fb165d643ca774f5c84de9a066260edc  _bmad-output/planning-artifacts/zobba-operating-budget-2026-09-30/rates.json
+49514a56817e533d35c58c1e4eec7bc59b181fe1509bc270893cf42ce880761f  _bmad-output/planning-artifacts/zobba-operating-budget-2026-09-30/results.csv
+2876ab738dcc58ead2009a5f5b9b8928e7f0f14decb1983125e9e9c934156d2a  _bmad-output/planning-artifacts/zobba-operating-budget-2026-09-30/results.json
+5dcce3dd073d04b4f6ec256960dd451ec88c6967d87364345ba6d708636c1f52  _bmad-output/planning-artifacts/zobba-operating-budget-2026-09-30/sensitivity.csv
+76561a710d1deecde409464c9bc66ddceac7453ee94e085565c0f8829ca2a6d3  _bmad-output/planning-artifacts/zobba-operating-budget-2026-09-30/sources/aws-selected-rate-evidence.json
+754b5b1108b9349eeb0deb09bc58e76af7edc5fa1d371525d6bddafafca8ea86  _bmad-output/planning-artifacts/zobba-operating-budget-2026-09-30/sources/aws-service-notes.md
+3e14937aaf57e46091eb95fb3c3a9b3401ef2918530c55866d15652afa368d2c  _bmad-output/planning-artifacts/zobba-operating-budget-2026-09-30/sources/model-source-receipt.json
+2e78b991e94a4f67dd76fb7907a5c0303045b6d84ee682c8bce24e96bd51903a  _bmad-output/planning-artifacts/zobba-operating-budget-2026-09-30/verify_budget.py
+89b1c538a15eeae6e0c648983ae90f4ccd1d31cd76cb1f2e82a4d3b60cb2792a  _bmad-output/planning-artifacts/zobba-operating-budget-2026-09-30/windows-option.csv
+7a6c5242b4f7d15e93f50ef2ddf35e701478c8ad1d62ffe130a4e1d353c53406  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/MANIFEST.json
+8f434b6fe89897c7219d2d4068d2d3a84d9f93e513749b3c280674ad56fec465  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/Owner-Summary.md
+a837e6b6237e65e262351def29d64c7f1677e1faf6b351d3fcb81fa18a708843  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/README.md
+04ec2a894a88c2f8f6c1c93d68238de9d73ca32fccbc4bb7319b3a32ea5b150b  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/Zobba-Design.html
+a9c83b69e4b398cc65ee25086147d23e8bd1e63fcd2c90969fe18814fe0c9724  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/Zobba-Design.pdf
+b7f3828ff8f9a04d279b1eab842b12a348dd60669275e1c6413125563c554b7e  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/Zobba-Product-and-Architecture-Design.md
+0ca16b6a18f14b8b24a733764bc0d8e7cf86320c54c676a1daa7f1b39b3a0bc8  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/costs/README.md
+81599f6caaea3a70d5141237ef180d7bc3e2fb83d1fc6acd09b3e45a477a4929  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/costs/aws-core-rates.csv
+a49501c04a3b24961c9bbeb7157116567c3d3571f42ff7cea8a6efb53cfcf8ba  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/costs/aws-core-rates.md
+940d16cae27cfc4e8ae1cbb34c630e4aef4af65f23a06577a58448edf6b7f885  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/costs/aws-evidence/aws-core-selected-evidence.json
+cb9fc9d70ae392196a10f46a78ff8650b45e55bc75bc68542e5d6e36ebc03888  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/costs/managed-computer-assumptions.json
+dae6c88791813d3be63e4a5e305722a98ad69d3724f6886d30b06e07fa426657  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/costs/managed-computer-cost-table.md
+1d81dfcf67289df24bcca902d9a8e52decc2047b9b3a204313f4cf786b113b8b  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/costs/managed-computer-costs.csv
+aaf4f939dcd4a34719d3508ad3d01b8932e267c721bfa1491aa068a068a48dd3  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/costs/managed-computer-costs.py
+4400c58ca408e4130a7b96f7d8fa5de7e14614ca1d00440ee705fd541a0a4ab6  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/costs/managed-computer-extra-source-evidence.json
+8bd057103c2342c9dd53b22f1be12b6762aaa1b9ec01c61eb6fafc960b043012  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/costs/managed-computer-line-items.csv
+3f84d9372c9dfb6972c940563bf5100718b4fe6f0c22ffa5314a8a534b958955  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/costs/managed-computer-rates.json
+7c9daec88fdda6cca4ae88301a73c7eb8d54e4c46bd821366f89d38374ce864f  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/costs/managed-computer.md
+1311e7017a22ecdd35a7806b06f2397856239c064283c1819099f267a4115d05  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/diagrams/01.mmd
+94401eb3e91727f598707bfeedfd8e5d38c1677dc46be16a7c5b054b97168e7c  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/diagrams/01.svg
+7f264cbc2b612dbde13b43e5e6f5a93a556fe77f3d31592c5f67ced2d64f25e5  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/diagrams/02.mmd
+2e1611a6791b7543868e142c8a54062da95b9f823cd542567f966fa3a338cb2d  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/diagrams/02.svg
+0b22954b2909905dca344b746e8912911b10d038c5f3928a7ea5d205006a375e  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/diagrams/03.mmd
+93c45fdb89686077dae74c6fd948fd2d51bbb77f06f9e6434059eff3ff9f60fc  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/diagrams/03.svg
+4f1b34b5411cc66441a28828e4818eab314b377661f9e05116525c7b93d18054  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/diagrams/04.mmd
+78418dfcf7f5041512068263734ab6c91c7a0f888c56e5f0e68b1b703f328f47  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/diagrams/04.svg
+dc5cb1ce56332c41ee3d338440522ca53784c1a6406f1f029cd2896585caff56  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/diagrams/05.mmd
+8fa32d40ea5dd2946da048c19a74637d13b2b1fde5ab1f11a527cd94ca339963  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/diagrams/05.svg
+f6e610d6434eecec814bf28a33d4835af7b15d805a196346a8c4ba00f56e024f  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/diagrams/06.mmd
+e8a91f7f79669d26d9245448ebf424dd8d34d3ed15a42d1a8807fd55bb8e6ddf  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/diagrams/06.svg
+c5628ff524c55dc1c8cb4b123bff0acc8705fc49692ebb4dd930f709d9a9bfa8  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/diagrams/07.mmd
+54614c174b80176ac7ae3757c1e64d2669c4ed6f5063109f70bdfcc367bed952  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/diagrams/07.svg
+8bce78758939e9b1a59e875214e16a5fbc87771a22b83f6d38e2706fa4bedd04  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/notes/audit-evaluation.md
+ff519884a93a8fb8f04db166b8636041b413461d1cedf39c2321066c28b2dfd2  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/notes/code-disposition.md
+b71c056dd4d18db65ecfb12ac65723ba030ea31342984136d04173988bea77a4  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/notes/consolidation-completeness.md
+00121aef667e2edada8741192f038f56211590a413a1289198e5f7bb2111186a  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/notes/methodology-and-knowledge.md
+0abd5a410f66b9087aa812f2f945e5b0633592bdeeb4859fc92f57d662412000  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/notes/product-experience.md
+5e20a6837e3ea02b4890fb0d5f52504f59a65b80aada271c89cc71a5d77069ca  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/notes/source-patterns.md
+5fe344c6e9f3944dce46ed8fd978a56c5e6a9f517c513c480f975d577d426adc  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/notes/workspace-architecture.md
+8596a613f924fcc7215e92d24a1c85eb4093e3dbb9f8ba4e61adb044b3327941  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/Alternate-Agent-Design-2026-09-30.md
+91d5194350488d33427c59879b759396efe5a11e7f92e3de880e2c6ce62285b8  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/Zobba-Codex-Source-Study-2026-09-29.md
+153ddd0341aea1f72a295bdab7bfe7fd01c87e8a0ee01da90cc6dfa0ad65b9f8  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/Zobba_Product_and_Architecture_Direction.md
+a7492db6ec2afd9393b1bf8f36f4d66f839d598852299437035f8379c0aebf87  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/codex-appendix/codex-source-study-appendix/A-reviewer-brief.md
+668a1327e656e9d1bb8a2cfcd77774c363eaac0b3f0668163a9ca0ed6e55dcb5  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/codex-appendix/codex-source-study-appendix/A00-lead-baseline-notes.md
+d26938a412b746814c766d1e114e8d85054a61cc99af81e66110898bd9075a37  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/codex-appendix/codex-source-study-appendix/A01-agent-loop.md
+67c3df33857eea75b1b339bcb9820338efaad1a32fc6a4f76c77717f74e36235  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/codex-appendix/codex-source-study-appendix/A02-concurrency.md
+c0456ba48746d9fec7ef1d982101495d66caa73df33ff8a7b364a116d6568957  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/codex-appendix/codex-source-study-appendix/A03-tools-dispatch.md
+4c8060664300312f790a9291df655b674a332a99f65621cf16ccf5f18a03d3bd  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/codex-appendix/codex-source-study-appendix/A04-permissions-isolation.md
+535c343eb6d480ac7b7888990c86b91fe0a5be4885496e01312245e9db2e4d77  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/codex-appendix/codex-source-study-appendix/A05-model-adapters.md
+2d6013c7936daeaf7f2e615af6532a3dcb0e22b65ee44e240246693913f2aa8f  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/codex-appendix/codex-source-study-appendix/A06-context-memory.md
+a97c5bb8543d5f692d6f4cce2e3725a7c962e104047d22cc494342fc2eebe738  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/codex-appendix/codex-source-study-appendix/A07-durability-recovery.md
+7bb272a0186be6d3d951b74dcaf285db3cdf5a851f5dbd86876faaab6f91a66c  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/codex-appendix/codex-source-study-appendix/A08-execution-data.md
+040df8d028230fed8d0be89c9ffc1df2cc6864f78fe9b1a8aaa97ab93acf0e0a  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/codex-appendix/codex-source-study-appendix/A09-protocol-observability-verification.md
+f89887a346bfafb0c3defa46b42421e23cce6497aeb9886cb62e31fefa707257  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/codex-appendix/codex-source-study-appendix/A10-skills-instructions.md
+d8186a6a2083d6b76cf33bd3b87828fbc9e693928053908a743a7b578c43ea26  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/codex-appendix/codex-source-study-appendix/A11-zobba-baseline.md
+bedcb9a7eb12ff5728dc70c1ca3177e9e7912567ceb1e69126426d2eee62909a  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/codex-appendix/codex-source-study-appendix/B1-execpolicy-probe.md
+c0ed14dc28d62572aa272e07b6476cd26d26cfa88203bf8612fc3ab5c8511a66  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/codex-appendix/codex-source-study-appendix/B2-cargo-test-execpolicy-applypatch.txt
+610ecf6f1d8d649f2f3f44c403cdf812c8c0d4e204e7122a71f660b349242ba0  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/codex-appendix/codex-source-study-appendix/B3-cargo-build-core.txt
+1e30f2868a03bc8cca694df1f01fcbc63c9174dce7af56477be7d25f0a4eac82  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/codex-appendix/codex-source-study-appendix/B4-crates-io-snapshot.txt
+f7c2bc451e4eb67b656e21971ddd04278eee36ab79b42290defb033971f56c3f  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/codex-appendix/codex-source-study-appendix/B5-npm-snapshot.txt
+6cbc6193713f000d6140c446bbd534747c8d7661c940e95d6db0a636c218300c  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/codex-appendix/codex-source-study-appendix/README.md
+9e920ef6b9b47d0af1727feaff05e4d17d53a781c7db9314abf24784b4f71786  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/codex-source-study.md
+d17f227e4df5da1600391338865ce0f3055211760a36688f816941d58232d8dc  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/codex-source/LICENSE
+9d71575ecfd9a843fc1677b0efb08053c6ba9fd686a0de1a6f5382fd3c220915  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/codex-source/NOTICE
+81e3e7dde346d69ef17dff328fb93fe93e2ce4688428a4cd157e61d14c41aa39  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/codex-source/SOURCE-REVISION.txt
+b624a9bac63d16f786939f3e9d2c8916faf5d4bc499af7ed099b1e3803f4632a  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/codex-source/codex-rs/app-server/src/request_serialization.rs
+3b9f48ce4f861f979b465fb8ce4c3ef25a0ca0c2aa57d0a8b85429eb298a4ac8  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/codex-source/codex-rs/codex-mcp/src/binding.rs
+8e57201f49a6a961f083d19f1e4fb36d49cad5f72b6144c35ee4fffa8dc4c1c5  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/codex-source/codex-rs/codex-mcp/src/binding_tests.rs
+4340c30ef792ac40fe64aa1acebf076eafb44ed65cdcf1bab5a09239c5b73881  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/codex-source/codex-rs/core/src/context_manager/normalize.rs
+509b10168a9a1e99abd0f5722ad5bf377645dbb2e446ead6c324daef7a84af58  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/codex-source/codex-rs/core/src/mcp_tool_call.rs
+760dae295dcd61534a437a53fdd8ce4984fa52966ee3651d841b86fbe6a16429  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/codex-source/codex-rs/core/src/session/mod.rs
+abf50919073924347870aefd94325598ef23c0d552d6cf6192d6fe851378a559  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/codex-source/codex-rs/core/src/stream_events_utils.rs
+400b02b66b2fd829ee876d5094c0ae3ab5fb52536ce2d220f8b257e6ee6c41c5  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/codex-source/codex-rs/core/src/tasks/mod.rs
+b924fb1e123e503a896fa99d661e61da0c54139f7729e71ac61405d7dd636408  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/codex-source/codex-rs/core/src/tools/parallel.rs
+d2793cddbdc34ad8d849a991dafd5871a3ce8ded4b33c446b2c1934e1cee526b  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/codex-source/codex-rs/core/src/tools/registry.rs
+d57aa4118842bee24a896e85af05f01e4ef44760ea2804bc015c8efd7ae89ad5  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/codex-source/codex-rs/core/src/unified_exec/head_tail_buffer.rs
+d4537e931d4c937c247ce34852844a3d9c32ae2e955f03cc3591df4f42ce10e2  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/codex-source/codex-rs/core/src/unified_exec/head_tail_buffer_tests.rs
+025334619c1f6a419ea670fc3728737e78b61238deae3ca0f7d6cd2ae67d9313  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/codex-source/codex-rs/http-client/src/retry_after.rs
+74e3ee04ebcbb84c15b10445b2392a34c8f47bc3f492388fd82fa11714ce0764  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/codex-source/codex-rs/tools/src/tool_executor.rs
+d5755286344f10d10b4bd9f93bb3bff6f1b85270a15df378254051b147ad38ad  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/codex-source/codex-rs/utils/string/src/truncate.rs
+c2b000b02eaa736362eb01f7dac0e981db4c8d081ed15710bda33bf3b437e1e0  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/codex-source/codex-rs/utils/string/src/truncate/tests.rs
+739636817baf5041445b32fab812f4256571eaa10e0d7bf85e5e627c61aa5a21  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/dots/Dots-UX-Lessons-for-Zobba.html
+ce99551fb6a2184d3d3902c8c13c9ac444a603b743df7c9dac3cb9a6b87a820e  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/dots/Dots-UX-Lessons-for-Zobba.md
+5276bcacdd57d4af9128536a59dbdb82789c9fccfb70453520f201c1427a9c8a  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/dots/Dots-UX-Lessons-for-Zobba.pdf
+9bfbb6d681ce9df9839fc8a718a3cbb115e32c8c8a871a0d989f4a4b230934a3  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/dots/README.md
+6a3797393b19392b02091b6369d4b349c36f4aae3ef14703fe3bfa5496eeb280  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/dots/chatgpt-dots.txt
+92fa2da59f540292bc364dd86452b8912fcf1cb4538c3f47c9a768c037dcdb1e  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/dots/chatgpt-release-dots-excerpt.txt
+7d16413b1791371507f3ae023746be923f948aef05f8673ab71d21f85180b6d4  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/dots/dots-feature.txt
+4cf09ccfd9ec3b318956720410958e4bfd361d5a5af58bc28ecec8205e18f173  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/dots/dots-privacy.txt
+741e6da8abee9da6e406186a2ac29305f2190b671dd57385e29c3859c86e3a10  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/dots/getting-started-dot.txt
+bab6eb299984cb51be6afbde7e7467543af349e4f26aa38e27bc1988d315e508  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/dots/introducing-dots.txt
+d1394dd7900fc6673ad337add4e663a9744e0ed78d976c729ff934b043925128  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/dots/learn-dots-channels.md
+e5539a7e40c4ce9cfe8226395409099bbc07f1b1c6e12ace95a02c37f9f07b8a  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/dots/learn-dots-computers.md
+6bbcfd3f6be164f4ff0c19523603d8435bae0faa5c59df149b8858a617625669  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/dots/learn-dots-controls.md
+45571582176a683da9666bbd7f80c85268fd9265e32d52314e9f14ef86507068  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/dots/learn-dots-start.md
+6c010dcb2c221ec5a563921b97d3b24d25c2da95a0d7fcc4317ac3797d09876d  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/dots/learn-dots-tasks.md
+ad0ce882c407e5085bf311311d1af42fa15bd2d954eaba12ea73866d0bbcb066  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/dots/learn-dots.md
+1c0b872fcaf1bacb790184e51bdb52942388410dc48ea5a982a40c3d8ac506d1  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/dots/manage-dots.txt
+133f083665a743799a251682bc33481eacc5015f60b90522ab5a8334587433c2  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/dots/official-source-manifest.json
+88336520cb0f5e744867436384418ce1c92dcfd95ee5127f5f92589033bb8e81  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/dots/public-official.md
+6a39ae21d34fe76dce3db49226ce91731970f1df08c4d345f2eac08c11d6078a  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/dots/public-secondary.md
+cd3be5c6fb1f6038989186aa01665595be88c8bdacc5eb26a0fa130a4faf6069  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/dots/screenshot-study.md
+31c68c8f6190f025c55df8d0861fe649b64a31d862afb606db57c72c30c5595b  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/dots/secondary-9to5-excerpt.txt
+5e2cc0e711f844614985b4b01e915771f1f0da561606ab18aa2792f49812bbc0  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/dots/secondary-hn-story-metadata.json
+d1ec22806f524c06fb183e5a59fddcf7948534af059f4ae447e6d1b34158f593  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/dots/secondary-indianexpress-excerpt.txt
+198138a11196ca920f171d1eee9995773c65a655d9e7b746c7b4ce814614f58a  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/dots/secondary-smartscope-excerpt.txt
+cb540da581650859b8bb3e3f0b03f085bcc00712b8112217c4e870b9c9cb1472  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/dots/secondary-source-manifest.json
+c3b65b7729a69126c8b75e9cf401dd230a97f81e3390f433ac0d2e2b0e5f0b3f  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/dots/secondary-wired-excerpt.txt
+d1cbb1debbf298a50b298e6f70255627cf04002f6e993a72d85ee023bab7b388  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/ASSET-MANIFEST.md
+7a4b032092e8c39d06926c7d19278f9c5866fdfa17480f7c5f6baea654e61641  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/BRAND.md
+a6b0ea28d33ddec71c3b6c1bd88b98006dc707681ecf40b0912d3fd9e69fe5db  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/COMPONENT-INVENTORY.md
+96ec0bc1680f4858e09e1a706161da4b04931ff82a8010828c639442a6a668ea  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/DESIGN-SYSTEM.md
+1cb8f190846e27ad78f90bd39d745d61a4e70a3604d016f3b1c06f96b0543413  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/DESIGN-TOKENS.md
+ac21fda1fc6283d94a66dc63cfdae4eab4109c15f5ebebbd94c8a778b7ff868b  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/EXPERIENCE-RULES.md
+fe395305ea919f9cb0867f58dac0993ff63e9a3f541f66c6e7ce9f301da91952  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/HANDOFF.md
+5706a4c0bd2ee5d23aad1ab31ba5b08c3404828e25e4227d7c90f4f3527c6b78  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/OPEN-QUESTIONS.md
+19d4379fffd7d088fe68999aabba8a08e67b62ede2b9211862a31ef3017a1ef7  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/PATTERNS.md
+4f5fdbcf35292a2be2bbf755efc73c90140a4b9c197bf1de86aa1ee4e8c55961  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/README.md
+93034955ab36bad73618657d624f5f9eb3762aadf4466f1baa98159866280514  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/favicon/favicon-16.png
+c6f70fa85d8f213831f311a6df253ba4b2d7f790fd70bc9b16e0ac8d88293ba2  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/favicon/favicon-32.png
+329b77806889a970ec844746e4b8a757d38a7a838e2233bfc40afc77497d05f6  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/favicon/favicon-48.png
+0c79bcd4be4b180e0b1fa117306721f870796e64f5992bddef92d93ad4838d4b  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/favicon/favicon.svg
+88e4b43c652bf09d21a71de4faa3a641a3c97efb29d4d24bbb2f3a87d789c218  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/icon/png/zobba-app-icon-dark-16.png
+5645f58fc99d95faa1af1e150a4766406473289d163a406e6e3944f8a825729b  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/icon/png/zobba-app-icon-dark-24.png
+f3146586c23efaa20eaf0dd056f14dd23f779de83549193313e12be5aff39a56  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/icon/png/zobba-app-icon-dark-256.png
+4a1caf00e511817a17a5b0d3a3daacf9f88f0b19b59b4c07544831bd585f7a2e  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/icon/png/zobba-app-icon-dark-32.png
+e20bbbe352ebf495b3633ce0bcf0c4d335149f284b70eb21ef96052e259acc06  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/icon/png/zobba-app-icon-dark-48.png
+caad31e14153db49ee8c445939879c57e8dc13789df795b5e0bbe5d9664a9829  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/icon/png/zobba-app-icon-dark-512.png
+50d4bfcdd604c34d09cf04242e066388cfb8ab345d18f4fc1079dfc2523feed1  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/icon/png/zobba-app-icon-dark-96.png
+ace8b1bfecfdc85ea0b376e428ad4b7423257de9ff13fd2bc706361770e70be9  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/icon/png/zobba-app-icon-light-16.png
+f334bdaa31c84d4ca33d6e927f5045d19c74c686db022c5be8ad231a77fe2f36  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/icon/png/zobba-app-icon-light-24.png
+607ed50288736feaeedd5d3d61407c83ff18da93f7b59891d27c1db70bdf22f0  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/icon/png/zobba-app-icon-light-256.png
+c84771cfc38c44591b8cb5b45ca78e3e139a118edcd3ea3156da4602b61b3037  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/icon/png/zobba-app-icon-light-32.png
+afba40571b3ae12b0ac239b16af5eefcc4fc9c8dd31265030d3b43b8d4d94ef9  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/icon/png/zobba-app-icon-light-48.png
+7f542b961e870bdbd25bb5199c47174bf77442a6bde442f0404f484b66ca9c09  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/icon/png/zobba-app-icon-light-512.png
+a0e27022e11585d0dc1840ded2d6ce23391d916337fdd2dcba7cd6625155102c  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/icon/png/zobba-app-icon-light-96.png
+781eaf19594c3b44ba5029fea03d1bd3cb5a465758c35574e1f45a960a2059b4  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/icon/zobba-app-icon-dark-small.svg
+4e993b0965f1b3983a63432a30715e60d9c6966398d38f23e87c8cdac98ba4a0  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/icon/zobba-app-icon-dark.svg
+54fdfd158ac9b170b000e7f8768fb23a3475f7505078bc7460bc1490c7393419  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/icon/zobba-app-icon-light-small.svg
+3d9fa8caed088eb595571eb5f9add6f39cad9fa88cfc223db51d9b297d365ee7  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/icon/zobba-app-icon-light.svg
+7bfb25f7a6d663c8446044fa985b499af081026e2071810cfec63b66f35815fc  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/icon/zobba-notification-template-black.svg
+d0c9f36bb8d4fb609961591b543958508244315e76d1be0401e8c2a8adb12b4e  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/icon/zobba-notification-template-white.svg
+4d7ac4d7fc0f236b3c76ec2884977ea83984cfe642327bdb86d8ef802360a8b5  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/lockup/zobba-lockup-color.svg
+abd47dc45732cdf1e69ca5baf108945b483a78b4e9e8ff6a5b41f00c28ca25d8  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/lockup/zobba-lockup-endorsed-color.svg
+21cc0b0fc4c439815db612d266c7a773f619c8418b5f723ffde404b357e861d4  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/lockup/zobba-lockup-endorsed-reverse.svg
+a4a0605a15872aba95bae041b782399acbba56eec1c498c373dc677ca8300ab8  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/lockup/zobba-lockup-mono.svg
+a7b7b5c6744dc3bc511bb90d3dfbb2feb9b6c5330a1731da8924a1ad54dd3440  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/lockup/zobba-lockup-reverse.svg
+d2a0bc82accad084dbd5ca1f1638f10f4ab9065317361a831fd77e8216391428  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/lockup/zobba-provenance-mono.svg
+f5fa6137039c740528454bc2534383ebfcca870e4e60cee68e351beca9b1dae6  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/reference/zobba-wordmark-lowercase-reference.svg
+df2d9999a948e6ecc2bc733c9bb0bc837bf0bf7b0fc47a55c706b7de524d9021  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/reference/zobba-wordmark-unstepped-reference.svg
+b0225b0477ff0a744804cfef52e5a921c409ee70aaf3cd8169cce05bee7e167f  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/symbol/png/zobba-symbol-micro-mono-10.png
+eabb0fce81a959c7766292bd06b38cb67977749a857e3192ae6b9c07e41ad476  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/symbol/png/zobba-symbol-micro-mono-12.png
+b55dc95bb95fa4570ab718af6f46d7d0f82df9fe5e7e85fee060b4a9103951a9  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/symbol/zobba-symbol-color.svg
+cef2a940159eac39ca4ed1332c278c6996569b55e4a8e115286fc8a6b0bc8c60  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/symbol/zobba-symbol-micro-color.svg
+9b9c26d33d426f6a2694191a7798fcde5056a367463a6ce56a35f87f09f9cc56  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/symbol/zobba-symbol-micro-mono.svg
+9c975c633d77e6369c2ed826a2aee93df69f243fa2274edeeaf0d3462e7789f2  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/symbol/zobba-symbol-micro-reverse-mono.svg
+841ec2221b6e14fee56b5f60941ae6826390d68fb1cd7caa6b572911dd2288f2  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/symbol/zobba-symbol-micro-reverse.svg
+8f007c740f13f0f2e289cd02ae7f636ed832a5bae8213c19d7b6e84d5ce124b2  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/symbol/zobba-symbol-mono.svg
+8f99c2bf88a77e2f23886482302b0cb176ac83adc547152956e6302ac0925304  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/symbol/zobba-symbol-reverse-mono.svg
+80662955da23e2b85286088622b016ad4cb23e74211461dcb2bf298ceb1c637a  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/symbol/zobba-symbol-reverse.svg
+5d8383b9c4a44d3105b54957e460462967325a47f58aef6671b3f3776481eaa0  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/symbol/zobba-symbol-small-color.svg
+08ae548fe14077fb15ecdef8afb7c43f8af6547c8a695108b25222f0c9935c22  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/symbol/zobba-symbol-small-mono.svg
+5053e18bf2d569694c2f49d60deef11000bc3215c33a92f13a5745bfca680207  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/symbol/zobba-symbol-small-reverse-mono.svg
+d37a6c2aac579afa0e3533f50557876fedd1b32addafb5a269a519f22182b286  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/symbol/zobba-symbol-small-reverse.svg
+27e0add95b2f874dd3f3753f5a95bf132c08d73992e16a1c4b73508c1ab8229a  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/wordmark/zobba-wordmark-graphite.svg
+839b17beb785b8ec9997878622a1237afa2ef29f1020a71f47cdd09679744bc5  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/assets/wordmark/zobba-wordmark-reverse.svg
+413a8415c3348f30ccc476805b3209e0935ee04dcf6393113c0e1ab6efb794c0  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/reference-screens/01-home-desktop-1280x800.png
+9cca6889180ead342beb4fa3e57314f2786c3c2765cb6712bb1a407e2870cd10  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/reference-screens/02-active-task-desktop-1280x800.png
+412bb7c17492f7590f9e5a2a251f00fd912e32bbd31f433292af09018e3a7fc4  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/reference-screens/03-active-task-working-data-desktop-1280x800.png
+e62a9c6e03faab05abdd0cb3f3dc5d0e1ce805cf575f6ae50dad01bb6f108112  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/reference-screens/04-browser-workspace-desktop-1280x800.png
+aab8ad4a677af17b60136937611cf6bc7b5cf3fdc7b0ed91103ab23d5e240d85  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/reference-screens/05-artifact-inspection-desktop-1280x800.png
+15cca943f7254422ceac975bf427f892d66d6e8f9966e42c2b9ea7afc79e5687  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/reference-screens/06-evidence-inspection-desktop-1280x800.png
+2c3306b0230b49fed23b96b1ad7387d0556626cbc5ed32832e625b22e51bd0eb  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/reference-screens/07-changes-desktop-1280x800.png
+593785827f0cc09f3efbf5c4ab999269bc293b93472c0666c208998da882fb5e  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/reference-screens/08-clarification-desktop-1280x800.png
+7641862a7079c03120d47064615567b90f1b8551cae9d38ac5215a401e645d83  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/reference-screens/09-permission-request-desktop-1280x800.png
+2652f6ede1a0fc29d09139e9dd56cb78fd8dc1fe5dfd271f99a367dd8e72d7df  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/reference-screens/10-engagement-desktop-1280x800.png
+7b57de70cd2456544de011cb6e2fee34e2908e285f4637553c03b5b9efb55731  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/reference-screens/11-search-desktop-1280x800.png
+a92694633dfbf08ab9c373c09c8e3d517979f89b0c1f72dc5b0f77c00d577721  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/reference-screens/12-scheduled-checks-desktop-1280x800.png
+d617d1748dda50d57c39ebfc206e52f20b5cb097c803bcea2b193a1eb972e287  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/reference-screens/13-scheduled-result-desktop-1280x800.png
+0fe7af10996dc44efd19554d1180349c33c81f67e9c60f6522b42dccef0aed3a  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/reference-screens/14-connections-desktop-1280x800.png
+3ce1395631a3e018a2184c048c85b4f6623b166d103e3ba9f67a5a5aaf9c632f  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/reference-screens/15-settings-methodology-skills-desktop-1280x800.png
+c2074df9950199b3a02621b8592feadc8fbc46891f2f2652b5cb3ad15fec0e37  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/reference-screens/16-permissions-detail-desktop-1280x800.png
+533aab1f10513001c33cb45ff32dddec328bb4169b0c11c2a595bd801c01a300  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/reference-screens/17-narrow-active-task-390x844.png
+e480d9075d37ca9ce78d8acc3528ed46635b0cd9f766264a4a11968a45fdd477  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/reference-screens/18-narrow-scheduled-result-390x844.png
+a99dab4cafb836f0321c3e8f59ed188f9754fee50cb9ba8a85662e067d4fec80  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/reference-screens/19-composer-model-effort-desktop-1280x800.png
+73803cfa530d7c5c91da17c5a4d6d85619048658a57ddcf65eb98d5eac3af6ef  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/reference-screens/20-manager-reviews-desktop-1280x800.png
+de7c789af8b61090a3b495e1936669ad181b630fe785799d2a07f01a77644ed3  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/reference-screens/21-manager-review-paper-desktop-1280x800.png
+40095664bb5ba528224911c4e68bad043b173844284203dec58b54af852bc532  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/reference-screens/22-admin-models-providers-desktop-1280x800.png
+408867a7e16cf1229f8ede39b65487896d03e58b3c92bfa53f76b125c4de4651  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/reference-screens/23-admin-users-roles-desktop-1280x800.png
+74518feae35800f36f235c583a1ad9d90e409533bd8c1c745e0431b256baf66c  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/reference-screens/README.md
+01735b186947c83697540550e387ee75982a9027996552a0ae30d29eac330594  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/source/Zobba Final Screen.dc.html
+2c8f917ee9db9a891df680085e7d487b1581f29b6fbc887475cf0b1d379425c9  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/source/Zobba Identity Final.dc.html
+9c34036025df64f9c91708ec8eab83298a1fd18a6c2d3a906c572356a86a2add  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/source/Zobba Pair Mark.dc.html
+c8ba8a7a242507e2f716c1a43bf0a33f29269bdcada9ce30ef7ed4fb7b6cc077  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/source/Zobba Reference Board.dc.html
+f6ea0753e465755989313c699f9cd3dc6556b5141c07a455ee7a8fb0feb9739b  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/source/Zobba Reference Screen.dc.html
+496653ada4ef08f2b6d27a7b6af37151b37c8681f42227834d50546c5e56e579  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/source/Zobba Wordmark.dc.html
+8fe7df74405f3c55f49b7249c74ea1397e65d07dea2b1bd3b4a489bec2e28cbe  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/source/support.js
+feafa32ea4f50171df702578e3f35489b6782715287192b0def872e7dabb69ff  _bmad-output/planning-artifacts/zobba-product-architecture-2026-09-30/references/poc/zobba-design-system/tokens/zobba-tokens.json
+ebd7865cb4ba19e8123e329c061b80795026c34274b879bd7cba5495fa54ba0a  _bmad-output/specs/spec-IntelliFin Audit/.memlog.md
+7176db2fa6004244c813eb27d81249c7931d8a20390320a4b083e7d5e192cd37  _bmad-output/specs/spec-IntelliFin Audit/SPEC.md
+d1e1b74a07cc0bf8f711dbe9aebaee50a159a9980a2d812611d7672984bf6b84  _bmad-output/specs/spec-IntelliFin Audit/archive/pre-revision-3-2026-09-30/.memlog.md
+0f436a0d09a2ea0ec34a842447e4c2066706bfec1920f4ea071160655bf2a0f7  _bmad-output/specs/spec-IntelliFin Audit/archive/pre-revision-3-2026-09-30/README.md
+aaae942e0677e601257fc31f1963acdb26d02e503d81314f2dce5ae134f8b419  _bmad-output/specs/spec-IntelliFin Audit/archive/pre-revision-3-2026-09-30/SPEC.md
+33d2f9bf12856b761e1a3dfc81af0db109a30b26a6060ef771d097e5a9552e28  _bmad-output/specs/spec-IntelliFin Audit/archive/pre-revision-3-2026-09-30/glossary.md
+1b2d374de4772672fdc10696ba6e505417420d74988cc0c064b8deac03daa390  _bmad-output/specs/spec-IntelliFin Audit/archive/pre-revision-3-2026-09-30/validation-preservation.md
+73c4b8ca65d59f551cf6fc4b984e48d8cf1e8d3b1ce14e5617d58177ed82a968  _bmad-output/specs/spec-IntelliFin Audit/brownfield.md
+3bcf8d5ac0aa6799333b1d2a50f57a90bf6e04cab6feb7f01777c18c5067e683  _bmad-output/specs/spec-IntelliFin Audit/glossary.md
+bb43cafde4c802d447d5297fbf16855afffde9d62c075ab7a42f0a904d7c0b91  _bmad-output/specs/spec-IntelliFin Audit/validation-preservation.md

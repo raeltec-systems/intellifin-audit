@@ -1,0 +1,520 @@
+{
+  "observed_at": "2026-10-02T16:31:07.718057+00:00",
+  "private_failure_and_fixture_logs_excluded": true,
+  "inspected_passing_receipts_published": [
+    "receipts/rust-tests.log",
+    "receipts/browser.log",
+    "receipts/smoke.log"
+  ],
+  "gates": [
+    {
+      "gate": "fmt",
+      "command": "cargo fmt --check",
+      "working_directory": "/workspace/intellifin-audit/zobba",
+      "repository_subdirectory": "zobba",
+      "completed": true,
+      "source_boundary_manifests": [
+        "source-static-start.json",
+        "source-static-end.json"
+      ],
+      "private_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "exit_code": 0
+    },
+    {
+      "gate": "clippy",
+      "command": "cargo clippy --workspace --all-targets --locked --offline -- -D warnings",
+      "working_directory": "/workspace/intellifin-audit/zobba",
+      "repository_subdirectory": "zobba",
+      "completed": true,
+      "source_boundary_manifests": [
+        "source-static-start.json",
+        "source-static-end.json"
+      ],
+      "private_log_sha256": "bcb74884a78099501f6bfc31de29d15aae4eb48dcd18d5c99bdde44d75b90089",
+      "exit_code": 0
+    },
+    {
+      "gate": "rust-build",
+      "command": "cargo build --workspace --locked --offline",
+      "working_directory": "/workspace/intellifin-audit/zobba",
+      "repository_subdirectory": "zobba",
+      "completed": true,
+      "source_boundary_manifests": [
+        "source-static-start.json",
+        "source-static-end.json"
+      ],
+      "private_log_sha256": "8b1fd2394f7b6f177ede882431154a419bd9f404f00add314c912e91a7fc0ec0",
+      "exit_code": 0
+    },
+    {
+      "gate": "rust-tests",
+      "command": "cargo test --workspace --locked --offline",
+      "working_directory": "/workspace/intellifin-audit/zobba",
+      "repository_subdirectory": "zobba",
+      "completed": true,
+      "source_boundary_manifests": [
+        "source-rust-full-start.json",
+        "source-rust-full-end.json"
+      ],
+      "private_log_sha256": "6f049b6718e9ca8f473cd6d0fb6a5c34c5b86b594d9f847c64d171cf0d2a8a48",
+      "targets": [
+        {
+          "target": "Running unittests src/lib.rs (target/debug/deps/zobba_api-980ce4be9b8f93d3)",
+          "passed": 15,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "target": "Running unittests src/main.rs (target/debug/deps/zobba_api-b276258b07067d14)",
+          "passed": 0,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "target": "Running tests/evidence_contract.rs (target/debug/deps/evidence_contract-acb3e7593b2f7139)",
+          "passed": 3,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "target": "Running tests/evidence_http.rs (target/debug/deps/evidence_http-24b696b6abc94884)",
+          "passed": 3,
+          "failed": 0,
+          "ignored": 1,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "target": "Running tests/membership_contract.rs (target/debug/deps/membership_contract-be574590d1154d54)",
+          "passed": 6,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "target": "Running tests/membership_http.rs (target/debug/deps/membership_http-f47da5e4abce3cbe)",
+          "passed": 3,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "target": "Running tests/methodology_contract.rs (target/debug/deps/methodology_contract-29c4d0c06e611c0e)",
+          "passed": 11,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "target": "Running tests/methodology_http.rs (target/debug/deps/methodology_http-41147e919676189b)",
+          "passed": 3,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "target": "Running tests/operations_http.rs (target/debug/deps/operations_http-da3a1e905f10269f)",
+          "passed": 3,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "target": "Running tests/skills.rs (target/debug/deps/skills-278f2128b86a48a4)",
+          "passed": 3,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "target": "Running tests/skills_contract.rs (target/debug/deps/skills_contract-21b0aeaa668ea89f)",
+          "passed": 6,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "target": "Running tests/tasks_http.rs (target/debug/deps/tasks_http-566ba33f120e6322)",
+          "passed": 3,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "target": "Running unittests src/lib.rs (target/debug/deps/zobba_application-f47634667b7d4ed3)",
+          "passed": 9,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "target": "Running unittests src/main.rs (target/debug/deps/zobba_cli-f1ecc29fddaf337c)",
+          "passed": 0,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "target": "Running unittests src/lib.rs (target/debug/deps/zobba_domain-616580de12395370)",
+          "passed": 81,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "target": "Running unittests src/lib.rs (target/debug/deps/zobba_infrastructure-033f05ca12fe4905)",
+          "passed": 25,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "target": "Running tests/admin_continuity.rs (target/debug/deps/admin_continuity-b18f1a4a724da935)",
+          "passed": 3,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "target": "Running tests/bootstrap.rs (target/debug/deps/bootstrap-ff1d555326359bc0)",
+          "passed": 3,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "target": "Running tests/conversation.rs (target/debug/deps/conversation-e58db316e87238cc)",
+          "passed": 3,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "target": "Running tests/evidence.rs (target/debug/deps/evidence-72100568b273e143)",
+          "passed": 3,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "target": "Running tests/evidence_s3.rs (target/debug/deps/evidence_s3-9c282a1fedf9056e)",
+          "passed": 23,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "target": "Running tests/fixture.rs (target/debug/deps/fixture-9f0c0f59751198e8)",
+          "passed": 4,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "target": "Running tests/identity.rs (target/debug/deps/identity-5e4637c9f22b10bb)",
+          "passed": 3,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "target": "Running tests/membership.rs (target/debug/deps/membership-e241e1764b1bd0e6)",
+          "passed": 3,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "target": "Running tests/methodology.rs (target/debug/deps/methodology-586bd4853f6ecd24)",
+          "passed": 3,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "target": "Running tests/oidc_protocol.rs (target/debug/deps/oidc_protocol-395338dcb1cf1ab9)",
+          "passed": 14,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "target": "Running tests/operations.rs (target/debug/deps/operations-c7088e9f0be4deb0)",
+          "passed": 5,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "target": "Running tests/scope.rs (target/debug/deps/scope-6f6a6a6a820fd7f3)",
+          "passed": 3,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "target": "Running tests/skills.rs (target/debug/deps/skills-91e0ff8a6821a6fc)",
+          "passed": 3,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "target": "Running tests/task.rs (target/debug/deps/task-56a1e5fc6418079b)",
+          "passed": 3,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "target": "Running unittests src/lib.rs (target/debug/deps/zobba_worker-dfc0fe1d68e8f787)",
+          "passed": 7,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "target": "Running unittests src/main.rs (target/debug/deps/zobba_worker-2d756b99dce8fdcf)",
+          "passed": 0,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "target": "Running tests/durable_process.rs (target/debug/deps/durable_process-1a4ca419750677bd)",
+          "passed": 3,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "target": "Running tests/gateway_process.rs (target/debug/deps/gateway_process-27794cc680416712)",
+          "passed": 3,
+          "failed": 0,
+          "ignored": 1,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "target": "Running tests/inert_process.rs (target/debug/deps/inert_process-ce39af6920349c8a)",
+          "passed": 12,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "target": "Running tests/reliability_process.rs (target/debug/deps/reliability_process-c4ab474b02505c61)",
+          "passed": 3,
+          "failed": 0,
+          "ignored": 1,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "target": "Doc-tests zobba_api",
+          "passed": 0,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "target": "Doc-tests zobba_application",
+          "passed": 0,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "target": "Doc-tests zobba_domain",
+          "passed": 2,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "target": "Doc-tests zobba_infrastructure",
+          "passed": 0,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        },
+        {
+          "target": "Doc-tests zobba_worker",
+          "passed": 0,
+          "failed": 0,
+          "ignored": 0,
+          "measured": 0,
+          "filtered": 0
+        }
+      ],
+      "totals": {
+        "passed": 280,
+        "failed": 0,
+        "ignored": 3,
+        "measured": 0,
+        "filtered": 0
+      },
+      "ignored_entrypoints": "Three guarded helper entrypoints are deliberately launched by parent contracts, not standalone test execution.",
+      "exit_code": 0
+    },
+    {
+      "gate": "web-check",
+      "command": "pnpm check",
+      "working_directory": "/workspace/intellifin-audit/zobba",
+      "repository_subdirectory": "zobba",
+      "completed": true,
+      "components": [
+        "generated API drift check",
+        "TypeScript --noEmit",
+        "Node contract tests"
+      ],
+      "source_boundary_manifests": [
+        "source-web-final-start.json",
+        "source-web-final-end.json"
+      ],
+      "private_log_sha256": "6ef3460277baddae06c8a5aa6f303e11c76fd416de56f573171f294e7201de10",
+      "tests": {
+        "tests": 156,
+        "pass": 156,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "exit_code": 0
+    },
+    {
+      "gate": "web-build",
+      "command": "pnpm build",
+      "working_directory": "/workspace/intellifin-audit/zobba",
+      "repository_subdirectory": "zobba",
+      "completed": true,
+      "source_boundary_manifests": [
+        "source-web-final-start.json",
+        "source-web-final-end.json"
+      ],
+      "private_log_sha256": "1189946536b1e0a31562e78ff67661977bf5c3a0192fa43dbd5e327f987b5cb3",
+      "exit_code": 0
+    },
+    {
+      "gate": "python",
+      "command": "python3 -B -m unittest discover -s scripts -p 'test_*.py'",
+      "working_directory": "/workspace/intellifin-audit/zobba",
+      "repository_subdirectory": "zobba",
+      "completed": true,
+      "source_boundary_manifests": [
+        "source-static-start.json",
+        "source-static-end.json"
+      ],
+      "private_log_sha256": "5c17ea061e56f017d8add4f52261918046ebfc05c0e41c1df1968f295997b539",
+      "passed_tests": 47,
+      "exit_code": 0
+    },
+    {
+      "gate": "boundaries",
+      "command": "python3 scripts/check-boundaries.py",
+      "working_directory": "/workspace/intellifin-audit/zobba",
+      "repository_subdirectory": "zobba",
+      "completed": true,
+      "source_boundary_manifests": [
+        "source-static-start.json",
+        "source-static-end.json"
+      ],
+      "private_log_sha256": "f0a6a67f082db9c88d9258aa2c5bb329389182a2e2bd8cb50f81160f38808a78",
+      "exit_code": 0
+    },
+    {
+      "gate": "fixture",
+      "command": "pnpm fixture:test",
+      "working_directory": "/workspace/intellifin-audit/zobba",
+      "repository_subdirectory": "zobba",
+      "completed": true,
+      "source_boundary_manifests": [
+        "source-static-start.json",
+        "source-static-end.json"
+      ],
+      "private_log_sha256": "f6f4e0e5e3db40cc8c8fcb47d2ad1fc954ec0d6bcdab90f20d65dc9a9383ae45",
+      "tests": {
+        "tests": 56,
+        "pass": 56,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "exit_code": 0
+    },
+    {
+      "gate": "smoke",
+      "command": "python3 -B scripts/smoke.py",
+      "working_directory": "/workspace/intellifin-audit/zobba",
+      "repository_subdirectory": "zobba",
+      "completed": true,
+      "source_boundary_manifests": [
+        "source-smoke-start.json",
+        "source-smoke-end.json"
+      ],
+      "private_log_sha256": "28bdd9bc655c2b5277a7f0dd54136acf54f3e3a78a7b29717453503e29e6dee9",
+      "process_smoke_passed": true,
+      "exit_code": 0
+    },
+    {
+      "gate": "browser",
+      "command": "pnpm test:browser --workers=1 --retries=0",
+      "working_directory": "/workspace/intellifin-audit/zobba",
+      "repository_subdirectory": "zobba",
+      "completed": true,
+      "source_boundary_manifests": [
+        "source-browser-start.json",
+        "source-browser-end.json"
+      ],
+      "private_log_sha256": "907213f43275601d6584e93c78a5920e84974d27302c249b4c21412f8380ffdd",
+      "planned_tests": 123,
+      "passed": 123,
+      "failed": 0,
+      "workers": 1,
+      "retries": 0,
+      "exit_code": 0
+    }
+  ]
+}

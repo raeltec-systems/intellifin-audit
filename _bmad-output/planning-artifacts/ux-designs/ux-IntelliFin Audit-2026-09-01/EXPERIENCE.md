@@ -11,6 +11,9 @@ sources:
   - ./claude/DESIGN-HANDOFF-NOTES.md
 ---
 
+> **Historical compiler-1 reference.** Superseded for all new Zobba work by [the active Pair UX contract](../ux-Zobba-2026-09-25/EXPERIENCE.md). Preserved below for existing implementation/test references; its procedure-first behavior is not the target design.
+
+
 # IntelliFin Audit — Experience Spine
 
 > Superseded on 2026-09-25 by revision 2 at `../ux-Zobba-2026-09-25/EXPERIENCE.md` for the conversation-led product (Zobba). This document remains the contract for the compiler-1 Run-path surfaces (Builder, Procedure Detail, Version review, Run Detail, Live View, Replay) until each surface's disposition story lands; on-disk tests (`apps/web/src/design/copy.test.ts`, `tests/unit/denial-strings.test.ts`) still read this file and move with their implementation stories. No sentence below was removed or altered.

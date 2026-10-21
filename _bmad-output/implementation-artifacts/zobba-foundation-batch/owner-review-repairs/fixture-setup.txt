@@ -1,0 +1,6 @@
+oidc-provider WARNING: a quick start development-only in-memory adapter is used, you MUST change it in order to not lose all stateful provider data upon restart and to be able to share these between processes
+Fresh documented shortcut, repeated shortcut, direct filtered run setup command: PASS
+Configured env.sh path reported accurately: PASS
+All 8 generated files unchanged after repeats; directory0700/files0600: PASS
+Shell startup files unchanged: PASS
+Actual isolated HTTPS fixture health+OIDC discovery with CA verification: PASS

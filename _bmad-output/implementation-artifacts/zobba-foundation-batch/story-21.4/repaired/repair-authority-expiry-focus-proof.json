@@ -1,0 +1,176 @@
+[
+  {
+    "phase": "initial-role-demotion",
+    "event": "actual-response",
+    "path": "/api/auth/session",
+    "status": 401
+  },
+  {
+    "phase": "initial-role-demotion",
+    "event": "actual-response",
+    "path": "/api/auth/session",
+    "status": 200
+  },
+  {
+    "phase": "initial-role-demotion",
+    "event": "actual-response",
+    "path": "/api/engagements",
+    "status": 200
+  },
+  {
+    "phase": "initial-role-demotion",
+    "event": "actual-response",
+    "path": "/api/auth/session",
+    "status": 200
+  },
+  {
+    "phase": "initial-role-demotion",
+    "event": "actual-response",
+    "path": "/api/engagements",
+    "status": 200
+  },
+  {
+    "phase": "initial-role-demotion",
+    "event": "actual-response",
+    "path": "/api/engagements/engagement-a",
+    "status": 200
+  },
+  {
+    "phase": "initial-role-demotion",
+    "event": "actual-response",
+    "path": "/api/auth/session",
+    "status": 200
+  },
+  {
+    "phase": "initial-role-demotion",
+    "event": "actual-response",
+    "path": "/api/engagements",
+    "status": 200
+  },
+  {
+    "phase": "initial-role-demotion",
+    "event": "actual-response",
+    "path": "/api/engagements/engagement-a",
+    "status": 403
+  },
+  {
+    "phase": "initial-role-demotion",
+    "event": "actual-response",
+    "path": "/api/auth/session",
+    "status": 200
+  },
+  {
+    "phase": "initial-role-demotion",
+    "event": "actual-response",
+    "path": "/api/engagements",
+    "status": 200
+  },
+  {
+    "phase": "initial-role-demotion",
+    "event": "actual-response",
+    "path": "/api/auth/session",
+    "status": 200
+  },
+  {
+    "phase": "initial-role-demotion",
+    "event": "actual-response",
+    "path": "/api/engagements",
+    "status": 200
+  },
+  {
+    "phase": "initial-role-demotion",
+    "event": "actual-response",
+    "path": "/api/engagements/engagement-a",
+    "status": 200
+  },
+  {
+    "phase": "membership-expiry",
+    "event": "protected-node-focused-before-expiry"
+  },
+  {
+    "phase": "membership-expiry",
+    "event": "membership-expiry-committed"
+  },
+  {
+    "phase": "membership-expiry",
+    "event": "window-focus-dispatched"
+  },
+  {
+    "phase": "membership-expiry",
+    "event": "actual-response",
+    "path": "/api/auth/session",
+    "status": 200
+  },
+  {
+    "phase": "membership-expiry",
+    "event": "actual-response",
+    "path": "/api/engagements/engagement-a/conversation",
+    "status": 403
+  },
+  {
+    "phase": "membership-expiry",
+    "event": "actual-response",
+    "path": "/api/engagements",
+    "status": 200
+  },
+  {
+    "phase": "membership-expiry",
+    "event": "actual-response",
+    "path": "/api/engagements/engagement-a",
+    "status": 403
+  },
+  {
+    "phase": "membership-expiry",
+    "event": "marked-node-withdrawn-and-current-heading-focused"
+  },
+  {
+    "phase": "membership-expiry",
+    "event": "actual-response",
+    "path": "/api/auth/session",
+    "status": 200
+  },
+  {
+    "phase": "membership-expiry",
+    "event": "actual-response",
+    "path": "/api/engagements",
+    "status": 200
+  },
+  {
+    "phase": "membership-expiry",
+    "event": "actual-response",
+    "path": "/api/auth/session",
+    "status": 200
+  },
+  {
+    "phase": "membership-expiry",
+    "event": "actual-response",
+    "path": "/api/engagements",
+    "status": 200
+  },
+  {
+    "phase": "membership-expiry",
+    "event": "actual-response",
+    "path": "/api/engagements/engagement-a",
+    "status": 200
+  },
+  {
+    "phase": "session-expiry",
+    "event": "session-expiry-committed"
+  },
+  {
+    "phase": "session-expiry",
+    "event": "actual-response",
+    "path": "/api/engagements/engagement-a/conversation",
+    "status": 200
+  },
+  {
+    "phase": "session-expiry",
+    "event": "actual-response",
+    "path": "/api/auth/session",
+    "status": 401
+  },
+  {
+    "phase": "session-expiry",
+    "event": "signed-out-focus-private-scope-withdrawal-and-both-401-refusals-confirmed"
+  }
+]

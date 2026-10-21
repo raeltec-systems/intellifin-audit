@@ -1,0 +1,27 @@
+column|_sqlx_migrations|1|version|bigint|true|||
+column|_sqlx_migrations|2|description|text|true|||
+column|_sqlx_migrations|3|installed_on|timestamp with time zone|true|now()||
+column|_sqlx_migrations|4|success|boolean|true|||
+column|_sqlx_migrations|5|checksum|bytea|true|||
+column|_sqlx_migrations|6|execution_time|bigint|true|||
+column|zobba_bootstrap|1|singleton|boolean|true|true||
+column|zobba_bootstrap|2|product|text|true|||
+column|zobba_bootstrap|3|schema_version|bigint|true|||
+constraint|_sqlx_migrations|_sqlx_migrations_checksum_not_null|true|NOT NULL checksum
+constraint|_sqlx_migrations|_sqlx_migrations_description_not_null|true|NOT NULL description
+constraint|_sqlx_migrations|_sqlx_migrations_execution_time_not_null|true|NOT NULL execution_time
+constraint|_sqlx_migrations|_sqlx_migrations_installed_on_not_null|true|NOT NULL installed_on
+constraint|_sqlx_migrations|_sqlx_migrations_pkey|true|PRIMARY KEY (version)
+constraint|_sqlx_migrations|_sqlx_migrations_success_not_null|true|NOT NULL success
+constraint|_sqlx_migrations|_sqlx_migrations_version_not_null|true|NOT NULL version
+constraint|zobba_bootstrap|zobba_bootstrap_pkey|true|PRIMARY KEY (singleton)
+constraint|zobba_bootstrap|zobba_bootstrap_product_check|true|CHECK ((product = 'zobba'::text))
+constraint|zobba_bootstrap|zobba_bootstrap_product_not_null|true|NOT NULL product
+constraint|zobba_bootstrap|zobba_bootstrap_schema_version_check|true|CHECK ((schema_version = 1))
+constraint|zobba_bootstrap|zobba_bootstrap_schema_version_not_null|true|NOT NULL schema_version
+constraint|zobba_bootstrap|zobba_bootstrap_singleton_check|true|CHECK (singleton)
+constraint|zobba_bootstrap|zobba_bootstrap_singleton_not_null|true|NOT NULL singleton
+index|_sqlx_migrations|true|true|CREATE UNIQUE INDEX _sqlx_migrations_pkey ON public._sqlx_migrations USING btree (version)
+index|zobba_bootstrap|true|true|CREATE UNIQUE INDEX zobba_bootstrap_pkey ON public.zobba_bootstrap USING btree (singleton)
+table|_sqlx_migrations|r|p|false|false
+table|zobba_bootstrap|r|p|false|false

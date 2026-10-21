@@ -1,0 +1,21 @@
+{
+  "files": [
+    {
+      "path": "rust-tests.log",
+      "sha256": "6f049b6718e9ca8f473cd6d0fb6a5c34c5b86b594d9f847c64d171cf0d2a8a48",
+      "review": "Inspected passing runner output: target/test names and process smoke outcomes only; no credential, auth/session header, token, private key, or fixture configuration content."
+    },
+    {
+      "path": "smoke.log",
+      "sha256": "28bdd9bc655c2b5277a7f0dd54136acf54f3e3a78a7b29717453503e29e6dee9",
+      "review": "Inspected passing runner output: target/test names and process smoke outcomes only; no credential, auth/session header, token, private key, or fixture configuration content."
+    },
+    {
+      "path": "browser.log",
+      "sha256": "907213f43275601d6584e93c78a5920e84974d27302c249b4c21412f8380ffdd",
+      "review": "Inspected final complete passing runner output: command lines, 123 test titles/results, benign NO_COLOR/FORCE_COLOR warning and final 123-pass summary only. No credential, auth/session header, token, private key, callback secret query or fixture configuration content.",
+      "credential_pattern_flags": 0
+    }
+  ],
+  "scope": "Explicitly inspected passing Rust, smoke and final complete browser receipts only. Raw failed runner outputs, fixtures, authentication materials and traces remain excluded."
+}

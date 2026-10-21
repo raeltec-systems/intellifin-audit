@@ -1,62 +1,44 @@
-# Glossary — IntelliFin Audit
+# Zobba build glossary
 
-Defined terms used across SPEC.md and its companions. Capitalized in every artifact. Lifted from PRD revision 2 §3; the PRD glossary remains the narrative source.
+This is the active vocabulary derived from accepted design revision 3. The prior compiler vocabulary remains in the historical archive; old names are not aliases for new records without an explicit migration or attribution.
 
-| Term | Meaning |
-| --- | --- |
-| Absence Observation | An Observation with `found = false`, valid only with the per-path absence evidence in addendum §B.1. |
-| Adapter | Platform component that deterministically acquires a Population Source or an API/file Target System; its actions are Session Steps and Adapter Actions on the Timeline. |
-| Agent-Judged evaluation | Per-condition evaluation by the Audit Agent for an uncompiled condition; flagged; counts only after Auditor confirmation. |
-| Agent Workspace | Isolated execution environment created per Run for agent-driven Steps; torn down when the Run ends. |
-| Audit Agent | The autonomous executor of a Run's agent-driven Steps inside the Agent Workspace, within the version's scope, credentials, tools, and limits. |
-| Audit Assignment | The work a Run hands to an Audit Agent; one per Run in the PoC. |
-| Audit Instructions | Auditor-written natural-language description of what the agent does in each agent-driven Target System. |
-| Audit Manager | Human who approves Procedure Versions and performs Auditor Review. |
-| Audit Procedure (Procedure) | The primary object: the Auditor's instruction set for verifying a Control; executed as Procedure Versions. |
-| Audit Runner | Background service hosting Adapters, the Audit Agent, its workspace, and incremental evaluation. |
-| Audit Trail | System-wide append-only, hash-chained event record; Timeline events are Audit Trail events. |
-| Auditor | Human who authors Procedures, starts and supervises Runs, confirms evaluations, investigates Exceptions, and submits Results. |
-| Auditor Review | Approval or rejection of a Result, performed by the Audit Manager. |
-| Compiled / uncompiled condition | A Compliance Rule condition the Builder could express deterministically, or could not (evaluated Agent-Judged). |
-| Compliance Rule | Auditor-authored conditions defining Compliant and Exception; each with an applicability predicate. |
-| Control | The business obligation a Procedure tests; reference data. |
-| Control Failure | The System Outcome issued when one or more Exceptions count toward it. |
-| Escalation | Typed question with a closed answer set raised by the platform (or the agent for candidate choice); the Run waits until answered or times out. |
-| Evidence / Evidence Package | Captured artifacts, Observations, metadata, and integrity information for a Run; immutable once sealed. |
-| Evidence Quality Gate (Gate) | The checks in addendum §H that must pass before a conclusion; per-Observation at registration, Run-level at end. |
-| Evidence Requirement | Attributes and artifacts the agent must capture per inspected record. |
-| Exception | A record with at least one condition evaluated as violating the Compliance Rule. |
-| Executable plan | Session Steps, Plan Steps, Observations to capture, conditions, credentials, and limits derived by the Builder and frozen at approval. |
-| Execution Timeline (Timeline) | Ordered, authoritative record of every Step, Tool Action, Observation, evaluation, Escalation, and state change in a Run. |
-| Golden dataset | Per-Template fixture with known expected outcomes per record, used by Regression Runs and acceptance; a Run against it must reproduce every expected terminal outcome. |
-| Grounding | Pointer from an attribute into a Structural Snapshot or file (locator, label, extracted text) that a deterministic extractor can re-read. |
-| Human-classified evaluation | Evaluation set by an Auditor after rejecting an Agent-Judged one. |
-| Identity attribute | The matching key as displayed by the Target System, grounded on every `found = true` Observation. |
-| Inconclusive | Run state: no conclusion because the Gate failed, a timeout expired, or a condition is Unevaluated. |
-| Live View | Surface showing a Run in progress with pause, cancel, flag, and Escalation controls. |
-| Observation | Grounded record of what was found for one population record in one Target System. |
-| Pending Confirmation | Result outcome of a Completed Run while any Agent-Judged evaluation is unconfirmed; not a System Outcome. |
-| PoC Administrator | Manages users, registrations, bindings, and diagnostics; cannot alter Procedures, Evidence, or Results. |
-| Population Source (Source) | Where the population comes from, with its inclusion rule; the version freezes the binding, each Run acquires a snapshot. |
-| Procedure Builder (Builder) | The authoring surface that turns a Template into a Procedure Version and derives its executable plan; the only authoring path in the PoC. |
-| Procedure Template (Template) | Pre-authored Procedure an Auditor starts from; four in the PoC. |
-| Procedure Version | Immutable approved definition including plan, bindings, registration digests, conditions, configuration, limits, Schedule. |
-| Procedure-specific code | Code that references a Template, Control, or Target System by identity; synthetic Target Systems and golden datasets are fixtures, not procedure-specific code. |
-| Reference Source | Versioned file or API consulted by the evaluator, acquired as a Session Step; no Work Items. |
-| Regression Run | Run on an Approved version against the Template's golden dataset that gates activation. |
-| Replay | Playback of a terminal Run from the Timeline and the platform-owned Replay asset set. |
-| Result | Run output holding the System Outcome once sealed, summary, Exceptions, lineage, and review state. |
-| Rule-Classified evaluation | Per-condition evaluation produced deterministically from a corroborated Observation. |
-| Run | One governed execution of a Procedure Version for a period; active states are Queued, Running, Paused, Awaiting Auditor. |
-| Run Failed | Run state for a Run-level technical failure. |
-| Schedule | Frequency on a version: once, daily, weekly, monthly. |
-| Session Step | Run-level Step outside Work Items: workspace creation, Population Source acquisition, sign-in, Adapter extraction. |
-| Step (Plan Step, Step Execution, Tool Action) | Frozen plan unit; its runtime instance in a Work Item; one sandbox action within it. |
-| Structural Snapshot | Platform-captured accessibility/DOM tree, control tree, sheet, or JSON substrate that grounding points into. |
-| System Outcome | Pass or Control Failure, computed once at sealing; unchanged by human disposition. |
-| Target System | Registered system a Run inspects: web and desktop (agent-driven), API and file (adapter-acquired). |
-| Unevaluated | Evaluation value with an origin: no valid evaluation exists; never Compliant; blocks Pass. |
-| Uninspected | Work Item state for a record with no valid Observation in a Target System. |
-| Work Item | Unit of work within a Run: per record per agent-driven Target System, or per extraction; owns Observations. |
-| Workpaper Bundle | Signed, self-contained export sufficient to understand, replay, and reproduce a Result. |
-| Workspace Provider | Service supplying the workspace browser/desktop sandbox and recording; Solari in the PoC. |
+| Term | Build meaning |
+|---|---|
+| Engagement | Client, period, team, method, material, Permissions and audit record; the scope of a coordinating conversation. |
+| Engagement conversation | Attributed messages and work cards coordinating several same-engagement Tasks; no independent execution authority. |
+| Task | Continuing objective with exact scope, owner, history, work cycles, decisions, waits and outputs. |
+| Working brief | Visible current understanding of objective, approach, scope and expected products; revisable planning, not executable authority. |
+| Command | Idempotent request targeted to a Task or decision, with distinct acceptance and application receipts. |
+| Work cycle | Recorded period of Task execution under current owner/intent/authority revisions. |
+| Operation / attempt | A durable proposed business effect and one attempt to carry it out; attempt count is not effect count. |
+| Dispatch claim | One-use grant consumed before external I/O under current authority/epoch; marks an effect possibly dispatched. |
+| Reconciliation | Establishing the actual outcome of a possibly dispatched effect before safe retry or further dependent action. |
+| Permissions | Current purpose/account/resource/action authority intersected with firm, engagement, person and connection limits. |
+| Purpose | Live inspection, Test workflows or Audit coordination; each has a different permitted effect set. |
+| Managed computer | Real isolated browser/desktop resource used by Tasks; not their evidence store or durable identity. |
+| Computer generation | Identity of the current machine/session incarnation; stale input or frames cannot be accepted into a successor. |
+| Input lease | Exclusive, revocable authority to send input; watching does not acquire it. |
+| Protected sign-in | Human access interval with all agent observation, extraction and recording paths suppressed, followed by account/environment verification. |
+| Analysis environment | Disposable bounded program execution receiving selected evidence without acquisition credentials or browser sessions. |
+| Evidence object | Immutable source or derived material with content identity, acquisition/derivation provenance and scoped access. |
+| Acquisition receipt | Recorded source/version/account/purpose/time and outcome of obtaining actual material. |
+| Population / selection manifest | Versioned denominator, inclusion rules, exclusions and sample/selection supporting coverage and inference. |
+| Qualified absence | Negative observation supported by sufficient source/search/population coverage, not an empty or failed lookup alone. |
+| Assessment basis | Assertion, authoritative criterion/version, period, population/selection, required evidence, method and reporting limits. |
+| Fact | Typed source-backed observation, distinct from evaluation or human disposition. |
+| Evaluation revision | Immutable criterion/subject/method/input-bound result with separate applicability, execution, verdict, coverage and origin. |
+| Disposition | Attributable human treatment or judgment; does not rewrite the original evidence or computation. |
+| Claim | Statement linked to supporting and contrary evidence, evaluation and limitations. |
+| Work product | Stable document, analysis, finding or report identity with versioned content and dependencies. |
+| Review | Decision over exact content and dependencies by an eligible human under team or permitted solo rules. |
+| Self-reviewed | Accurate label when the preparer reviews their own work under an allowed solo methodology; never independent review. |
+| Issuance | Separate authorised human action identifying recipients and a fixed export package. |
+| Methodology version | Immutable attributable firm configuration created by ordinary Admin Save, with effective assignment and application rules. |
+| Skill | Installed, versioned technique/template/tool guidance; only explicitly required parts carry methodology authority. |
+| Working knowledge | Scoped source-backed facts, preferences and decisions with lineage, freshness and correction/revocation behavior. |
+| Context manifest / checkpoint | Selected permitted inputs and reconstructable summary for an invocation or continuation; summaries do not create authority. |
+| Check | Reviewed recurring assurance method with sources, owner, authority, timing, period semantics and limits. |
+| Occurrence | One logically identified period/event execution of a Check producing a linked Task and draft assessment. |
+| Standing request | Persisted evidence/reminder/coordination responsibility; need not be an assurance Check. |
+| Read-only discovery | Optional scoped research proposing useful work; does not itself send, mutate apps or control a computer. |
+| Qualification | Measured proof for named application/account/authentication/network/load conditions; not a promise of universal support. |

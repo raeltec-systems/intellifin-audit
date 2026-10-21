@@ -1,0 +1,2 @@
+8ffd91e42aa001b7e897bea812b02f89264f9fa0
+Bounded raw-source snapshot fetched from raw.githubusercontent.com, not a full checkout.

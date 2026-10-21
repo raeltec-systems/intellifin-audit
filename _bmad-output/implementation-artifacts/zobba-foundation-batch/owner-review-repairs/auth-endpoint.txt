@@ -1,0 +1,8 @@
+
+Running 1 test using 1 worker
+
+(node:239720) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/browser/auth-database-endpoint.spec.ts:18:1 › portless PGPORT routes actual migration, admin SQL and authenticated recovery through an owned relay (8.6s)
+
+  1 passed (11.6s)

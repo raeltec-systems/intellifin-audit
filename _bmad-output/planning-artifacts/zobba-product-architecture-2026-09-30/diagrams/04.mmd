@@ -1,0 +1,19 @@
+sequenceDiagram
+  participant U as Auditor
+  participant A as Control authority
+  participant G as Input and observation gateway
+  participant C as Computer adapter
+  participant R as Agent runtime
+  U->>A: Take over or start protected sign-in
+  A->>A: Commit transfer and new workspace epochs
+  A->>G: Fence old input and observation
+  G->>C: Cancel or quiesce full driver operations
+  C-->>G: Quiescence acknowledgement
+  G-->>U: Human input enabled, other viewers covered if private
+  U->>C: Work or authenticate through gateway
+  U->>A: Hand back
+  A->>G: Fence human input and clear transient private data
+  G->>C: Fresh authorised screen and account observation
+  C-->>R: Current state with new generation
+  R->>A: Reconcile pending operations and propose continuation
+  A-->>U: Zobba resumed or a specific unresolved condition

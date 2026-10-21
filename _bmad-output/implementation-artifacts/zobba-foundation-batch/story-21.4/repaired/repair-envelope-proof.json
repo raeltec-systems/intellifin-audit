@@ -1,0 +1,38 @@
+{
+  "scope": "internal StoredReceipt maximum shape; actual IDs are ASCII and many are shorter",
+  "compact_bytes": 40512,
+  "postgres_jsonb_text_bytes": 40830,
+  "unchanged_durable_limit": 65536,
+  "margin": 24706,
+  "affected_ids_max": 256,
+  "destinations_max": 50,
+  "id_max_bytes": 128,
+  "revisions_conservative_u64_max": "18446744073709551615",
+  "runtime_max_record_regression": "Passed in final rust-tests-2.log: postgres_knowledge_producers_retrieval_authority_and_mutation_contracts calls maximum_reason_receipts_preserve_large_records; knowledge suite3/3 in131.07s.",
+  "repaired_runtime_max_record_regression": {
+    "log": "repair-rust-full.log",
+    "exit": 0,
+    "parent": "postgres_knowledge_producers_retrieval_authority_and_mutation_contracts",
+    "phase": "maximum_reason_receipts_preserve_large_records",
+    "coverage": "32 actual originals; admitted approximately58.5KiB records; valid2000-emoji reasons; full views above65536bytes with compact persisted receipts below4096bytes; correction/restriction/replay/source-only revocation"
+  },
+  "repaired_wire_shape_test": {
+    "log": "repair-rust-full.log",
+    "test": "knowledge::envelope_tests::maximal_fifty_record_wire_page_stays_within_ordinary_four_mib_reader",
+    "result": "passed",
+    "wire_limit_bytes": 4194304,
+    "includes": [
+      "KnowledgeView current status and status_reason",
+      "receipt and affected-reference wrappers",
+      "numeric-string expansion",
+      "maximal admitted compact records"
+    ]
+  },
+  "prior_captured_serialized_examples": {
+    "log": "knowledge-envelope-2.log",
+    "page_bytes": 3408024,
+    "preference_bytes": 3475839,
+    "conservative_receipt_bytes": 1141526,
+    "note": "Measured during the retained pre-review envelope invocation. The same maximal-shape assertion passed again in repaired full Rust; passing default Rust output does not reprint the measurements."
+  }
+}

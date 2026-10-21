@@ -1,0 +1,498 @@
+{
+  "counts": {
+    "closed_by_disposition": "1",
+    "open": "3",
+    "replaced_by_human_judgment": "1",
+    "resolved_by_evidence": "1",
+    "subjects": "5",
+    "total": "6"
+  },
+  "effective_summaries": [
+    {
+      "aggregation": "effective_partition_v1",
+      "conclusion": "exceptions_found_inconclusive",
+      "criteria": [
+        {
+          "criterion_id": "crit-1",
+          "human_replaced": "0",
+          "pending_reconsideration": "0",
+          "superseded": "0",
+          "undisposed": "0"
+        },
+        {
+          "criterion_id": "crit-2",
+          "human_replaced": "0",
+          "pending_reconsideration": "0",
+          "superseded": "0",
+          "undisposed": "5"
+        }
+      ],
+      "effective_limitations": [
+        {
+          "code": "unresolved_subjects",
+          "count": "4",
+          "text": "4 subjects are unresolved: no conclusion covers them."
+        },
+        {
+          "code": "unreviewed_model_proposals",
+          "count": "5",
+          "text": "5 model proposals have no disposition: nobody has reviewed them."
+        },
+        {
+          "code": "open_exceptions",
+          "count": "6",
+          "text": "6 exceptions of these subjects are open: while one is open, no summary concludes that no exception exists."
+        }
+      ],
+      "exact": true,
+      "exceptions": {
+        "closed_by_disposition": "0",
+        "open": "6",
+        "replaced_by_human_judgment": "0",
+        "resolved_by_evidence": "0",
+        "subjects": "5",
+        "total": "6"
+      },
+      "id": "esummary-3",
+      "listed": [
+        {
+          "criterion_root": "crit-2",
+          "id": "exc-4",
+          "latest_observed": "not_met",
+          "status": "open",
+          "subject": "000123"
+        },
+        {
+          "criterion_root": "crit-2",
+          "id": "exc-5",
+          "latest_observed": "proposed_met",
+          "status": "open",
+          "subject": "INV-0042"
+        },
+        {
+          "criterion_root": "crit-2",
+          "id": "exc-6",
+          "latest_observed": "not_met",
+          "status": "open",
+          "subject": "INV-0051"
+        },
+        {
+          "criterion_root": "crit-2",
+          "id": "exc-7",
+          "latest_observed": "not_met",
+          "status": "open",
+          "subject": "INV-0054"
+        },
+        {
+          "criterion_root": "crit-1",
+          "id": "exc-8",
+          "latest_observed": "not_met",
+          "status": "open",
+          "subject": "INV-0054"
+        },
+        {
+          "criterion_root": "crit-2",
+          "id": "exc-9",
+          "latest_observed": "proposed_met",
+          "status": "open",
+          "subject": "INV-0055"
+        }
+      ],
+      "recorded_us": "1760000000000000",
+      "summary": {
+        "aggregation": "subject_partition_v1",
+        "basis_id": "basis-10",
+        "completeness": "complete",
+        "conclusion": "exceptions_found_inconclusive",
+        "counts": {
+          "distinct_subjects": "9",
+          "duplicate_rows": "0",
+          "excluded_out_of_period": "0",
+          "in_scope": "9",
+          "received_rows": "9",
+          "scope_unknown_conflicting_duplicate": "0",
+          "scope_unknown_period_missing": "0",
+          "scope_unknown_period_unparsed": "0",
+          "unkeyed": "0"
+        },
+        "criteria": [
+          {
+            "applicability_unknown": "0",
+            "applicable": "9",
+            "criterion_id": "crit-1",
+            "execution_failed": "0",
+            "met": "5",
+            "met_unreviewed": "0",
+            "not_applicable": "0",
+            "not_evaluated": "0",
+            "not_met": "1",
+            "undetermined": "3",
+            "undetermined_by_reason": [
+              {
+                "count": "3",
+                "reason": "missing_fact"
+              }
+            ]
+          },
+          {
+            "applicability_unknown": "0",
+            "applicable": "9",
+            "criterion_id": "crit-2",
+            "execution_failed": "0",
+            "met": "2",
+            "met_unreviewed": "2",
+            "not_applicable": "0",
+            "not_evaluated": "4",
+            "not_met": "3",
+            "undetermined": "0",
+            "undetermined_by_reason": []
+          }
+        ],
+        "declared_count": null,
+        "execution_epoch": "1",
+        "failing_opportunities": "4",
+        "failing_subjects": "3",
+        "id": "esummary-3",
+        "incomplete_reason": null,
+        "invocation_id": "id-11",
+        "limitations": [
+          {
+            "code": "judgment_not_recorded",
+            "count": "4",
+            "criterion_id": "crit-2",
+            "text": "Judgment criterion crit-2 has no recorded judgment for 4 applicable items at this population's subject unit; judgments recorded at another unit or basis are not counted."
+          },
+          {
+            "code": "unreviewed_model_judgments",
+            "count": "2",
+            "criterion_id": "crit-2",
+            "text": "Judgment criterion crit-2: 2 met verdicts are model proposals nobody has reviewed; they cannot show that no exception exists."
+          }
+        ],
+        "meets_every_applicable": "2",
+        "methodology_binding_id": "id-12",
+        "not_applicable_to_any": "0",
+        "population_id": "pop-13",
+        "reconciliation": "not_declared",
+        "sample_id": null,
+        "selected": null,
+        "statistical_inference": false,
+        "summary_sha256": "0000000000000000000000000000000000000000000000000000000000000001",
+        "unresolved_subjects": "4"
+      },
+      "supersedes": null
+    },
+    {
+      "aggregation": "effective_partition_v1",
+      "conclusion": "exceptions_found_inconclusive",
+      "criteria": [
+        {
+          "criterion_id": "crit-1",
+          "human_replaced": "0",
+          "pending_reconsideration": "0",
+          "superseded": "0",
+          "undisposed": "0"
+        },
+        {
+          "criterion_id": "crit-2",
+          "human_replaced": "2",
+          "pending_reconsideration": "0",
+          "superseded": "0",
+          "undisposed": "2"
+        }
+      ],
+      "effective_limitations": [
+        {
+          "code": "unresolved_subjects",
+          "count": "4",
+          "text": "4 subjects are unresolved: no conclusion covers them."
+        },
+        {
+          "code": "unreviewed_model_proposals",
+          "count": "2",
+          "text": "2 model proposals have no disposition: nobody has reviewed them."
+        },
+        {
+          "code": "open_exceptions",
+          "count": "3",
+          "text": "3 exceptions of these subjects are open: while one is open, no summary concludes that no exception exists."
+        }
+      ],
+      "exact": true,
+      "exceptions": {
+        "closed_by_disposition": "1",
+        "open": "3",
+        "replaced_by_human_judgment": "1",
+        "resolved_by_evidence": "1",
+        "subjects": "5",
+        "total": "6"
+      },
+      "id": "esummary-14",
+      "listed": [
+        {
+          "criterion_root": "crit-2",
+          "id": "exc-4",
+          "latest_observed": "not_observed",
+          "status": "replaced_by_human_judgment",
+          "subject": "000123"
+        },
+        {
+          "criterion_root": "crit-2",
+          "id": "exc-5",
+          "latest_observed": "not_observed",
+          "status": "resolved_by_evidence",
+          "subject": "INV-0042"
+        },
+        {
+          "criterion_root": "crit-2",
+          "id": "exc-6",
+          "latest_observed": "not_met",
+          "status": "open",
+          "subject": "INV-0051"
+        },
+        {
+          "criterion_root": "crit-2",
+          "id": "exc-7",
+          "latest_observed": "not_met",
+          "status": "closed_by_disposition",
+          "subject": "INV-0054"
+        },
+        {
+          "criterion_root": "crit-1",
+          "id": "exc-8",
+          "latest_observed": "not_observed",
+          "status": "open",
+          "subject": "INV-0054"
+        },
+        {
+          "criterion_root": "crit-2",
+          "id": "exc-9",
+          "latest_observed": "not_met",
+          "status": "open",
+          "subject": "INV-0055"
+        }
+      ],
+      "recorded_us": "1760000000000000",
+      "summary": {
+        "aggregation": "subject_partition_v1",
+        "basis_id": "basis-10",
+        "completeness": "complete",
+        "conclusion": "exceptions_found_inconclusive",
+        "counts": {
+          "distinct_subjects": "9",
+          "duplicate_rows": "0",
+          "excluded_out_of_period": "0",
+          "in_scope": "9",
+          "received_rows": "9",
+          "scope_unknown_conflicting_duplicate": "0",
+          "scope_unknown_period_missing": "0",
+          "scope_unknown_period_unparsed": "0",
+          "unkeyed": "0"
+        },
+        "criteria": [
+          {
+            "applicability_unknown": "0",
+            "applicable": "9",
+            "criterion_id": "crit-1",
+            "execution_failed": "0",
+            "met": "5",
+            "met_unreviewed": "0",
+            "not_applicable": "0",
+            "not_evaluated": "0",
+            "not_met": "1",
+            "undetermined": "3",
+            "undetermined_by_reason": [
+              {
+                "count": "3",
+                "reason": "missing_fact"
+              }
+            ]
+          },
+          {
+            "applicability_unknown": "0",
+            "applicable": "9",
+            "criterion_id": "crit-2",
+            "execution_failed": "0",
+            "met": "2",
+            "met_unreviewed": "1",
+            "not_applicable": "0",
+            "not_evaluated": "4",
+            "not_met": "3",
+            "undetermined": "0",
+            "undetermined_by_reason": []
+          }
+        ],
+        "declared_count": null,
+        "execution_epoch": "1",
+        "failing_opportunities": "4",
+        "failing_subjects": "3",
+        "id": "esummary-14",
+        "incomplete_reason": null,
+        "invocation_id": "id-15",
+        "limitations": [
+          {
+            "code": "judgment_not_recorded",
+            "count": "4",
+            "criterion_id": "crit-2",
+            "text": "Judgment criterion crit-2 has no recorded judgment for 4 applicable items at this population's subject unit; judgments recorded at another unit or basis are not counted."
+          },
+          {
+            "code": "unreviewed_model_judgments",
+            "count": "1",
+            "criterion_id": "crit-2",
+            "text": "Judgment criterion crit-2: 1 met verdicts are model proposals nobody has reviewed; they cannot show that no exception exists."
+          }
+        ],
+        "meets_every_applicable": "2",
+        "methodology_binding_id": "id-12",
+        "not_applicable_to_any": "0",
+        "population_id": "pop-13",
+        "reconciliation": "not_declared",
+        "sample_id": null,
+        "selected": null,
+        "statistical_inference": false,
+        "summary_sha256": "0000000000000000000000000000000000000000000000000000000000000002",
+        "unresolved_subjects": "4"
+      },
+      "supersedes": "esummary-3"
+    }
+  ],
+  "exceptions": [
+    {
+      "criterion_root": "crit-2",
+      "disposition": null,
+      "dispositions": "0",
+      "first_source_id": "eval-16",
+      "first_source_kind": "evaluation",
+      "id": "exc-4",
+      "latest_observed": "not_observed",
+      "occurrences": "1",
+      "recorded_us": "1760000000000000",
+      "status": "replaced_by_human_judgment",
+      "status_words": "Replaced by human judgment: a person's verdict that the criterion is met replaces the failing judgment.",
+      "subject": "000123"
+    },
+    {
+      "criterion_root": "crit-2",
+      "disposition": null,
+      "dispositions": "0",
+      "first_source_id": "eval-17",
+      "first_source_kind": "evaluation",
+      "id": "exc-5",
+      "latest_observed": "not_observed",
+      "occurrences": "1",
+      "recorded_us": "1760000000000000",
+      "status": "resolved_by_evidence",
+      "status_words": "Resolved by evidence: a later evaluation of new evidence meets the criterion.",
+      "subject": "INV-0042"
+    },
+    {
+      "criterion_root": "crit-2",
+      "disposition": {
+        "actor_id": "actor-a",
+        "actor_label": "auditor-a",
+        "exception_id": "exc-6",
+        "id": "xdisp-18",
+        "kind": "closed",
+        "rationale": "The approver confirmed the approval in writing after the review.",
+        "recorded_us": "1760000000000000",
+        "references": [
+          {
+            "byte_end": 48,
+            "byte_start": 0,
+            "filename": "AP policy.txt",
+            "location": "bytes 0–48",
+            "locator": "bytes:0-48",
+            "original_id": "ap-policy",
+            "quote": "Invoices above 1,000.00 USD require an approver.",
+            "readable": true,
+            "reason": null,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000003",
+            "verification": "verified",
+            "version": "id-19"
+          }
+        ]
+      },
+      "dispositions": "3",
+      "first_source_id": "eval-20",
+      "first_source_kind": "evaluation",
+      "id": "exc-6",
+      "latest_observed": "not_met",
+      "occurrences": "2",
+      "recorded_us": "1760000000000000",
+      "status": "open",
+      "status_words": "Open: a current observation does not meet the criterion.",
+      "subject": "INV-0051"
+    },
+    {
+      "criterion_root": "crit-2",
+      "disposition": {
+        "actor_id": "actor-manager",
+        "actor_label": "manager-a",
+        "exception_id": "exc-7",
+        "id": "xdisp-21",
+        "kind": "closed",
+        "rationale": "The approver confirmed the approval in writing after the review.",
+        "recorded_us": "1760000000000000",
+        "references": [
+          {
+            "byte_end": 48,
+            "byte_start": 0,
+            "filename": "AP policy.txt",
+            "location": "bytes 0–48",
+            "locator": "bytes:0-48",
+            "original_id": "ap-policy",
+            "quote": "Invoices above 1,000.00 USD require an approver.",
+            "readable": true,
+            "reason": null,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000003",
+            "verification": "verified",
+            "version": "id-19"
+          }
+        ]
+      },
+      "dispositions": "1",
+      "first_source_id": "eval-22",
+      "first_source_kind": "evaluation",
+      "id": "exc-7",
+      "latest_observed": "not_met",
+      "occurrences": "2",
+      "recorded_us": "1760000000000000",
+      "status": "closed_by_disposition",
+      "status_words": "Closed by a disposition with evidence; a later failing observation on new evidence reopens it.",
+      "subject": "INV-0054"
+    },
+    {
+      "criterion_root": "crit-1",
+      "disposition": null,
+      "dispositions": "0",
+      "first_source_id": "pop-13#crit-1#2",
+      "first_source_kind": "opportunity",
+      "id": "exc-8",
+      "latest_observed": "not_observed",
+      "occurrences": "1",
+      "recorded_us": "1760000000000000",
+      "status": "open",
+      "status_words": "Open: not observed in the latest revision; this is not evidence of remediation.",
+      "subject": "INV-0054"
+    },
+    {
+      "criterion_root": "crit-2",
+      "disposition": null,
+      "dispositions": "0",
+      "first_source_id": "eval-23",
+      "first_source_kind": "evaluation",
+      "id": "exc-9",
+      "latest_observed": "not_met",
+      "occurrences": "2",
+      "recorded_us": "1760000000000000",
+      "status": "open",
+      "status_words": "Open: a current observation does not meet the criterion.",
+      "subject": "INV-0055"
+    }
+  ],
+  "may_close": true,
+  "next_cursor": null,
+  "not_remediation": "not observed in the latest revision; this is not evidence of remediation",
+  "total_effective_summaries": "2"
+}

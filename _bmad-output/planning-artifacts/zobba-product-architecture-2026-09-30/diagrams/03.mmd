@@ -1,0 +1,20 @@
+sequenceDiagram
+  participant U as Auditor
+  participant A as Rust task authority
+  participant D as PostgreSQL
+  participant M as Model adapter
+  participant G as Dispatch gateway
+  participant T as Tool or application
+  U->>A: Objective or guidance with command key
+  A->>D: Commit command, receipt, event and wakeup
+  A-->>U: Accepted receipt
+  A->>D: Claim task lease and reconstruct current state
+  A->>M: Authorised context and tool snapshot
+  M-->>A: Complete proposal
+  A->>D: Admit operation and reserve budget
+  G->>D: Consume one-use dispatch claim under current epoch
+  G->>T: Bound request outside DB transaction
+  T-->>G: Observed result or receipt
+  G->>A: Result with operation and attempt identity
+  A->>D: Commit receipt, evidence metadata and next work
+  A-->>U: Durable result and inspectable work

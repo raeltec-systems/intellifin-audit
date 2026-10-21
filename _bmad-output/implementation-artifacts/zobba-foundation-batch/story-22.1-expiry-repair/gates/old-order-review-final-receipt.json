@@ -1,0 +1,26 @@
+{
+  "gate": "old-order-review-final",
+  "command": [
+    "cargo",
+    "test",
+    "--locked",
+    "-p",
+    "zobba-worker",
+    "--test",
+    "gateway_process",
+    "expiry_during_final_model_validation",
+    "--",
+    "--nocapture"
+  ],
+  "working_directory": "zobba",
+  "started_at": "2026-10-03T09:21:30.670815+00:00",
+  "ended_at": "2026-10-03T09:22:01.148130+00:00",
+  "duration_seconds": 30.477,
+  "exit": 101,
+  "source_before": "old-order-review-final-source-before.json",
+  "source_after": "old-order-review-final-source-after.json",
+  "source_unchanged": true,
+  "changed_source_paths": [],
+  "log": "old-order-review-final.log",
+  "log_sha256": "38630585fb652c5346281a83a5f8e95577d905f942e6bc94a6ccd4c242d97fe3"
+}

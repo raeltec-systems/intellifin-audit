@@ -1,0 +1,21 @@
+{
+  "gate": "full-rust-final-prewarm",
+  "command": [
+    "cargo",
+    "test",
+    "--workspace",
+    "--locked",
+    "--no-run"
+  ],
+  "working_directory": "zobba",
+  "started_at": "2026-10-03T05:45:29.534582+00:00",
+  "ended_at": "2026-10-03T05:47:49.845076+00:00",
+  "duration_seconds": 140.311,
+  "exit": 0,
+  "source_before": "full-rust-final-prewarm-source-before.json",
+  "source_after": "full-rust-final-prewarm-source-after.json",
+  "source_unchanged": true,
+  "changed_source_paths": [],
+  "log": "full-rust-final-prewarm.log",
+  "log_sha256": "a459eee8b45b052a0f98d10e9259f15a18da1bee7267fa40afe54d9eccbb4870"
+}

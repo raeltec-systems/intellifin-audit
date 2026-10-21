@@ -1,0 +1,26 @@
+{
+  "invocation": "repair-browser-full-2",
+  "passed": 144,
+  "failed": 1,
+  "selected": 145,
+  "workers": 1,
+  "retries": 0,
+  "elapsed_minutes": 17.1,
+  "exit": 1,
+  "source_files": 245,
+  "source_unchanged": true,
+  "failed_test": "knowledge.spec.ts:483 private preference Undo/outcome",
+  "failed_assertion": "line516 expected alphabetical list order",
+  "expected": [
+    "engagement-a",
+    "preference-outcome-15c47ed1-077b-4cbe-ab2d-1e666cb64c09"
+  ],
+  "received": [
+    "preference-outcome-15c47ed1-077b-4cbe-ab2d-1e666cb64c09",
+    "engagement-a"
+  ],
+  "diagnosis": "Test asserted unsupported alphabetical destination order; receipt/UI retain publication-ID traversal order. Both required destinations appeared exactly once.",
+  "repair": "Preserve original receipt unchanged; assert exact two unique destination membership using sorted copy, and exact DOM order equal to receipt before and after remount. Retain byte-identical retry, own current-read gate and all existing privacy assertions.",
+  "product_behavior_change": false,
+  "earlier_BF1_causes": "remain unproven; all three BF1 failed cases passed within BF2"
+}

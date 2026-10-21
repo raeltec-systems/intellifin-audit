@@ -1,0 +1,27 @@
+{
+  "negative_control": {
+    "source_sha256": "a97b8e2f3c4ebf530aa4815d47adc217f4e7aebe42ff0e96f0e34e329691b629",
+    "log": "/tmp/zobba-story-21-2/repair-2/browser-negative.log",
+    "exit": 1,
+    "expected_failure": "retained inner template node count: expected1, actual0 during held same-session projection"
+  },
+  "fixed_focused": {
+    "tests": 4,
+    "passed": 4,
+    "retries": 0,
+    "duration": "50.6s",
+    "log": "/tmp/zobba-story-21-2/repair-2/browser-focused.log",
+    "exit": 0
+  },
+  "web_check": {
+    "passed": 131,
+    "exit": 0
+  },
+  "web_build": {
+    "exit": 0
+  },
+  "source_sha256": {
+    "web/src/TaskMethodology.tsx": "66125d5592e07960dbed421f10862dbf1d520887e82ef5464775bc68c241e648",
+    "web/tests/browser/conversation-review.spec.ts": "85798459d372ec6a8e315b9348ab4c5c6fdded982f4546d696f39bafd1186f96"
+  }
+}

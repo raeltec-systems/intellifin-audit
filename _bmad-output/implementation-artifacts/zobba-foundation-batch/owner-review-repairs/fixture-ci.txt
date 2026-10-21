@@ -1,0 +1,61 @@
+$ pnpm --filter @zobba/oidc-fixture run setup
+$ node setup.mjs
+Synthetic OIDC fixture prepared; source '/tmp/zobba-owner-ci-n948dhaq/zobba-oidc-fixture/env.sh' in each shell.
+$ pnpm --filter @zobba/oidc-fixture test
+$ node --test fixture.test.mjs
+oidc-provider WARNING: a quick start development-only in-memory adapter is used, you MUST change it in order to not lose all stateful provider data upon restart and to be able to share these between processes
+▶ independent HTTPS OIDC fixture uses real code, login, PKCE and controlled negative responses
+  ✔ malformed private configuration produces only a fixed setup diagnostic (49.234756ms)
+  ✔ requires explicit configuration and validates local CA (34.80412ms)
+  ✔ malformed request target receives a fixed refusal and the HTTPS server stays usable (9.805154ms)
+  ✔ discovery registers exact callback, RS256 and S256 (14.02519ms)
+  ✔ password authentication and PKCE produce a signed ID token; replay refuses (59.438626ms)
+  ✔ real code exchange exposes bad_issuer fixture (16.265784ms)
+  ✔ real code exchange exposes bad_audience fixture (15.928763ms)
+  ✔ real code exchange exposes multi_audience fixture (16.602231ms)
+  ✔ real code exchange exposes missing_azp fixture (19.135346ms)
+  ✔ real code exchange exposes bad_azp fixture (40.787216ms)
+  ✔ real code exchange exposes bad_nonce fixture (19.229363ms)
+  ✔ real code exchange exposes no_nonce fixture (17.332655ms)
+  ✔ real code exchange exposes bad_at_hash fixture (20.231956ms)
+  ✔ real code exchange exposes expired fixture (17.114544ms)
+  ✔ real code exchange exposes old_iat fixture (13.854174ms)
+  ✔ real code exchange exposes future_iat fixture (14.779717ms)
+  ✔ real code exchange exposes bad_expiry fixture (17.12025ms)
+  ✔ real code exchange exposes bad_signature fixture (19.311571ms)
+  ✔ real code exchange exposes bad_algorithm fixture (18.341712ms)
+  ✔ real code exchange exposes no_signature fixture (21.658153ms)
+  ✔ real code exchange exposes unknown_key fixture (19.332695ms)
+  ✔ real code exchange exposes untrusted_jku fixture (24.695664ms)
+  ✔ real code exchange exposes untrusted_x5u fixture (52.328839ms)
+  ✔ rotation publishes a new signing key only after a real token exchange (24.713908ms)
+  ✔ same-kid rotation replaces key material and retains the original key identifier (75.89935ms)
+  ✔ retired_key emits an otherwise valid token signed by the retired original key (37.179857ms)
+  ✔ retired_key_unavailable emits an otherwise valid token signed by the retired original key (19.505592ms)
+  ✔ oversized_token retains a valid protocol response with independently checked body length (28.880021ms)
+  ✔ oversized_chunked_token retains a valid protocol response with independently checked body length (34.990443ms)
+  ✔ padded_token retains a valid protocol response with independently checked body length (36.691088ms)
+  ✔ padded_chunked_token retains a valid protocol response with independently checked body length (26.869895ms)
+  ✔ oversized_jwks retains a valid protocol response with independently checked body length (23.650056ms)
+  ✔ oversized_chunked_jwks retains a valid protocol response with independently checked body length (22.617875ms)
+  ✔ padded_jwks retains a valid protocol response with independently checked body length (30.339015ms)
+  ✔ padded_chunked_jwks retains a valid protocol response with independently checked body length (15.964146ms)
+  ✔ oversized_discovery retains a valid protocol response with independently checked body length (11.364387ms)
+  ✔ oversized_chunked_discovery retains a valid protocol response with independently checked body length (13.022777ms)
+  ✔ padded_discovery retains a valid protocol response with independently checked body length (4.717157ms)
+  ✔ padded_chunked_discovery retains a valid protocol response with independently checked body length (10.88975ms)
+  ✔ padded token fixtures still require real client, code and PKCE verification (109.188805ms)
+  ✔ redirect fixtures remain isolated behind authenticated controls (6.634385ms)
+  ✔ discovery exposes untrusted_token_endpoint fixture (11.007926ms)
+  ✔ discovery exposes untrusted_authorization_endpoint fixture (3.801101ms)
+  ✔ discovery exposes untrusted_jwks_uri fixture (3.554215ms)
+  ✔ discovery exposes bad_discovery_issuer fixture (2.541706ms)
+✔ independent HTTPS OIDC fixture uses real code, login, PKCE and controlled negative responses (2023.946025ms)
+ℹ tests 46
+ℹ suites 0
+ℹ pass 46
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2338.774801

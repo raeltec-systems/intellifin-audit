@@ -1,0 +1,198 @@
+[
+  {
+    "sequence": 1,
+    "elapsedMs": 2222,
+    "phase": "initial-projections",
+    "event": "preference-verification-held",
+    "initial": true,
+    "status": 200
+  },
+  {
+    "sequence": 2,
+    "elapsedMs": 2271,
+    "phase": "settling-initial-preference",
+    "event": "preference-verification-delivered",
+    "initial": true
+  },
+  {
+    "sequence": 3,
+    "elapsedMs": 2281,
+    "phase": "settling-initial-preference",
+    "event": "initial-preference-session-completed"
+  },
+  {
+    "sequence": 4,
+    "elapsedMs": 2373,
+    "phase": "fault-injection",
+    "event": "session-request",
+    "bound": false,
+    "owner": "app",
+    "sessionReads": 1,
+    "boundVerifications": 0,
+    "preferenceVerifications": 0
+  },
+  {
+    "sequence": 5,
+    "elapsedMs": 2392,
+    "phase": "fault-injection",
+    "event": "session-response",
+    "bound": false,
+    "owner": "app",
+    "status": 200
+  },
+  {
+    "sequence": 6,
+    "elapsedMs": 2437,
+    "phase": "fault-injection",
+    "event": "scope-request",
+    "scopeReads": 1
+  },
+  {
+    "sequence": 7,
+    "elapsedMs": 2462,
+    "phase": "fault-injection",
+    "event": "scope-response",
+    "status": 200,
+    "scopeReads": 1
+  },
+  {
+    "sequence": 8,
+    "elapsedMs": 2513,
+    "phase": "fault-injection",
+    "event": "conversation-request",
+    "injected": true
+  },
+  {
+    "sequence": 9,
+    "elapsedMs": 2530,
+    "phase": "fault-injection",
+    "event": "conversation-response",
+    "status": 412,
+    "injected": true
+  },
+  {
+    "sequence": 10,
+    "elapsedMs": 2558,
+    "phase": "fault-injection",
+    "event": "session-request",
+    "bound": false,
+    "owner": "app",
+    "sessionReads": 2,
+    "boundVerifications": 0,
+    "preferenceVerifications": 0
+  },
+  {
+    "sequence": 11,
+    "elapsedMs": 2569,
+    "phase": "fault-injection",
+    "event": "session-response",
+    "bound": false,
+    "owner": "app",
+    "status": 200
+  },
+  {
+    "sequence": 12,
+    "elapsedMs": 2592,
+    "phase": "fault-injection",
+    "event": "scope-request",
+    "scopeReads": 2
+  },
+  {
+    "sequence": 13,
+    "elapsedMs": 2607,
+    "phase": "fault-injection",
+    "event": "scope-response",
+    "status": 200,
+    "scopeReads": 2
+  },
+  {
+    "sequence": 14,
+    "elapsedMs": 2664,
+    "phase": "fault-injection",
+    "event": "conversation-request",
+    "injected": true
+  },
+  {
+    "sequence": 15,
+    "elapsedMs": 2675,
+    "phase": "fault-injection",
+    "event": "conversation-response",
+    "status": 412,
+    "injected": true
+  },
+  {
+    "sequence": 16,
+    "elapsedMs": 2823,
+    "phase": "explicit-recovery",
+    "event": "session-request",
+    "bound": false,
+    "owner": "app",
+    "sessionReads": 3,
+    "boundVerifications": 0,
+    "preferenceVerifications": 0
+  },
+  {
+    "sequence": 17,
+    "elapsedMs": 2843,
+    "phase": "explicit-recovery",
+    "event": "session-response",
+    "bound": false,
+    "owner": "app",
+    "status": 200
+  },
+  {
+    "sequence": 18,
+    "elapsedMs": 3008,
+    "phase": "explicit-recovery",
+    "event": "preference-verification-held",
+    "initial": false,
+    "status": 200
+  },
+  {
+    "sequence": 19,
+    "elapsedMs": 3009,
+    "phase": "explicit-recovery",
+    "event": "session-request",
+    "bound": true,
+    "owner": "impact",
+    "sessionReads": 3,
+    "boundVerifications": 1,
+    "preferenceVerifications": 0
+  },
+  {
+    "sequence": 20,
+    "elapsedMs": 3017,
+    "phase": "explicit-recovery",
+    "event": "session-response",
+    "bound": true,
+    "owner": "impact",
+    "status": 200
+  },
+  {
+    "sequence": 21,
+    "elapsedMs": 3045,
+    "phase": "settling-recovered-preference",
+    "event": "preference-verification-delivered",
+    "initial": false
+  },
+  {
+    "sequence": 22,
+    "elapsedMs": 3048,
+    "phase": "settling-recovered-preference",
+    "event": "session-request",
+    "bound": true,
+    "owner": "preference",
+    "sessionReads": 3,
+    "boundVerifications": 1,
+    "preferenceVerifications": 1
+  },
+  {
+    "sequence": 23,
+    "elapsedMs": 3059,
+    "phase": "settling-recovered-preference",
+    "event": "session-response",
+    "bound": true,
+    "owner": "preference",
+    "status": 200
+  }
+]

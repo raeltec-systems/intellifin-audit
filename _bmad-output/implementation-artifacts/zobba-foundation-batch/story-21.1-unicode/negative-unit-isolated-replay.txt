@@ -1,0 +1,178 @@
+✖ shared Rust/browser Unicode metadata parity preserves filename and recovery exactly (25.2858ms)
+✖ shared Rust/browser Unicode metadata parity preserves system and recovery exactly (20.630358ms)
+✖ shared Rust/browser Unicode metadata parity preserves account and recovery exactly (17.485338ms)
+✖ shared Rust/browser Unicode metadata parity preserves source_version and recovery exactly (20.619978ms)
+✖ shared Rust/browser Unicode metadata parity preserves selection and recovery exactly (31.616894ms)
+✖ shared Rust/browser Unicode metadata parity preserves coverage and recovery exactly (26.115761ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 0
+ℹ fail 6
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 367.325516
+
+✖ failing tests:
+
+test at tests/evidence.test.mjs:40:3
+✖ shared Rust/browser Unicode metadata parity preserves filename and recovery exactly (25.2858ms)
+  AssertionError [ERR_ASSERTION]: filename: all 366 shared cases executed
+  + actual - expected
+  
+  + [
+  +   'filename: FEFF-leading: Invalid evidence response',
+  +   'filename: FEFF-trailing: Invalid evidence response',
+  +   'filename: FEFF-alone: Invalid evidence response',
+  +   'filename: space-between-FEFF: Invalid evidence response',
+  +   'filename: FEFF-leading-255-bytes: Invalid evidence response',
+  +   'filename: FEFF-trailing-255-bytes: Invalid evidence response',
+  +   'filename: FEFF-and-multibyte-255-bytes: Invalid evidence response'
+  + ]
+  - []
+  
+      at TestContext.<anonymous> (file:///tmp/zobba-unicode-negative-6ebnuhhc/repo/zobba/web/tests/evidence.test.mjs:72:12)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [ 'filename: FEFF-leading: Invalid evidence response', 'filename: FEFF-trailing: Invalid evidence response', 'filename: FEFF-alone: Invalid evidence response', 'filename: space-between-FEFF: Invalid evidence response', 'filename: FEFF-leading-255-bytes: Invalid evidence response', 'filename: FEFF-trailing-255-bytes: Invalid evidence response', 'filename: FEFF-and-multibyte-255-bytes: Invalid evidence response' ],
+    expected: [],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at tests/evidence.test.mjs:40:3
+✖ shared Rust/browser Unicode metadata parity preserves system and recovery exactly (20.630358ms)
+  AssertionError [ERR_ASSERTION]: system: all 366 shared cases executed
+  + actual - expected
+  
+  + [
+  +   'system: FEFF-leading: Invalid evidence response',
+  +   'system: FEFF-trailing: Invalid evidence response',
+  +   'system: FEFF-alone: Invalid evidence response',
+  +   'system: space-between-FEFF: Invalid evidence response',
+  +   'system: FEFF-leading-2000-bytes: Invalid evidence response',
+  +   'system: FEFF-trailing-2000-bytes: Invalid evidence response',
+  +   'system: FEFF-and-multibyte-2000-bytes: Invalid evidence response'
+  + ]
+  - []
+  
+      at TestContext.<anonymous> (file:///tmp/zobba-unicode-negative-6ebnuhhc/repo/zobba/web/tests/evidence.test.mjs:72:12)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [ 'system: FEFF-leading: Invalid evidence response', 'system: FEFF-trailing: Invalid evidence response', 'system: FEFF-alone: Invalid evidence response', 'system: space-between-FEFF: Invalid evidence response', 'system: FEFF-leading-2000-bytes: Invalid evidence response', 'system: FEFF-trailing-2000-bytes: Invalid evidence response', 'system: FEFF-and-multibyte-2000-bytes: Invalid evidence response' ],
+    expected: [],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at tests/evidence.test.mjs:40:3
+✖ shared Rust/browser Unicode metadata parity preserves account and recovery exactly (17.485338ms)
+  AssertionError [ERR_ASSERTION]: account: all 366 shared cases executed
+  + actual - expected
+  
+  + [
+  +   'account: FEFF-leading: Invalid evidence response',
+  +   'account: FEFF-trailing: Invalid evidence response',
+  +   'account: FEFF-alone: Invalid evidence response',
+  +   'account: space-between-FEFF: Invalid evidence response',
+  +   'account: FEFF-leading-2000-bytes: Invalid evidence response',
+  +   'account: FEFF-trailing-2000-bytes: Invalid evidence response',
+  +   'account: FEFF-and-multibyte-2000-bytes: Invalid evidence response'
+  + ]
+  - []
+  
+      at TestContext.<anonymous> (file:///tmp/zobba-unicode-negative-6ebnuhhc/repo/zobba/web/tests/evidence.test.mjs:72:12)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [ 'account: FEFF-leading: Invalid evidence response', 'account: FEFF-trailing: Invalid evidence response', 'account: FEFF-alone: Invalid evidence response', 'account: space-between-FEFF: Invalid evidence response', 'account: FEFF-leading-2000-bytes: Invalid evidence response', 'account: FEFF-trailing-2000-bytes: Invalid evidence response', 'account: FEFF-and-multibyte-2000-bytes: Invalid evidence response' ],
+    expected: [],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at tests/evidence.test.mjs:40:3
+✖ shared Rust/browser Unicode metadata parity preserves source_version and recovery exactly (20.619978ms)
+  AssertionError [ERR_ASSERTION]: source_version: all 366 shared cases executed
+  + actual - expected
+  
+  + [
+  +   'source_version: FEFF-leading: Invalid evidence response',
+  +   'source_version: FEFF-trailing: Invalid evidence response',
+  +   'source_version: FEFF-alone: Invalid evidence response',
+  +   'source_version: space-between-FEFF: Invalid evidence response',
+  +   'source_version: FEFF-leading-2000-bytes: Invalid evidence response',
+  +   'source_version: FEFF-trailing-2000-bytes: Invalid evidence response',
+  +   'source_version: FEFF-and-multibyte-2000-bytes: Invalid evidence response'
+  + ]
+  - []
+  
+      at TestContext.<anonymous> (file:///tmp/zobba-unicode-negative-6ebnuhhc/repo/zobba/web/tests/evidence.test.mjs:72:12)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [ 'source_version: FEFF-leading: Invalid evidence response', 'source_version: FEFF-trailing: Invalid evidence response', 'source_version: FEFF-alone: Invalid evidence response', 'source_version: space-between-FEFF: Invalid evidence response', 'source_version: FEFF-leading-2000-bytes: Invalid evidence response', 'source_version: FEFF-trailing-2000-bytes: Invalid evidence response', 'source_version: FEFF-and-multibyte-2000-bytes: Invalid evidence response' ],
+    expected: [],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at tests/evidence.test.mjs:40:3
+✖ shared Rust/browser Unicode metadata parity preserves selection and recovery exactly (31.616894ms)
+  AssertionError [ERR_ASSERTION]: selection: all 366 shared cases executed
+  + actual - expected
+  
+  + [
+  +   'selection: FEFF-leading: Invalid evidence response',
+  +   'selection: FEFF-trailing: Invalid evidence response',
+  +   'selection: FEFF-alone: Invalid evidence response',
+  +   'selection: space-between-FEFF: Invalid evidence response',
+  +   'selection: FEFF-leading-2000-bytes: Invalid evidence response',
+  +   'selection: FEFF-trailing-2000-bytes: Invalid evidence response',
+  +   'selection: FEFF-and-multibyte-2000-bytes: Invalid evidence response'
+  + ]
+  - []
+  
+      at TestContext.<anonymous> (file:///tmp/zobba-unicode-negative-6ebnuhhc/repo/zobba/web/tests/evidence.test.mjs:72:12)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [ 'selection: FEFF-leading: Invalid evidence response', 'selection: FEFF-trailing: Invalid evidence response', 'selection: FEFF-alone: Invalid evidence response', 'selection: space-between-FEFF: Invalid evidence response', 'selection: FEFF-leading-2000-bytes: Invalid evidence response', 'selection: FEFF-trailing-2000-bytes: Invalid evidence response', 'selection: FEFF-and-multibyte-2000-bytes: Invalid evidence response' ],
+    expected: [],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at tests/evidence.test.mjs:40:3
+✖ shared Rust/browser Unicode metadata parity preserves coverage and recovery exactly (26.115761ms)
+  AssertionError [ERR_ASSERTION]: coverage: all 366 shared cases executed
+  + actual - expected
+  
+  + [
+  +   'coverage: FEFF-leading: Invalid evidence response',
+  +   'coverage: FEFF-trailing: Invalid evidence response',
+  +   'coverage: FEFF-alone: Invalid evidence response',
+  +   'coverage: space-between-FEFF: Invalid evidence response',
+  +   'coverage: FEFF-leading-2000-bytes: Invalid evidence response',
+  +   'coverage: FEFF-trailing-2000-bytes: Invalid evidence response',
+  +   'coverage: FEFF-and-multibyte-2000-bytes: Invalid evidence response'
+  + ]
+  - []
+  
+      at TestContext.<anonymous> (file:///tmp/zobba-unicode-negative-6ebnuhhc/repo/zobba/web/tests/evidence.test.mjs:72:12)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [ 'coverage: FEFF-leading: Invalid evidence response', 'coverage: FEFF-trailing: Invalid evidence response', 'coverage: FEFF-alone: Invalid evidence response', 'coverage: space-between-FEFF: Invalid evidence response', 'coverage: FEFF-leading-2000-bytes: Invalid evidence response', 'coverage: FEFF-trailing-2000-bytes: Invalid evidence response', 'coverage: FEFF-and-multibyte-2000-bytes: Invalid evidence response' ],
+    expected: [],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
