@@ -1167,12 +1167,13 @@ mod tests {
 
     #[test]
     fn an_observation_is_read_exactly_or_not_at_all() {
-        let value = serde_json::json!({"kind":"chain","id":"eval-1","at_us":5,"verdict":"met","execution":"completed","origin":"model_proposal","causes":["inputs_changed"],"criterion_id":"crit-1","evidence":["a"]});
+        let value = serde_json::json!({"kind":"chain","id":"eval-1","at_us":5,"verdict":"met","execution":"completed","origin":"model_proposal","review":"accepted","causes":["inputs_changed"],"criterion_id":"crit-1","evidence":["a"]});
         let o = observation_of(&value).unwrap();
         assert_eq!(o.kind, ObservationKind::Chain);
         assert_eq!(o.causes, vec![RevisionCause::InputsChanged]);
         assert_eq!(o.origin, Some(EffectiveOrigin::ModelProposal));
-        let absent = serde_json::json!({"kind":"absent","id":"pop-1","at_us":5,"verdict":null,"execution":null,"origin":null,"causes":null,"criterion_id":null,"evidence":null});
+        assert_eq!(o.review, zobba_domain::revision::ReviewState::Accepted);
+        let absent = serde_json::json!({"kind":"absent","id":"pop-1","at_us":5,"verdict":null,"execution":null,"origin":null,"review":"unreviewed","causes":null,"criterion_id":null,"evidence":null});
         let o = observation_of(&absent).unwrap();
         assert_eq!((o.verdict, o.execution, o.origin), (None, None, None));
         let mut bad = value.clone();
@@ -1180,6 +1181,12 @@ mod tests {
         assert!(
             observation_of(&bad).is_none(),
             "an unknown verdict is unavailable"
+        );
+        let mut bad = value.clone();
+        bad["review"] = serde_json::json!("approved");
+        assert!(
+            observation_of(&bad).is_none(),
+            "an unknown review state is unavailable"
         );
         let mut bad = value;
         bad["causes"] = serde_json::json!(["a_new_cause"]);
