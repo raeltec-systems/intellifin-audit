@@ -66,7 +66,7 @@ async fn carry_from(tx: &mut Tx, row: &PgRow) -> Result<CarryRecord, ReadingErro
 
 /// The latest revision row of each chain and the latest disposition of each
 /// chain's head: exact reads over the listed chains.
-async fn heads_of(
+pub(super) async fn heads_of(
     tx: &mut Tx,
     task_id: &str,
     firsts: Vec<EvaluationRecord>,

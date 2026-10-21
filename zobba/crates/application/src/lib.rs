@@ -6,6 +6,7 @@ pub mod conversation;
 pub mod disposition;
 pub mod engagement_setup;
 pub mod evidence;
+pub mod exception;
 pub mod identity;
 pub mod investigation;
 pub mod knowledge;

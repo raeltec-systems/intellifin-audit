@@ -65,7 +65,7 @@ pub const MAX_ASSESSMENT_FEEDBACK_BYTES: usize = 8 * 1024;
 
 use revision::{ChainHead, Planned, head_line};
 
-pub const ASSESSMENT_CONSTRAINTS: &str = "When you are ready to assess, use the assessment fields. Propose criteria in propose_criteria: an assertion, its authority (method: a requirement ID and the 0-based criterion ordinal of the bound method; or original: a registered original, an exact locator and the exact quote), the facts it needs with their types and units or ISO 4217 currency, an optional applicability test, and either a rule (one closed predicate that trusted code evaluates) or a judgment rubric. Propose one assessment basis in propose_basis: the objective, its criteria (IDs, or keys of criteria in the same answer), the business period, population references to registered originals, and limitations. Record typed facts in record_facts for one subject each (kept exactly, leading zeros included): the value in canonical form (decimals like 1250.00 with a unit or currency, dates YYYY-MM-DD, instants in RFC 3339 with the source offset), the closed parse rule that turns your quote into that value, and the exact quoted sources; or unavailable with a closed reason, or ambiguous with the number of candidates. Trusted code verifies each quote at its location and re-parses it; a value the source does not show is unsupported. Ask trusted code to evaluate rule criteria in evaluate; you never write a rule verdict. Propose judgments only for judgment criteria, with the facts that support and contradict them and your reasoning and uncertainty in words. Missing, unavailable or unsupported evidence is never an exception, and there is no confidence score. Records are immutable: to change one, propose a new version that supersedes it. To show exact coverage, propose one population manifest in propose_population once you have found the population source: the registered original, the sheet and 1-based header row of a workbook (no sheet and header row 1 for CSV or plain text), the subject unit, one to three grain columns whose exact cell texts form each subject key, an optional period column with its date or instant rule, typed value columns (header, fact name, type, parse rule, a decimal's unit or ISO 4217 currency and the column in the same row that shows it), whether the source is the whole population (a search export or a filtered view is not), and optionally a control count you cite at its exact location. Trusted code reads every row and counts; you never count, list members or decide a row's scope. Propose a sample in propose_sample (all_in_scope, judgmental, or seeded_random with a seed; trusted code recomputes a seeded selection), ask evaluate_population to evaluate a criterion of the population's basis over every in-scope member, and ask summarise for the coverage summary. Counts are exact; there are no percentages and no statistical inference, and a sample describes only the items it selected. When late evidence arrives, record the new fact on the same basis (a fact not yet recorded there) and ask evaluate or propose the judgment again: trusted code finds the current evaluation, derives why it changed and appends a revision, and records nothing when nothing changed. To correct a recorded fact, propose a successor basis that supersedes it, list it in carry_facts with the (subject, name) pairs to leave out, and record the corrected facts on the successor; every other fact is carried by reference with its original verification. A person may ask you to reconsider an evaluation: the outline shows their concern and their words as quoted data; reconsider by evaluating or judging again. You never choose a predecessor, a cause or a disposition.";
+pub const ASSESSMENT_CONSTRAINTS: &str = "When you are ready to assess, use the assessment fields. Propose criteria in propose_criteria: an assertion, its authority (method: a requirement ID and the 0-based criterion ordinal of the bound method; or original: a registered original, an exact locator and the exact quote), the facts it needs with their types and units or ISO 4217 currency, an optional applicability test, and either a rule (one closed predicate that trusted code evaluates) or a judgment rubric. Propose one assessment basis in propose_basis: the objective, its criteria (IDs, or keys of criteria in the same answer), the business period, population references to registered originals, and limitations. Record typed facts in record_facts for one subject each (kept exactly, leading zeros included): the value in canonical form (decimals like 1250.00 with a unit or currency, dates YYYY-MM-DD, instants in RFC 3339 with the source offset), the closed parse rule that turns your quote into that value, and the exact quoted sources; or unavailable with a closed reason, or ambiguous with the number of candidates. Trusted code verifies each quote at its location and re-parses it; a value the source does not show is unsupported. Ask trusted code to evaluate rule criteria in evaluate; you never write a rule verdict. Propose judgments only for judgment criteria, with the facts that support and contradict them and your reasoning and uncertainty in words. Missing, unavailable or unsupported evidence is never an exception, and there is no confidence score. Records are immutable: to change one, propose a new version that supersedes it. To show exact coverage, propose one population manifest in propose_population once you have found the population source: the registered original, the sheet and 1-based header row of a workbook (no sheet and header row 1 for CSV or plain text), the subject unit, one to three grain columns whose exact cell texts form each subject key, an optional period column with its date or instant rule, typed value columns (header, fact name, type, parse rule, a decimal's unit or ISO 4217 currency and the column in the same row that shows it), whether the source is the whole population (a search export or a filtered view is not), and optionally a control count you cite at its exact location. Trusted code reads every row and counts; you never count, list members or decide a row's scope. Propose a sample in propose_sample (all_in_scope, judgmental, or seeded_random with a seed; trusted code recomputes a seeded selection), ask evaluate_population to evaluate a criterion of the population's basis over every in-scope member, and ask summarise for the coverage summary. Counts are exact; there are no percentages and no statistical inference, and a sample describes only the items it selected. When late evidence arrives, record the new fact on the same basis (a fact not yet recorded there) and ask evaluate or propose the judgment again: trusted code finds the current evaluation, derives why it changed and appends a revision, and records nothing when nothing changed. To correct a recorded fact, propose a successor basis that supersedes it, list it in carry_facts with the (subject, name) pairs to leave out, and record the corrected facts on the successor; every other fact is carried by reference with its original verification. A person may ask you to reconsider an evaluation: the outline shows their concern and their words as quoted data; reconsider by evaluating or judging again. You never choose a predecessor, a cause or a disposition. Every not_met result is an occurrence of a Task-scoped exception (criterion lineage and subject); its status is derived by trusted code, never stated by you: open, resolved by evidence (a later evaluation of new evidence meets the criterion), replaced by human judgment, or closed by a person's disposition with evidence. A later read that does not observe a failing subject keeps its exception open: that is not evidence of remediation. Ask summarise_effective for a population (and optionally a sample) to have trusted code rerun the coverage count over the current revisions and dispositions, with exception counts by status; you never count or close an exception.";
 
 /// The state of an analysis job a fact depends on, from its latest
 /// outcome event (a `collected` event repeats the outcome before it).
@@ -1400,8 +1400,10 @@ fn context_for<'f>(
     }
 }
 
-impl<S: AssessmentStore + coverage::CoverageStore + revision::RevisionStore, C: CitationReader>
-    Assessment<'_, S, C>
+impl<
+    S: AssessmentStore + coverage::CoverageStore + revision::RevisionStore + exception::ExceptionStore,
+    C: CitationReader,
+> Assessment<'_, S, C>
 {
     /// Check, record and evaluate one answered turn's assessment proposals.
     /// Idempotent per invocation: a record of this invocation is never
@@ -1424,6 +1426,10 @@ impl<S: AssessmentStore + coverage::CoverageStore + revision::RevisionStore, C: 
         let existing_revisions = self
             .store
             .invocation_revisions(basis, &invocation.id)
+            .await?;
+        let existing_effective = self
+            .store
+            .invocation_effective(basis, &invocation.id)
             .await?;
         let mut answer_coverage = coverage::AnswerCoverage::default();
         let mut feedback: Vec<String> = Vec::new();
@@ -2273,6 +2279,19 @@ impl<S: AssessmentStore + coverage::CoverageStore + revision::RevisionStore, C: 
                 &mut feedback,
             )
             .await?;
+        // 7. Story 24.3b: effective summaries over the current revisions and
+        // dispositions, recounted by the database.
+        progress |= self
+            .effective_summarise(
+                basis,
+                invocation,
+                answer,
+                &answer_basis,
+                &existing_effective,
+                &mut answer_coverage,
+                &mut feedback,
+            )
+            .await?;
         *self.feedback.lock().expect("feedback lock") = Some((invocation.id.clone(), feedback));
         // A reclaim finds this answer's records already written: the work
         // continues exactly as it did when they were first recorded.
@@ -2284,7 +2303,8 @@ impl<S: AssessmentStore + coverage::CoverageStore + revision::RevisionStore, C: 
             && existing_revisions.revisions.is_empty()
             && existing_coverage.populations.is_empty()
             && existing_coverage.samples.is_empty()
-            && existing_coverage.summaries.is_empty());
+            && existing_coverage.summaries.is_empty()
+            && existing_effective.is_empty());
         // Story 24.3a: a person's request to reconsider that the next request
         // will list (every listed one is always rendered, in its own message)
         // but this turn's request did not (it arrived during or after the
@@ -2343,6 +2363,7 @@ impl<S: AssessmentStore + coverage::CoverageStore + revision::RevisionStore, C: 
         let snapshot = self.store.snapshot(basis).await?;
         let covered = self.store.coverage_snapshot(basis).await?;
         let revisions = self.store.revision_snapshot(basis).await?;
+        let exceptions = self.store.exception_snapshot(basis).await?;
         let feedback = self
             .feedback
             .lock()
@@ -2351,7 +2372,7 @@ impl<S: AssessmentStore + coverage::CoverageStore + revision::RevisionStore, C: 
             .filter(|(_, lines)| !lines.is_empty())
             .map(|(_, lines)| feedback_text(lines));
         Ok(AssessmentContext {
-            outline: outline_full(&snapshot, &covered, &revisions),
+            outline: outline_all(&snapshot, &covered, &revisions, &exceptions),
             feedback,
             reconsiderations: revision::reconsiderations_text(&revisions),
         })
@@ -2488,6 +2509,22 @@ pub fn outline_full(
     covered: &coverage::CoverageSnapshot,
     revisions: &revision::RevisionSnapshot,
 ) -> Option<String> {
+    outline_all(
+        snapshot,
+        covered,
+        revisions,
+        &exception::ExceptionSnapshot::default(),
+    )
+}
+
+/// The outline with the Story 24.3b lines: exact exception counts by
+/// derived status per basis version and the newest effective summaries.
+pub fn outline_all(
+    snapshot: &AssessmentSnapshot,
+    covered: &coverage::CoverageSnapshot,
+    revisions: &revision::RevisionSnapshot,
+    exceptions: &exception::ExceptionSnapshot,
+) -> Option<String> {
     if snapshot.total_bases + snapshot.total_criteria + snapshot.total_facts == 0 {
         return None;
     }
@@ -2584,7 +2621,14 @@ pub fn outline_full(
     for line in revision_lines {
         push(&mut lines, line);
     }
-    let total = revision_records
+    // Exception count lines and effective summaries are records too.
+    let exception_lines = exception::exception_lines(exceptions);
+    let exception_records = exceptions.bases.len() as u64 + exceptions.total_summaries;
+    for line in exception_lines {
+        push(&mut lines, line);
+    }
+    let total = exception_records
+        + revision_records
         + snapshot.total_bases
         + snapshot.total_criteria
         + snapshot.total_evaluations
@@ -2646,8 +2690,10 @@ impl WorkAssessment for NoAssessment {
     }
 }
 
-impl<S: AssessmentStore + coverage::CoverageStore + revision::RevisionStore, C: CitationReader>
-    WorkAssessment for Assessment<'_, S, C>
+impl<
+    S: AssessmentStore + coverage::CoverageStore + revision::RevisionStore + exception::ExceptionStore,
+    C: CitationReader,
+> WorkAssessment for Assessment<'_, S, C>
 {
     fn enabled(&self) -> bool {
         true
@@ -2672,6 +2718,7 @@ impl<S: AssessmentStore + coverage::CoverageStore + revision::RevisionStore, C: 
 }
 
 pub mod coverage;
+pub mod exception;
 pub mod revision;
 
 #[cfg(test)]

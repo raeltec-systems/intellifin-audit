@@ -576,6 +576,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/engagements/{engagement_id}/tasks/{task_id}/assessment/exceptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_exceptions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagements/{engagement_id}/tasks/{task_id}/assessment/exceptions/{exception_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_exception"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagements/{engagement_id}/tasks/{task_id}/assessment/exceptions/{exception_id}/dispositions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["save_exception_disposition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/engagements/{engagement_id}/tasks/{task_id}/assessment/populations/{population_id}/members": {
         parameters: {
             query?: never;
@@ -1846,6 +1894,44 @@ export interface components {
             /** @description The person's verdict (replaced only). */
             verdict: string | null;
         };
+        /** @description Counts per criterion the 24.2 summary does not carry. */
+        EffectiveCriterionResponse: {
+            criterion_id: string;
+            human_replaced: string;
+            pending_reconsideration: string;
+            superseded: string;
+            undisposed: string;
+        };
+        /** @description A closed limitation of an effective summary and its sentence. */
+        EffectiveLimitationResponse: {
+            code: string;
+            count: string | null;
+            text: string;
+        };
+        /**
+         * @description An effective summary version: the 24.2 partition over current
+         *     revisions and dispositions (its denominators are the 24.2 ones), with
+         *     the exceptions of its basis's criterion lineages by derived status. The
+         *     database recounted every number.
+         */
+        EffectiveSummaryResponse: {
+            /** @description `effective_partition_v1`. */
+            aggregation: string;
+            criteria: components["schemas"]["EffectiveCriterionResponse"][];
+            effective_limitations: components["schemas"]["EffectiveLimitationResponse"][];
+            /** @description Counts are lower bounds when false; the total is then not known. */
+            exact: boolean;
+            exceptions: components["schemas"]["ExceptionCountsResponse"];
+            id: string;
+            /**
+             * @description The first 50 exceptions in (subject, criterion lineage, ID) byte
+             *     order; `exceptions.total` is exact.
+             */
+            listed: components["schemas"]["ListedExceptionResponse"][];
+            recorded_us: string | null;
+            summary: components["schemas"]["CoverageSummaryResponse"];
+            supersedes: string | null;
+        };
         EngagementResponse: {
             client_id: string;
             /** @description 1–200 Unicode scalars; no C0/C1 controls or leading/trailing Unicode White_Space. */
@@ -1943,6 +2029,113 @@ export interface components {
             /** @description Asserted source-system version, separate from the measured storage version. */
             source_version: string | null;
             system: string | null;
+        };
+        /** @description Exact exception counts by derived status. */
+        ExceptionCountsResponse: {
+            closed_by_disposition: string;
+            open: string;
+            replaced_by_human_judgment: string;
+            resolved_by_evidence: string;
+            /** @description Distinct exception subjects (never more than the total). */
+            subjects: string;
+            total: string;
+        };
+        /**
+         * @description One exception, one page of its occurrences (oldest first) and every
+         *     disposition.
+         */
+        ExceptionDetailResponse: {
+            dispositions: components["schemas"]["ExceptionDispositionResponse"][];
+            exception: components["schemas"]["ExceptionResponse"];
+            next_cursor: string | null;
+            occurrences: components["schemas"]["OccurrenceResponse"][];
+        };
+        ExceptionDispositionCommandRequest: {
+            /** @description Request key, idempotent per actor. */
+            key: string;
+            /** @description `closed` or `reopened`. */
+            kind: string;
+            /** @description 1–2,000 UTF-8 bytes. */
+            rationale: string;
+            /** @description `closed` cites at least one. */
+            references: components["schemas"]["DispositionReferenceRequest"][];
+        };
+        /**
+         * @description A refusal of an exception disposition. `index` names an unverified
+         *     reference.
+         */
+        ExceptionDispositionErrorResponse: {
+            error: string;
+            /** Format: int32 */
+            index: number | null;
+        };
+        /**
+         * @description A person's disposition of one exception. It never changes an occurrence,
+         *     a revision or a verdict.
+         */
+        ExceptionDispositionResponse: {
+            actor_id: string;
+            /** @description The person's public label, when known. */
+            actor_label: string | null;
+            exception_id: string;
+            id: string;
+            /** @description `closed` or `reopened`. */
+            kind: string;
+            /** @description The person's words (attributed data), at most 2,000 UTF-8 bytes. */
+            rationale: string;
+            recorded_us: string | null;
+            /**
+             * @description Verified evidence references; a quote is withheld from a viewer who
+             *     cannot read its original now.
+             */
+            references: components["schemas"]["CitationSourceResponse"][];
+        };
+        /** @description One exception of a Task with its derived status (never stored). */
+        ExceptionResponse: {
+            /** @description The criterion lineage (its first version's ID). */
+            criterion_root: string;
+            disposition: null | components["schemas"]["ExceptionDispositionResponse"];
+            first_source_id: string;
+            /** @description The record its first occurrence names. */
+            first_source_kind: string;
+            id: string;
+            /**
+             * @description `not_met` or `not_observed`: whether the latest observation of its
+             *     lineage and subject still shows it failing.
+             */
+            latest_observed: string;
+            /** @description The exact number of its occurrences. */
+            occurrences: string;
+            recorded_us: string | null;
+            /**
+             * @description `open`, `resolved_by_evidence`, `replaced_by_human_judgment` or
+             *     `closed_by_disposition`.
+             */
+            status: string;
+            /**
+             * @description What the status means, in words. An open exception the latest
+             *     revision did not observe says that this is not evidence of
+             *     remediation.
+             */
+            status_words: string;
+            subject: string;
+        };
+        /**
+         * @description Every exception of a Task (the first 200 listed), exact counts, whether
+         *     the viewer may close or reopen one, and the newest effective summaries.
+         */
+        ExceptionsResponse: {
+            counts: components["schemas"]["ExceptionCountsResponse"];
+            effective_summaries: components["schemas"]["EffectiveSummaryResponse"][];
+            exceptions: components["schemas"]["ExceptionResponse"][];
+            /** @description The viewer is an Audit manager or the Task's accountable person. */
+            may_close: boolean;
+            /**
+             * @description The sentence an open exception the latest revision did not observe
+             *     carries.
+             */
+            not_remediation: string;
+            total_effective_summaries: string;
         };
         HealthResponse: {
             /** Format: int32 */
@@ -2359,6 +2552,14 @@ export interface components {
             criterion_id: string | null;
             text: string;
         };
+        /** @description One listed exception of an effective summary. */
+        ListedExceptionResponse: {
+            criterion_root: string;
+            id: string;
+            latest_observed: string;
+            status: string;
+            subject: string;
+        };
         /** @description One named cell of a member row. */
         MemberCellResponse: {
             column: string;
@@ -2763,6 +2964,21 @@ export interface components {
         };
         /** @enum {string} */
         ObservationSourceResponse: "dispatch" | "reconciliation";
+        /** @description One occurrence of an exception: a not_met result. */
+        OccurrenceResponse: {
+            basis_id: string;
+            criterion_id: string;
+            /** @description The digests of the inputs it read. */
+            evidence: string[];
+            member_ordinal: string | null;
+            /** @description `deterministic`, `model_proposal` or `human`. */
+            origin: string;
+            population_id: string | null;
+            source_id: string;
+            /** @description `evaluation`, `revision`, `opportunity` or `disposition`. */
+            source_kind: string;
+            source_us: string;
+        };
         /**
          * @description Why material was left out of a request. A category never means absence.
          * @enum {string}
@@ -6322,6 +6538,262 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_exceptions: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+            };
+            header?: {
+                /** @description Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie */
+                "X-Expected-Session"?: string | null;
+            };
+            path: {
+                engagement_id: string;
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every exception of the Task with its derived status, exact counts by status, and the newest effective summaries */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExceptionsResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Session changed */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_exception: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+                /** @description next_cursor of the previous page */
+                cursor?: string;
+            };
+            header?: {
+                /** @description Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie */
+                "X-Expected-Session"?: string | null;
+            };
+            path: {
+                engagement_id: string;
+                task_id: string;
+                exception_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One exception, one page of its occurrences (oldest first, 50 a page) and every disposition; occurrences are never changed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExceptionDetailResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Session changed */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    save_exception_disposition: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+            };
+            header: {
+                /** @description Exact configured HTTPS application origin */
+                Origin: string;
+                /** @description Current session-bound token */
+                "X-CSRF-Token": string;
+                /** @description Required refusal fence for the current session actor; never supplies author authority */
+                "X-Expected-Actor": string;
+            };
+            path: {
+                engagement_id: string;
+                task_id: string;
+                exception_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExceptionDispositionCommandRequest"];
+            };
+        };
+        responses: {
+            /** @description The saved disposition (an exact retry returns the original); no occurrence, revision or verdict changes */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExceptionDispositionResponse"];
+                };
+            };
+            /** @description exception_disposition_invalid (including a closure without evidence) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExceptionDispositionErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description access_denied, or exception_close_forbidden for a person who is neither an Audit manager nor the Task's accountable person */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExceptionDispositionErrorResponse"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExceptionDispositionErrorResponse"];
+                };
+            };
+            /** @description reference_unverified (index), exception_already_closed, exception_not_closed, exception_disposition_conflict or exception_disposition_capacity */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExceptionDispositionErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExceptionDispositionErrorResponse"];
                 };
             };
         };

@@ -254,6 +254,64 @@ pub fn disposition_id(actor: &str, key: &str) -> String {
     format!("disp-{}", &digest[..40])
 }
 
+/// Verify each reference at write time. A page alone, an original the
+/// person cannot read now, a quote not at its location, or a quote that is
+/// only part of the value there (`2,500.00` inside `12,500.00`: the 24.1
+/// whole-value rule) refuses the whole request, naming the first such
+/// reference.
+pub async fn verified_references<C: CitationReader>(
+    reader: &C,
+    actor: &str,
+    scope: &Scope,
+    task_id: &str,
+    requested: &[CitationSource],
+) -> Result<Vec<(CitationSource, String)>, DispositionError> {
+    let mut references: Vec<(CitationSource, String)> = Vec::new();
+    if requested.is_empty() {
+        return Ok(references);
+    }
+    let basis = ClaimBasis {
+        actor_id: actor.into(),
+        scope: scope.clone(),
+        task_id: task_id.into(),
+        cycle_id: String::new(),
+        claim_id: String::new(),
+        worker_id: String::new(),
+        process_instance: String::new(),
+        owner_epoch: 0,
+        execution_epoch: 0,
+        intent_revision: 0,
+    };
+    let cancellation = ModelCancellation::default();
+    let verified = verify_sources(reader, &basis, requested, &cancellation)
+        .await
+        .map_err(DispositionError::from)?;
+    for (index, (source, texts)) in verified.into_iter().enumerate() {
+        let page_only = source
+            .source
+            .locator
+            .as_ref()
+            .is_some_and(|l| l.family() == LocatorFamily::Page);
+        let whole = source
+            .source
+            .locator
+            .as_ref()
+            .is_some_and(|l| whole_value(l, &texts, &source.source.quote));
+        match (
+            source.verification,
+            source.original_sha256,
+            page_only,
+            whole,
+        ) {
+            (Verification::Verified, Some(sha), false, true) => {
+                references.push((source.source, sha))
+            }
+            _ => return Err(DispositionError::ReferenceUnverified(index)),
+        }
+    }
+    Ok(references)
+}
+
 /// Check, verify and save one disposition. An exact retry of the same key
 /// returns the original; the same key with a different request is refused.
 pub async fn save_disposition<D: DispositionStore, C: CitationReader>(
@@ -292,52 +350,8 @@ pub async fn save_disposition<D: DispositionStore, C: CitationReader>(
             DispositionRefusal::NotReplaceable => DispositionError::NotReplaceable,
             DispositionRefusal::NotDecidable => DispositionError::NotDecidable,
         })?;
-    // Each reference is verified at write time. A page alone, an original
-    // the person cannot read now, a quote not at its location, or a quote
-    // that is only part of the value there (`2,500.00` inside `12,500.00`:
-    // the 24.1 whole-value rule) refuses the whole request.
-    let mut references: Vec<(CitationSource, String)> = Vec::new();
-    if !request.references.is_empty() {
-        let basis = ClaimBasis {
-            actor_id: actor.into(),
-            scope: scope.clone(),
-            task_id: task_id.into(),
-            cycle_id: String::new(),
-            claim_id: String::new(),
-            worker_id: String::new(),
-            process_instance: String::new(),
-            owner_epoch: 0,
-            execution_epoch: 0,
-            intent_revision: 0,
-        };
-        let cancellation = ModelCancellation::default();
-        let verified = verify_sources(reader, &basis, &request.references, &cancellation)
-            .await
-            .map_err(DispositionError::from)?;
-        for (index, (source, texts)) in verified.into_iter().enumerate() {
-            let page_only = source
-                .source
-                .locator
-                .as_ref()
-                .is_some_and(|l| l.family() == LocatorFamily::Page);
-            let whole = source
-                .source
-                .locator
-                .as_ref()
-                .is_some_and(|l| whole_value(l, &texts, &source.source.quote));
-            match (
-                source.verification,
-                source.original_sha256,
-                page_only,
-                whole,
-            ) {
-                (Verification::Verified, Some(sha), false, true) => {
-                    references.push((source.source, sha))
-                }
-                _ => return Err(DispositionError::ReferenceUnverified(index)),
-            }
-        }
-    }
+    let references =
+        verified_references(reader, actor, scope, task_id, &request.references).await?;
     let mut record = DispositionRecord {
         id: disposition_id(actor, &request.key),
         task_id: task_id.into(),

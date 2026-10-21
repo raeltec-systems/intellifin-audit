@@ -315,6 +315,11 @@ struct State {
     /// The database refuses every revision (for example another revision of
     /// the same head committed first).
     refuse_revisions: bool,
+    effective: Vec<exception::EffectiveSummaryRecord>,
+    /// Exceptions with their derived status, as the database writes them.
+    exceptions: Vec<zobba_domain::exception::ExceptionEntry>,
+    /// The database recount disagrees with every effective summary.
+    refuse_effective: bool,
 }
 #[derive(Default)]
 struct Store {
@@ -828,6 +833,147 @@ impl revision::RevisionStore for Store {
         })
     }
 }
+impl exception::ExceptionStore for Store {
+    async fn invocation_effective(
+        &self,
+        _: &ClaimBasis,
+        invocation_id: &str,
+    ) -> Result<Vec<exception::EffectiveSummaryRecord>, ReadingError> {
+        let state = self.state.lock().unwrap();
+        Ok(state
+            .effective
+            .iter()
+            .filter(|r| r.invocation_id == invocation_id)
+            .cloned()
+            .collect())
+    }
+    async fn effective_outcomes(
+        &self,
+        _: &ClaimBasis,
+        population_id: &str,
+    ) -> Result<Vec<exception::EffectiveRow>, ReadingError> {
+        let state = self.state.lock().unwrap();
+        Ok(state
+            .opportunities
+            .iter()
+            .filter(|o| o.population_id == population_id)
+            .map(|o| {
+                let head = o.evaluation_id.as_ref().and_then(|id| {
+                    let first = state.evaluations.iter().find(|e| &e.id == id)?.clone();
+                    let head = state
+                        .revisions
+                        .iter()
+                        .filter(|r| &r.chain_id == id)
+                        .max_by_key(|r| r.revision)
+                        .cloned();
+                    let head_id = head.as_ref().map_or(first.id.clone(), |h| h.id.clone());
+                    let disposition = state
+                        .dispositions
+                        .iter()
+                        .rev()
+                        .find(|d| d.request.revision_id == head_id)
+                        .cloned();
+                    Some(revision::ChainHead {
+                        first,
+                        head,
+                        disposition,
+                    })
+                });
+                let superseded = head.as_ref().is_some_and(|h| {
+                    state
+                        .bases
+                        .iter()
+                        .any(|b| b.basis.supersedes.as_deref() == Some(h.basis_id()))
+                });
+                exception::effective_row(o, head.as_ref(), superseded)
+            })
+            .collect())
+    }
+    async fn criterion_roots(
+        &self,
+        _: &ClaimBasis,
+        ids: &[String],
+    ) -> Result<Vec<String>, ReadingError> {
+        let state = self.state.lock().unwrap();
+        let mut roots = std::collections::BTreeSet::new();
+        for id in ids {
+            let mut walker = id.clone();
+            while let Some(up) = state
+                .criteria
+                .iter()
+                .find(|c| c.id == walker)
+                .and_then(|c| c.criterion.supersedes.clone())
+            {
+                walker = up;
+            }
+            roots.insert(walker);
+        }
+        Ok(roots.into_iter().collect())
+    }
+    async fn exception_entries(
+        &self,
+        _: &ClaimBasis,
+        roots: &[String],
+    ) -> Result<Vec<zobba_domain::exception::ExceptionEntry>, ReadingError> {
+        let state = self.state.lock().unwrap();
+        Ok(state
+            .exceptions
+            .iter()
+            .filter(|e| roots.contains(&e.criterion_root))
+            .cloned()
+            .collect())
+    }
+    async fn newest_effective(
+        &self,
+        _: &ClaimBasis,
+        population_id: &str,
+        sample_id: Option<&str>,
+    ) -> Result<Option<exception::EffectiveSummaryRecord>, ReadingError> {
+        let state = self.state.lock().unwrap();
+        Ok(state
+            .effective
+            .iter()
+            .rev()
+            .find(|r| r.population_id == population_id && r.sample_id.as_deref() == sample_id)
+            .cloned())
+    }
+    async fn record_effective(
+        &self,
+        _: &ClaimBasis,
+        r: &exception::EffectiveSummaryRecord,
+    ) -> Result<exception::EffectiveSummaryRecord, ReadingError> {
+        assert_eq!(r.digest, document_digest(&r.document()));
+        assert!(r.effective.is_consistent());
+        let mut state = self.state.lock().unwrap();
+        if state.refuse_effective {
+            return Err(ReadingError::Invalid);
+        }
+        state.clock += 1;
+        let mut r = r.clone();
+        r.recorded_us = Some(state.clock);
+        insert(
+            &mut state.effective,
+            &r,
+            |r| r.id.clone(),
+            |r| exception::EffectiveSummaryRecord {
+                recorded_us: None,
+                ..r.clone()
+            },
+        )
+    }
+    async fn exception_snapshot(
+        &self,
+        _: &ClaimBasis,
+    ) -> Result<exception::ExceptionSnapshot, ReadingError> {
+        let state = self.state.lock().unwrap();
+        Ok(exception::ExceptionSnapshot {
+            summaries: state.effective.clone(),
+            total_summaries: state.effective.len() as u64,
+            bases: Default::default(),
+        })
+    }
+}
+
 impl coverage::CoverageStore for Store {
     async fn invocation_coverage(
         &self,
@@ -1227,7 +1373,7 @@ fn evaluation<'a>(
         .unwrap_or_else(|| panic!("no evaluation of {criterion} for {subject}"))
 }
 fn feedback_of<
-    S: AssessmentStore + coverage::CoverageStore + revision::RevisionStore,
+    S: AssessmentStore + coverage::CoverageStore + revision::RevisionStore + exception::ExceptionStore,
     C: CitationReader,
 >(
     assessment: &Assessment<'_, S, C>,
@@ -2465,6 +2611,57 @@ fn a_refused_write_is_feedback_never_a_failed_cycle() {
             b: &ClaimBasis,
         ) -> Result<coverage::CoverageSnapshot, ReadingError> {
             self.0.coverage_snapshot(b).await
+        }
+    }
+    impl exception::ExceptionStore for Racing<'_> {
+        async fn invocation_effective(
+            &self,
+            b: &ClaimBasis,
+            i: &str,
+        ) -> Result<Vec<exception::EffectiveSummaryRecord>, ReadingError> {
+            self.0.invocation_effective(b, i).await
+        }
+        async fn effective_outcomes(
+            &self,
+            b: &ClaimBasis,
+            p: &str,
+        ) -> Result<Vec<exception::EffectiveRow>, ReadingError> {
+            self.0.effective_outcomes(b, p).await
+        }
+        async fn criterion_roots(
+            &self,
+            b: &ClaimBasis,
+            ids: &[String],
+        ) -> Result<Vec<String>, ReadingError> {
+            self.0.criterion_roots(b, ids).await
+        }
+        async fn exception_entries(
+            &self,
+            b: &ClaimBasis,
+            roots: &[String],
+        ) -> Result<Vec<zobba_domain::exception::ExceptionEntry>, ReadingError> {
+            self.0.exception_entries(b, roots).await
+        }
+        async fn newest_effective(
+            &self,
+            b: &ClaimBasis,
+            p: &str,
+            s: Option<&str>,
+        ) -> Result<Option<exception::EffectiveSummaryRecord>, ReadingError> {
+            self.0.newest_effective(b, p, s).await
+        }
+        async fn record_effective(
+            &self,
+            b: &ClaimBasis,
+            r: &exception::EffectiveSummaryRecord,
+        ) -> Result<exception::EffectiveSummaryRecord, ReadingError> {
+            self.0.record_effective(b, r).await
+        }
+        async fn exception_snapshot(
+            &self,
+            b: &ClaimBasis,
+        ) -> Result<exception::ExceptionSnapshot, ReadingError> {
+            self.0.exception_snapshot(b).await
         }
     }
     let racing = Racing(&store);

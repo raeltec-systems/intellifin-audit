@@ -4998,6 +4998,467 @@
         ]
       }
     },
+    "/engagements/{engagement_id}/tasks/{task_id}/assessment/exceptions": {
+      "get": {
+        "tags": [
+          "exceptions"
+        ],
+        "operationId": "list_exceptions",
+        "parameters": [
+          {
+            "name": "X-Expected-Session",
+            "in": "header",
+            "description": "Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 128,
+              "minLength": 1
+            }
+          },
+          {
+            "name": "engagement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organisation_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Every exception of the Task with its derived status, exact counts by status, and the newest effective summaries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Session changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
+    "/engagements/{engagement_id}/tasks/{task_id}/assessment/exceptions/{exception_id}": {
+      "get": {
+        "tags": [
+          "exceptions"
+        ],
+        "operationId": "get_exception",
+        "parameters": [
+          {
+            "name": "X-Expected-Session",
+            "in": "header",
+            "description": "Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 128,
+              "minLength": 1
+            }
+          },
+          {
+            "name": "engagement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "exception_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organisation_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "next_cursor of the previous page",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{1,7}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One exception, one page of its occurrences (oldest first, 50 a page) and every disposition; occurrences are never changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionDetailResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Session changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
+    "/engagements/{engagement_id}/tasks/{task_id}/assessment/exceptions/{exception_id}/dispositions": {
+      "post": {
+        "tags": [
+          "exceptions"
+        ],
+        "operationId": "save_exception_disposition",
+        "parameters": [
+          {
+            "name": "engagement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "exception_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organisation_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "description": "Exact configured HTTPS application origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "description": "Current session-bound token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Expected-Actor",
+            "in": "header",
+            "description": "Required refusal fence for the current session actor; never supplies author authority",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExceptionDispositionCommandRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The saved disposition (an exact retry returns the original); no occurrence, revision or verdict changes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionDispositionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "exception_disposition_invalid (including a closure without evidence)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionDispositionErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "access_denied, or exception_close_forbidden for a person who is neither an Audit manager nor the Task's accountable person",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionDispositionErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionDispositionErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "reference_unverified (index), exception_already_closed, exception_not_closed, exception_disposition_conflict or exception_disposition_capacity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionDispositionErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionDispositionErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
     "/engagements/{engagement_id}/tasks/{task_id}/assessment/populations/{population_id}/members": {
       "get": {
         "tags": [
@@ -13106,6 +13567,132 @@
           }
         }
       },
+      "EffectiveCriterionResponse": {
+        "type": "object",
+        "description": "Counts per criterion the 24.2 summary does not carry.",
+        "required": [
+          "criterion_id",
+          "human_replaced",
+          "pending_reconsideration",
+          "undisposed",
+          "superseded"
+        ],
+        "properties": {
+          "criterion_id": {
+            "type": "string"
+          },
+          "human_replaced": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "pending_reconsideration": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "superseded": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "undisposed": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          }
+        }
+      },
+      "EffectiveLimitationResponse": {
+        "type": "object",
+        "description": "A closed limitation of an effective summary and its sentence.",
+        "required": [
+          "code",
+          "count",
+          "text"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "count": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9]+$"
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      },
+      "EffectiveSummaryResponse": {
+        "type": "object",
+        "description": "An effective summary version: the 24.2 partition over current\nrevisions and dispositions (its denominators are the 24.2 ones), with\nthe exceptions of its basis's criterion lineages by derived status. The\ndatabase recounted every number.",
+        "required": [
+          "id",
+          "supersedes",
+          "aggregation",
+          "exact",
+          "summary",
+          "criteria",
+          "exceptions",
+          "listed",
+          "effective_limitations",
+          "recorded_us"
+        ],
+        "properties": {
+          "aggregation": {
+            "type": "string",
+            "description": "`effective_partition_v1`."
+          },
+          "criteria": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EffectiveCriterionResponse"
+            },
+            "maxItems": 16
+          },
+          "effective_limitations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EffectiveLimitationResponse"
+            },
+            "maxItems": 6
+          },
+          "exact": {
+            "type": "boolean",
+            "description": "Counts are lower bounds when false; the total is then not known."
+          },
+          "exceptions": {
+            "$ref": "#/components/schemas/ExceptionCountsResponse"
+          },
+          "id": {
+            "type": "string"
+          },
+          "listed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ListedExceptionResponse"
+            },
+            "description": "The first 50 exceptions in (subject, criterion lineage, ID) byte\norder; `exceptions.total` is exact.",
+            "maxItems": 50
+          },
+          "recorded_us": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9]+$"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/CoverageSummaryResponse"
+          },
+          "supersedes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "EngagementResponse": {
         "type": "object",
         "required": [
@@ -13481,6 +14068,308 @@
           }
         },
         "additionalProperties": false
+      },
+      "ExceptionCountsResponse": {
+        "type": "object",
+        "description": "Exact exception counts by derived status.",
+        "required": [
+          "total",
+          "open",
+          "resolved_by_evidence",
+          "replaced_by_human_judgment",
+          "closed_by_disposition",
+          "subjects"
+        ],
+        "properties": {
+          "closed_by_disposition": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "open": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "replaced_by_human_judgment": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "resolved_by_evidence": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "subjects": {
+            "type": "string",
+            "description": "Distinct exception subjects (never more than the total).",
+            "pattern": "^[0-9]+$"
+          },
+          "total": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          }
+        }
+      },
+      "ExceptionDetailResponse": {
+        "type": "object",
+        "description": "One exception, one page of its occurrences (oldest first) and every\ndisposition.",
+        "required": [
+          "exception",
+          "occurrences",
+          "dispositions",
+          "next_cursor"
+        ],
+        "properties": {
+          "dispositions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExceptionDispositionResponse"
+            },
+            "maxItems": 16
+          },
+          "exception": {
+            "$ref": "#/components/schemas/ExceptionResponse"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9]+$"
+          },
+          "occurrences": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OccurrenceResponse"
+            },
+            "maxItems": 50
+          }
+        }
+      },
+      "ExceptionDispositionCommandRequest": {
+        "type": "object",
+        "required": [
+          "key",
+          "kind",
+          "rationale",
+          "references"
+        ],
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "Request key, idempotent per actor.",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          },
+          "kind": {
+            "type": "string",
+            "description": "`closed` or `reopened`."
+          },
+          "rationale": {
+            "type": "string",
+            "description": "1–2,000 UTF-8 bytes.",
+            "maxLength": 2000
+          },
+          "references": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DispositionReferenceRequest"
+            },
+            "description": "`closed` cites at least one.",
+            "maxItems": 8
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExceptionDispositionErrorResponse": {
+        "type": "object",
+        "description": "A refusal of an exception disposition. `index` names an unverified\nreference.",
+        "required": [
+          "error",
+          "index"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "index": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "ExceptionDispositionResponse": {
+        "type": "object",
+        "description": "A person's disposition of one exception. It never changes an occurrence,\na revision or a verdict.",
+        "required": [
+          "id",
+          "exception_id",
+          "actor_id",
+          "actor_label",
+          "kind",
+          "rationale",
+          "references",
+          "recorded_us"
+        ],
+        "properties": {
+          "actor_id": {
+            "type": "string"
+          },
+          "actor_label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The person's public label, when known."
+          },
+          "exception_id": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "description": "`closed` or `reopened`."
+          },
+          "rationale": {
+            "type": "string",
+            "description": "The person's words (attributed data), at most 2,000 UTF-8 bytes.",
+            "maxLength": 2000
+          },
+          "recorded_us": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9]+$"
+          },
+          "references": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CitationSourceResponse"
+            },
+            "description": "Verified evidence references; a quote is withheld from a viewer who\ncannot read its original now.",
+            "maxItems": 8
+          }
+        }
+      },
+      "ExceptionResponse": {
+        "type": "object",
+        "description": "One exception of a Task with its derived status (never stored).",
+        "required": [
+          "id",
+          "criterion_root",
+          "subject",
+          "status",
+          "latest_observed",
+          "status_words",
+          "occurrences",
+          "first_source_kind",
+          "first_source_id",
+          "recorded_us",
+          "disposition"
+        ],
+        "properties": {
+          "criterion_root": {
+            "type": "string",
+            "description": "The criterion lineage (its first version's ID)."
+          },
+          "disposition": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ExceptionDispositionResponse",
+                "description": "Its newest disposition."
+              }
+            ]
+          },
+          "first_source_id": {
+            "type": "string"
+          },
+          "first_source_kind": {
+            "type": "string",
+            "description": "The record its first occurrence names."
+          },
+          "id": {
+            "type": "string"
+          },
+          "latest_observed": {
+            "type": "string",
+            "description": "`not_met` or `not_observed`: whether the latest observation of its\nlineage and subject still shows it failing."
+          },
+          "occurrences": {
+            "type": "string",
+            "description": "The exact number of its occurrences.",
+            "pattern": "^[0-9]+$"
+          },
+          "recorded_us": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9]+$"
+          },
+          "status": {
+            "type": "string",
+            "description": "`open`, `resolved_by_evidence`, `replaced_by_human_judgment` or\n`closed_by_disposition`."
+          },
+          "status_words": {
+            "type": "string",
+            "description": "What the status means, in words. An open exception the latest\nrevision did not observe says that this is not evidence of\nremediation."
+          },
+          "subject": {
+            "type": "string"
+          }
+        }
+      },
+      "ExceptionsResponse": {
+        "type": "object",
+        "description": "Every exception of a Task (the first 200 listed), exact counts, whether\nthe viewer may close or reopen one, and the newest effective summaries.",
+        "required": [
+          "exceptions",
+          "counts",
+          "may_close",
+          "not_remediation",
+          "effective_summaries",
+          "total_effective_summaries"
+        ],
+        "properties": {
+          "counts": {
+            "$ref": "#/components/schemas/ExceptionCountsResponse"
+          },
+          "effective_summaries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EffectiveSummaryResponse"
+            },
+            "maxItems": 16
+          },
+          "exceptions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExceptionResponse"
+            },
+            "maxItems": 200
+          },
+          "may_close": {
+            "type": "boolean",
+            "description": "The viewer is an Audit manager or the Task's accountable person."
+          },
+          "not_remediation": {
+            "type": "string",
+            "description": "The sentence an open exception the latest revision did not observe\ncarries."
+          },
+          "total_effective_summaries": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          }
+        }
       },
       "HealthResponse": {
         "type": "object",
@@ -15200,6 +16089,34 @@
             ]
           },
           "text": {
+            "type": "string"
+          }
+        }
+      },
+      "ListedExceptionResponse": {
+        "type": "object",
+        "description": "One listed exception of an effective summary.",
+        "required": [
+          "id",
+          "subject",
+          "criterion_root",
+          "status",
+          "latest_observed"
+        ],
+        "properties": {
+          "criterion_root": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "latest_observed": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "subject": {
             "type": "string"
           }
         }
@@ -16932,6 +17849,65 @@
           "dispatch",
           "reconciliation"
         ]
+      },
+      "OccurrenceResponse": {
+        "type": "object",
+        "description": "One occurrence of an exception: a not_met result.",
+        "required": [
+          "source_kind",
+          "source_id",
+          "population_id",
+          "member_ordinal",
+          "criterion_id",
+          "basis_id",
+          "origin",
+          "evidence",
+          "source_us"
+        ],
+        "properties": {
+          "basis_id": {
+            "type": "string"
+          },
+          "criterion_id": {
+            "type": "string"
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The digests of the inputs it read.",
+            "maxItems": 32
+          },
+          "member_ordinal": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9]+$"
+          },
+          "origin": {
+            "type": "string",
+            "description": "`deterministic`, `model_proposal` or `human`."
+          },
+          "population_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source_id": {
+            "type": "string"
+          },
+          "source_kind": {
+            "type": "string",
+            "description": "`evaluation`, `revision`, `opportunity` or `disposition`."
+          },
+          "source_us": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          }
+        }
       },
       "OmissionCategoryResponse": {
         "type": "string",

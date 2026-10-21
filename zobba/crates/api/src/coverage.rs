@@ -405,7 +405,7 @@ fn sample(
     }
 }
 
-fn summary(r: &SummaryRecord) -> CoverageSummaryResponse {
+pub(crate) fn summary(r: &SummaryRecord) -> CoverageSummaryResponse {
     let s = &r.summary;
     CoverageSummaryResponse {
         id: r.id.clone(),

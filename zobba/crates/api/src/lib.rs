@@ -6,6 +6,7 @@ pub mod coverage;
 pub mod engagement_setup;
 pub mod engagements;
 pub mod evidence;
+pub mod exceptions;
 pub mod knowledge;
 pub mod membership;
 pub mod methodology;
@@ -142,6 +143,8 @@ pub fn authenticated_router_with_proposals(
         knowledge::router(database.pool().clone(), identity.clone(), objects.clone());
     let revision_routes =
         revisions::router(database.pool().clone(), identity.clone(), objects.clone());
+    let exception_routes =
+        exceptions::router(database.pool().clone(), identity.clone(), objects.clone());
     let evidence_routes = evidence::router(database.pool().clone(), identity.clone(), objects);
     router(database)
         .merge(auth::router(identity))
@@ -154,6 +157,7 @@ pub fn authenticated_router_with_proposals(
         .merge(knowledge_routes)
         .merge(evidence_routes)
         .merge(revision_routes)
+        .merge(exception_routes)
         .layer(axum::middleware::from_fn(
             |request: axum::extract::Request, next: axum::middleware::Next| async move {
                 let login_document =
@@ -227,6 +231,9 @@ pub fn authenticated_router_with_proposals(
         coverage::members,
         revisions::history,
         revisions::dispose,
+        exceptions::list,
+        exceptions::detail,
+        exceptions::dispose,
         answers::get_answers,
         work::direct,
         work::questions,

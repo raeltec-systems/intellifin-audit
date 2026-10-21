@@ -1,6 +1,7 @@
-//! Published migrations 0001-0019 and catalogues v1-v19 never change (Story
+//! Published migrations 0001-0020 and catalogues v1-v20 never change (Story
 //! 24.1 added migration 0018 and catalogue v18; Story 24.2 added 0019 and
-//! v19; Story 24.3a adds 0020 and v20 only). Their exact bytes are
+//! v19; Story 24.3a added 0020 and v20; Story 24.3b adds 0021 and v21 only).
+//! Their exact bytes are
 //! pinned here, beside git, so an edit fails a test rather than a review.
 use sha2::{Digest, Sha256};
 
@@ -13,7 +14,7 @@ fn sha(bytes: &[u8]) -> String {
 
 #[test]
 fn published_migrations_and_catalogues_keep_their_exact_bytes() {
-    let published: [(&str, &[u8], &str); 38] = [
+    let published: [(&str, &[u8], &str); 40] = [
         (
             "migrations/0001_bootstrap.sql",
             include_bytes!("../../../migrations/0001_bootstrap.sql"),
@@ -110,6 +111,11 @@ fn published_migrations_and_catalogues_keep_their_exact_bytes() {
             "d11bf713f41cdec9136331c08b3773a4bd9994d5e9bbfafa5694924912741879",
         ),
         (
+            "migrations/0020_assessment_revisions.sql",
+            include_bytes!("../../../migrations/0020_assessment_revisions.sql"),
+            "7d7df6ff41823bb6734dd7aed722c1a15f609abefe6b0a5d9693dff5639f3176",
+        ),
+        (
             "schema-v1.catalog",
             include_bytes!("../src/schema-v1.catalog"),
             "335d96414f519b262a984a85d2c993295a0d57d1263b8c5e827b0262ae6e64c9",
@@ -203,6 +209,11 @@ fn published_migrations_and_catalogues_keep_their_exact_bytes() {
             "schema-v19.catalog",
             include_bytes!("../src/schema-v19.catalog"),
             "f48aec57f7ff12b90320e027798fcbb2efb780af8c10201a0cb870d379f41ce1",
+        ),
+        (
+            "schema-v20.catalog",
+            include_bytes!("../src/schema-v20.catalog"),
+            "711b128338aec44f5079c681ca1e06584540a9faa3726bebe202469366261636",
         ),
     ];
     for (name, bytes, expected) in published {

@@ -121,14 +121,14 @@ async fn check_effective_role(
         OR EXISTS (SELECT 1 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace, reachable r
           WHERE n.nspname='public' AND (c.relowner=r.oid OR (c.relkind IN ('r','p') AND (
             pg_catalog.has_table_privilege(r.oid,c.oid,'TRUNCATE,REFERENCES,TRIGGER,MAINTAIN')
-            OR (c.relname NOT IN ('login_attempts','sessions','task_counters','tasks','task_cycles','task_commands','task_events','task_wakeups','task_claims','task_receipt_slots','task_observations','permission_versions','permission_heads','operations','operation_decisions','operation_attempts','operation_claims','operation_receipt_slots','operation_receipts','operation_receipt_producers','evidence_reservations','evidence_originals','knowledge_captures','knowledge_events','knowledge_invalidations','knowledge_layout_events','knowledge_publications','knowledge_records','knowledge_source_corrections','knowledge_withdrawals','model_profiles','model_catalogues','model_invocations','model_results','model_tool_bindings','task_steps','task_guidance_applications','task_routing_questions','task_routing_answers','task_work_claims','engagement_setups','engagement_setup_messages','task_context_compactions','analysis_jobs','analysis_job_events','analysis_descendants','analysis_rejections','document_renders','document_pages','task_page_reads','task_page_requests','task_program_runs','answer_verifications','answer_citations','citation_sources','task_skill_uses','task_method_fetches','task_method_notes','task_investigation_notes','methodology_proposals','assessment_criteria','assessment_bases','assessment_basis_criteria','assessment_facts','assessment_fact_sources','assessment_evaluations','assessment_populations','assessment_population_members','assessment_samples','assessment_sample_members','assessment_opportunities','assessment_summaries','assessment_basis_carries','assessment_basis_carried_facts','assessment_evaluation_revisions','assessment_dispositions') AND pg_catalog.has_table_privilege(r.oid,c.oid,'INSERT'))
+            OR (c.relname NOT IN ('login_attempts','sessions','task_counters','tasks','task_cycles','task_commands','task_events','task_wakeups','task_claims','task_receipt_slots','task_observations','permission_versions','permission_heads','operations','operation_decisions','operation_attempts','operation_claims','operation_receipt_slots','operation_receipts','operation_receipt_producers','evidence_reservations','evidence_originals','knowledge_captures','knowledge_events','knowledge_invalidations','knowledge_layout_events','knowledge_publications','knowledge_records','knowledge_source_corrections','knowledge_withdrawals','model_profiles','model_catalogues','model_invocations','model_results','model_tool_bindings','task_steps','task_guidance_applications','task_routing_questions','task_routing_answers','task_work_claims','engagement_setups','engagement_setup_messages','task_context_compactions','analysis_jobs','analysis_job_events','analysis_descendants','analysis_rejections','document_renders','document_pages','task_page_reads','task_page_requests','task_program_runs','answer_verifications','answer_citations','citation_sources','task_skill_uses','task_method_fetches','task_method_notes','task_investigation_notes','methodology_proposals','assessment_criteria','assessment_bases','assessment_basis_criteria','assessment_facts','assessment_fact_sources','assessment_evaluations','assessment_populations','assessment_population_members','assessment_samples','assessment_sample_members','assessment_opportunities','assessment_summaries','assessment_basis_carries','assessment_basis_carried_facts','assessment_evaluation_revisions','assessment_dispositions','assessment_exceptions','assessment_exception_occurrences','assessment_exception_dispositions','assessment_effective_summaries') AND pg_catalog.has_table_privilege(r.oid,c.oid,'INSERT'))
             OR (c.relname NOT IN ('login_attempts','sessions') AND pg_catalog.has_table_privilege(r.oid,c.oid,'DELETE'))
             OR pg_catalog.has_table_privilege(r.oid,c.oid,'UPDATE')
             OR (c.relname IN ('task_wakeups','task_deliveries','membership_events','membership_invitations','membership_versions','methodology_versions','methodology_assignments','methodology_events','methodology_recalls','task_methodology_bindings','task_methodology_heads','task_methodology_changes','skill_versions','skill_events','skill_status','task_skill_selections') AND pg_catalog.has_table_privilege(r.oid,c.oid,'SELECT'))
             OR EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a WHERE a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped AND (
               pg_catalog.has_column_privilege(r.oid,c.oid,a.attnum,'REFERENCES')
               OR (c.relname IN ('membership_events','membership_invitations','membership_versions','methodology_versions','methodology_assignments','methodology_events','methodology_recalls','task_methodology_bindings','task_methodology_heads','task_methodology_changes','skill_versions','skill_events','skill_status','task_skill_selections') AND pg_catalog.has_column_privilege(r.oid,c.oid,a.attnum,'SELECT'))
-              OR (NOT (c.relname IN ('login_attempts','sessions','task_counters','tasks','task_cycles','task_commands','task_events','task_wakeups','task_claims','task_receipt_slots','task_observations','permission_versions','permission_heads','operations','operation_decisions','operation_attempts','operation_claims','operation_receipt_slots','operation_receipts','operation_receipt_producers','evidence_reservations','evidence_originals','knowledge_captures','knowledge_events','knowledge_invalidations','knowledge_layout_events','knowledge_publications','knowledge_records','knowledge_source_corrections','knowledge_withdrawals','model_profiles','model_catalogues','model_invocations','model_results','model_tool_bindings','task_steps','task_guidance_applications','task_routing_questions','task_routing_answers','task_work_claims','engagement_setups','engagement_setup_messages','task_context_compactions','analysis_jobs','analysis_job_events','analysis_descendants','analysis_rejections','document_renders','document_pages','task_page_reads','task_page_requests','task_program_runs','answer_verifications','answer_citations','citation_sources','task_skill_uses','task_method_fetches','task_method_notes','task_investigation_notes','methodology_proposals','assessment_criteria','assessment_bases','assessment_basis_criteria','assessment_facts','assessment_fact_sources','assessment_evaluations','assessment_populations','assessment_population_members','assessment_samples','assessment_sample_members','assessment_opportunities','assessment_summaries','assessment_basis_carries','assessment_basis_carried_facts','assessment_evaluation_revisions','assessment_dispositions') OR (c.relname='identities' AND a.attname IN ('id','issuer','subject','display_name')) OR (c.relname='task_deliveries' AND a.attname='wakeup_id')) AND pg_catalog.has_column_privilege(r.oid,c.oid,a.attnum,'INSERT'))
+              OR (NOT (c.relname IN ('login_attempts','sessions','task_counters','tasks','task_cycles','task_commands','task_events','task_wakeups','task_claims','task_receipt_slots','task_observations','permission_versions','permission_heads','operations','operation_decisions','operation_attempts','operation_claims','operation_receipt_slots','operation_receipts','operation_receipt_producers','evidence_reservations','evidence_originals','knowledge_captures','knowledge_events','knowledge_invalidations','knowledge_layout_events','knowledge_publications','knowledge_records','knowledge_source_corrections','knowledge_withdrawals','model_profiles','model_catalogues','model_invocations','model_results','model_tool_bindings','task_steps','task_guidance_applications','task_routing_questions','task_routing_answers','task_work_claims','engagement_setups','engagement_setup_messages','task_context_compactions','analysis_jobs','analysis_job_events','analysis_descendants','analysis_rejections','document_renders','document_pages','task_page_reads','task_page_requests','task_program_runs','answer_verifications','answer_citations','citation_sources','task_skill_uses','task_method_fetches','task_method_notes','task_investigation_notes','methodology_proposals','assessment_criteria','assessment_bases','assessment_basis_criteria','assessment_facts','assessment_fact_sources','assessment_evaluations','assessment_populations','assessment_population_members','assessment_samples','assessment_sample_members','assessment_opportunities','assessment_summaries','assessment_basis_carries','assessment_basis_carried_facts','assessment_evaluation_revisions','assessment_dispositions','assessment_exceptions','assessment_exception_occurrences','assessment_exception_dispositions','assessment_effective_summaries') OR (c.relname='identities' AND a.attname IN ('id','issuer','subject','display_name')) OR (c.relname='task_deliveries' AND a.attname='wakeup_id')) AND pg_catalog.has_column_privilege(r.oid,c.oid,a.attnum,'INSERT'))
               OR (NOT ((c.relname IN ('identities','engagements') AND a.attname IN ('display_name','name')) OR (c.relname='task_counters' AND a.attname='cursor') OR (c.relname='tasks' AND a.attname IN ('cycle_id','working_brief','state','cessation','intent_revision','applied_intent','applied_command_cursor','revision','execution_epoch','owner_id','owner_until','owner_epoch')) OR (c.relname='task_cycles' AND a.attname='status') OR (c.relname='task_claims' AND a.attname='state') OR (c.relname='permission_heads' AND a.attname='current_version') OR (c.relname='operation_claims' AND a.attname IN ('state','consumed_at')) OR (c.relname='task_wakeups' AND a.attname IN ('pending','available_at')) OR (c.relname='task_deliveries' AND a.attname IN ('delivery_owner','delivery_until')) OR (c.relname='engagement_setups' AND a.attname IN ('state','candidates','resolved_client_id','resolved_client_name','new_client_name','period_start','period_end','client_id','engagement_id','task_id','cycle_id','receipt','message_count','established_at'))) AND pg_catalog.has_column_privilege(r.oid,c.oid,a.attnum,'UPDATE'))
             ))))))
     "#).bind(role).bind(current_session).fetch_one(conn).await.map_err(|_| BootstrapError::DatabaseUnavailable)?;
@@ -151,7 +151,7 @@ async fn check_runtime_grants(conn: &mut PgConnection, role: &str) -> Result<(),
     let complete: bool = sqlx::query_scalar(r#"
       SELECT (SELECT pg_catalog.bool_and(pg_catalog.has_table_privilege($1,c.oid,'SELECT'))
         FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind='r' AND c.relname NOT IN ('task_wakeups','task_deliveries','membership_events','membership_invitations','membership_versions','methodology_versions','methodology_assignments','methodology_events','methodology_recalls','task_methodology_bindings','task_methodology_heads','task_methodology_changes','skill_versions','skill_events','skill_status','task_skill_selections'))
-        AND (SELECT bool_and(pg_catalog.has_table_privilege($1,c.oid,'INSERT')) FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relname IN ('knowledge_captures','knowledge_events','knowledge_invalidations','knowledge_layout_events','knowledge_publications','knowledge_records','knowledge_source_corrections','knowledge_withdrawals','model_profiles','model_catalogues','model_invocations','model_results','model_tool_bindings','task_steps','task_guidance_applications','task_routing_questions','task_routing_answers','task_work_claims','engagement_setups','engagement_setup_messages','task_context_compactions','analysis_jobs','analysis_job_events','analysis_descendants','analysis_rejections','document_renders','document_pages','task_page_reads','task_page_requests','task_program_runs','answer_verifications','answer_citations','citation_sources','task_skill_uses','task_method_fetches','task_method_notes','task_investigation_notes','methodology_proposals','assessment_criteria','assessment_bases','assessment_basis_criteria','assessment_facts','assessment_fact_sources','assessment_evaluations','assessment_populations','assessment_population_members','assessment_samples','assessment_sample_members','assessment_opportunities','assessment_summaries','assessment_basis_carries','assessment_basis_carried_facts','assessment_evaluation_revisions','assessment_dispositions'))
+        AND (SELECT bool_and(pg_catalog.has_table_privilege($1,c.oid,'INSERT')) FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relname IN ('knowledge_captures','knowledge_events','knowledge_invalidations','knowledge_layout_events','knowledge_publications','knowledge_records','knowledge_source_corrections','knowledge_withdrawals','model_profiles','model_catalogues','model_invocations','model_results','model_tool_bindings','task_steps','task_guidance_applications','task_routing_questions','task_routing_answers','task_work_claims','engagement_setups','engagement_setup_messages','task_context_compactions','analysis_jobs','analysis_job_events','analysis_descendants','analysis_rejections','document_renders','document_pages','task_page_reads','task_page_requests','task_program_runs','answer_verifications','answer_citations','citation_sources','task_skill_uses','task_method_fetches','task_method_notes','task_investigation_notes','methodology_proposals','assessment_criteria','assessment_bases','assessment_basis_criteria','assessment_facts','assessment_fact_sources','assessment_evaluations','assessment_populations','assessment_population_members','assessment_samples','assessment_sample_members','assessment_opportunities','assessment_summaries','assessment_basis_carries','assessment_basis_carried_facts','assessment_evaluation_revisions','assessment_dispositions','assessment_exceptions','assessment_exception_occurrences','assessment_exception_dispositions','assessment_effective_summaries'))
         AND pg_catalog.has_table_privilege($1,'public.evidence_reservations','INSERT')
         AND pg_catalog.has_table_privilege($1,'public.evidence_originals','INSERT')
         AND pg_catalog.has_table_privilege($1,'public.login_attempts','INSERT')
@@ -233,6 +233,7 @@ async fn check_runtime_grants(conn: &mut PgConnection, role: &str) -> Result<(),
     check_assessment_functions(conn, Some(role)).await?;
     check_coverage_functions(conn, Some(role)).await?;
     check_revision_functions(conn, Some(role)).await?;
+    check_exception_functions(conn, Some(role)).await?;
     if complete {
         Ok(())
     } else {
@@ -570,6 +571,41 @@ async fn check_revision_functions(
     }
 }
 
+// Story 24.3b exception records: the writer on the four not_met sources,
+// the statement-level batch guard on exceptions and occurrences, the
+// exception disposition and effective summary guards and the immutability
+// guards on all four tables, all enabled, owner-only and not executable by
+// the runtime; and the seven read-only SECURITY INVOKER helpers they call,
+// owner-owned and executable by the runtime (they read only its own scope).
+async fn check_exception_functions(
+    conn: &mut PgConnection,
+    runtime: Option<&str>,
+) -> Result<(), BootstrapError> {
+    let safe: bool = sqlx::query_scalar(r#"
+      SELECT (SELECT count(*)=6 AND bool_and(NOT p.prosecdef
+       AND p.proowner=(SELECT relowner FROM pg_catalog.pg_class WHERE oid='public.zobba_bootstrap'::regclass)
+       AND NOT EXISTS(SELECT 1 FROM pg_catalog.aclexplode(coalesce(p.proacl,pg_catalog.acldefault('f',p.proowner))) a WHERE a.grantee<>p.proowner)
+       AND ($1::text IS NULL OR NOT pg_catalog.has_function_privilege($1,p.oid,'EXECUTE'))
+       AND (SELECT count(*) FROM pg_catalog.pg_trigger t WHERE t.tgfoid=p.oid AND t.tgname=p.proname AND t.tgenabled='O' AND NOT t.tgisinternal)
+         = CASE p.proname WHEN 'exception_record' THEN 4 WHEN 'exception_batch' THEN 2 WHEN 'exception_guard' THEN 1 WHEN 'effective_guard' THEN 1 ELSE 4 END
+       AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_trigger t WHERE t.tgfoid=p.oid AND t.tgname<>p.proname))
+      FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
+      WHERE n.nspname='public' AND p.proname IN ('exception_record','exception_batch','exception_guard','effective_guard','exception_immutable','exception_retained'))
+      AND (SELECT count(*)=7 AND bool_and(NOT p.prosecdef AND p.provolatile IN ('s','i')
+       AND p.proowner=(SELECT relowner FROM pg_catalog.pg_class WHERE oid='public.zobba_bootstrap'::regclass)
+       AND NOT EXISTS(SELECT 1 FROM pg_catalog.aclexplode(coalesce(p.proacl,pg_catalog.acldefault('f',p.proowner))) a WHERE a.grantee=0 OR (a.grantee<>p.proowner AND (a.privilege_type<>'EXECUTE' OR a.is_grantable OR ($1::text IS NOT NULL AND a.grantee<>(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=$1)))))
+       AND ($1::text IS NULL OR pg_catalog.has_function_privilege($1,p.oid,'EXECUTE'))
+       AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_trigger t WHERE t.tgfoid=p.oid))
+      FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
+      WHERE n.nspname='public' AND p.proname IN ('assessment_criterion_root','assessment_population_lineage','assessment_exception_key','assessment_evidence','assessment_exception_observations','assessment_exception_status','assessment_effective_outcomes'))
+    "#).bind(runtime).fetch_one(conn).await.map_err(|_| BootstrapError::SchemaMismatch)?;
+    if safe {
+        Ok(())
+    } else {
+        Err(BootstrapError::SchemaMismatch)
+    }
+}
+
 // Story 22.6 investigation facts: the worker's read-only skill eligibility
 // function (owner-only, runtime EXECUTE), one guard trigger on each of the
 // five fact tables and the immutability guard on all five, all enabled.
@@ -615,13 +651,13 @@ async fn inventory(conn: &mut PgConnection) -> Result<Vec<String>, BootstrapErro
         OR EXISTS (SELECT 1 FROM pg_catalog.pg_ts_dict o JOIN pg_catalog.pg_namespace n ON n.oid=o.dictnamespace WHERE n.nspname='public')
         OR EXISTS (SELECT 1 FROM pg_catalog.pg_ts_parser o JOIN pg_catalog.pg_namespace n ON n.oid=o.prsnamespace WHERE n.nspname='public')
         OR EXISTS (SELECT 1 FROM pg_catalog.pg_ts_template o JOIN pg_catalog.pg_namespace n ON n.oid=o.tmplnamespace WHERE n.nspname='public')
-        OR EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname NOT IN ('membership_admin','membership_session','membership_validate','membership_fence','membership_read','membership_write','membership_accept','membership_preview','membership_assignments','evidence_session_locked','admin_continuity_assert','admin_continuity_lock','admin_continuity_check','admin_continuity_truncate','methodology_audit','methodology_read','methodology_write','methodology_candidates','methodology_task','skills_read','skills_admin','skills_impact','skills_write','skills_task','knowledge_audit','knowledge_release_active','model_configuration_admin','work_step_guard','work_guidance_guard','work_answer_guard','engagement_setup_authority','engagement_setup_access','engagement_setup_organisations','engagement_setup_clients','engagement_setup_duplicate','engagement_setup_refuse','engagement_establish','work_compaction_guard','work_compaction_immutable','analysis_event_guard','analysis_output_guard','analysis_immutable','reading_guard','reading_immutable','skills_work','investigation_guard','investigation_immutable','investigation_retained','assessment_guard','assessment_complete','assessment_immutable','assessment_retained','coverage_guard','coverage_batch','coverage_complete','coverage_immutable','coverage_retained','revision_guard','revision_batch','revision_complete','revision_first','revision_immutable','revision_retained'))
+        OR EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname NOT IN ('membership_admin','membership_session','membership_validate','membership_fence','membership_read','membership_write','membership_accept','membership_preview','membership_assignments','evidence_session_locked','admin_continuity_assert','admin_continuity_lock','admin_continuity_check','admin_continuity_truncate','methodology_audit','methodology_read','methodology_write','methodology_candidates','methodology_task','skills_read','skills_admin','skills_impact','skills_write','skills_task','knowledge_audit','knowledge_release_active','model_configuration_admin','work_step_guard','work_guidance_guard','work_answer_guard','engagement_setup_authority','engagement_setup_access','engagement_setup_organisations','engagement_setup_clients','engagement_setup_duplicate','engagement_setup_refuse','engagement_establish','work_compaction_guard','work_compaction_immutable','analysis_event_guard','analysis_output_guard','analysis_immutable','reading_guard','reading_immutable','skills_work','investigation_guard','investigation_immutable','investigation_retained','assessment_guard','assessment_complete','assessment_immutable','assessment_retained','coverage_guard','coverage_batch','coverage_complete','coverage_immutable','coverage_retained','revision_guard','revision_batch','revision_complete','revision_first','revision_immutable','revision_retained','exception_record','exception_batch','exception_guard','effective_guard','exception_immutable','exception_retained','assessment_criterion_root','assessment_population_lineage','assessment_exception_key','assessment_evidence','assessment_exception_observations','assessment_exception_status','assessment_effective_outcomes'))
         OR EXISTS (
           SELECT 1 FROM pg_catalog.pg_type t JOIN pg_catalog.pg_namespace n ON n.oid=t.typnamespace
           WHERE n.nspname='public' AND t.oid NOT IN (
-            SELECT c.reltype FROM pg_catalog.pg_class c WHERE c.relnamespace=n.oid AND c.relkind='r' AND c.relname IN ('_sqlx_migrations','zobba_bootstrap','identities','login_attempts','sessions','organisations','clients','engagements','organisation_memberships','engagement_assignments','task_counters','tasks','task_cycles','task_commands','task_events','task_wakeups','task_claims','task_receipt_slots','task_observations','trusted_attachment_metadata','task_deliveries','permission_versions','permission_heads','operations','operation_decisions','operation_attempts','operation_claims','operation_receipt_slots','operation_receipts','operation_receipt_producers','membership_events','membership_invitations','membership_versions','evidence_reservations','evidence_originals','methodology_versions','methodology_assignments','methodology_events','methodology_recalls','task_methodology_bindings','task_methodology_heads','task_methodology_changes','skill_versions','skill_events','skill_status','task_skill_selections','knowledge_captures','knowledge_events','knowledge_invalidations','knowledge_layout_events','knowledge_publications','knowledge_records','knowledge_source_corrections','knowledge_withdrawals','model_profiles','model_catalogues','model_invocations','model_results','model_tool_bindings','task_steps','task_guidance_applications','task_routing_questions','task_routing_answers','task_work_claims','engagement_setups','engagement_setup_messages','task_context_compactions','analysis_jobs','analysis_job_events','analysis_descendants','analysis_rejections','document_renders','document_pages','task_page_reads','task_page_requests','task_program_runs','answer_verifications','answer_citations','citation_sources','task_skill_uses','task_method_fetches','task_method_notes','task_investigation_notes','methodology_proposals','assessment_criteria','assessment_bases','assessment_basis_criteria','assessment_facts','assessment_fact_sources','assessment_evaluations','assessment_populations','assessment_population_members','assessment_samples','assessment_sample_members','assessment_opportunities','assessment_summaries','assessment_basis_carries','assessment_basis_carried_facts','assessment_evaluation_revisions','assessment_dispositions')
+            SELECT c.reltype FROM pg_catalog.pg_class c WHERE c.relnamespace=n.oid AND c.relkind='r' AND c.relname IN ('_sqlx_migrations','zobba_bootstrap','identities','login_attempts','sessions','organisations','clients','engagements','organisation_memberships','engagement_assignments','task_counters','tasks','task_cycles','task_commands','task_events','task_wakeups','task_claims','task_receipt_slots','task_observations','trusted_attachment_metadata','task_deliveries','permission_versions','permission_heads','operations','operation_decisions','operation_attempts','operation_claims','operation_receipt_slots','operation_receipts','operation_receipt_producers','membership_events','membership_invitations','membership_versions','evidence_reservations','evidence_originals','methodology_versions','methodology_assignments','methodology_events','methodology_recalls','task_methodology_bindings','task_methodology_heads','task_methodology_changes','skill_versions','skill_events','skill_status','task_skill_selections','knowledge_captures','knowledge_events','knowledge_invalidations','knowledge_layout_events','knowledge_publications','knowledge_records','knowledge_source_corrections','knowledge_withdrawals','model_profiles','model_catalogues','model_invocations','model_results','model_tool_bindings','task_steps','task_guidance_applications','task_routing_questions','task_routing_answers','task_work_claims','engagement_setups','engagement_setup_messages','task_context_compactions','analysis_jobs','analysis_job_events','analysis_descendants','analysis_rejections','document_renders','document_pages','task_page_reads','task_page_requests','task_program_runs','answer_verifications','answer_citations','citation_sources','task_skill_uses','task_method_fetches','task_method_notes','task_investigation_notes','methodology_proposals','assessment_criteria','assessment_bases','assessment_basis_criteria','assessment_facts','assessment_fact_sources','assessment_evaluations','assessment_populations','assessment_population_members','assessment_samples','assessment_sample_members','assessment_opportunities','assessment_summaries','assessment_basis_carries','assessment_basis_carried_facts','assessment_evaluation_revisions','assessment_dispositions','assessment_exceptions','assessment_exception_occurrences','assessment_exception_dispositions','assessment_effective_summaries')
             UNION ALL SELECT rowtype.typarray FROM pg_catalog.pg_type rowtype JOIN pg_catalog.pg_class c ON c.reltype=rowtype.oid
-              WHERE c.relnamespace=n.oid AND c.relkind='r' AND c.relname IN ('_sqlx_migrations','zobba_bootstrap','identities','login_attempts','sessions','organisations','clients','engagements','organisation_memberships','engagement_assignments','task_counters','tasks','task_cycles','task_commands','task_events','task_wakeups','task_claims','task_receipt_slots','task_observations','trusted_attachment_metadata','task_deliveries','permission_versions','permission_heads','operations','operation_decisions','operation_attempts','operation_claims','operation_receipt_slots','operation_receipts','operation_receipt_producers','membership_events','membership_invitations','membership_versions','evidence_reservations','evidence_originals','methodology_versions','methodology_assignments','methodology_events','methodology_recalls','task_methodology_bindings','task_methodology_heads','task_methodology_changes','skill_versions','skill_events','skill_status','task_skill_selections','knowledge_captures','knowledge_events','knowledge_invalidations','knowledge_layout_events','knowledge_publications','knowledge_records','knowledge_source_corrections','knowledge_withdrawals','model_profiles','model_catalogues','model_invocations','model_results','model_tool_bindings','task_steps','task_guidance_applications','task_routing_questions','task_routing_answers','task_work_claims','engagement_setups','engagement_setup_messages','task_context_compactions','analysis_jobs','analysis_job_events','analysis_descendants','analysis_rejections','document_renders','document_pages','task_page_reads','task_page_requests','task_program_runs','answer_verifications','answer_citations','citation_sources','task_skill_uses','task_method_fetches','task_method_notes','task_investigation_notes','methodology_proposals','assessment_criteria','assessment_bases','assessment_basis_criteria','assessment_facts','assessment_fact_sources','assessment_evaluations','assessment_populations','assessment_population_members','assessment_samples','assessment_sample_members','assessment_opportunities','assessment_summaries','assessment_basis_carries','assessment_basis_carried_facts','assessment_evaluation_revisions','assessment_dispositions')
+              WHERE c.relnamespace=n.oid AND c.relkind='r' AND c.relname IN ('_sqlx_migrations','zobba_bootstrap','identities','login_attempts','sessions','organisations','clients','engagements','organisation_memberships','engagement_assignments','task_counters','tasks','task_cycles','task_commands','task_events','task_wakeups','task_claims','task_receipt_slots','task_observations','trusted_attachment_metadata','task_deliveries','permission_versions','permission_heads','operations','operation_decisions','operation_attempts','operation_claims','operation_receipt_slots','operation_receipts','operation_receipt_producers','membership_events','membership_invitations','membership_versions','evidence_reservations','evidence_originals','methodology_versions','methodology_assignments','methodology_events','methodology_recalls','task_methodology_bindings','task_methodology_heads','task_methodology_changes','skill_versions','skill_events','skill_status','task_skill_selections','knowledge_captures','knowledge_events','knowledge_invalidations','knowledge_layout_events','knowledge_publications','knowledge_records','knowledge_source_corrections','knowledge_withdrawals','model_profiles','model_catalogues','model_invocations','model_results','model_tool_bindings','task_steps','task_guidance_applications','task_routing_questions','task_routing_answers','task_work_claims','engagement_setups','engagement_setup_messages','task_context_compactions','analysis_jobs','analysis_job_events','analysis_descendants','analysis_rejections','document_renders','document_pages','task_page_reads','task_page_requests','task_program_runs','answer_verifications','answer_citations','citation_sources','task_skill_uses','task_method_fetches','task_method_notes','task_investigation_notes','methodology_proposals','assessment_criteria','assessment_bases','assessment_basis_criteria','assessment_facts','assessment_fact_sources','assessment_evaluations','assessment_populations','assessment_population_members','assessment_samples','assessment_sample_members','assessment_opportunities','assessment_summaries','assessment_basis_carries','assessment_basis_carried_facts','assessment_evaluation_revisions','assessment_dispositions','assessment_exceptions','assessment_exception_occurrences','assessment_exception_dispositions','assessment_effective_summaries')
           ))
     "#).fetch_one(&mut *conn).await.map_err(|_| BootstrapError::DatabaseUnavailable)?;
     if foreign {
@@ -641,6 +677,114 @@ async fn check_schema(
 ) -> Result<i64, BootstrapError> {
     let tables = inventory(conn).await?;
     let mut version = if tables
+        == [
+            "_sqlx_migrations",
+            "analysis_descendants",
+            "analysis_job_events",
+            "analysis_jobs",
+            "analysis_rejections",
+            "answer_citations",
+            "answer_verifications",
+            "assessment_bases",
+            "assessment_basis_carried_facts",
+            "assessment_basis_carries",
+            "assessment_basis_criteria",
+            "assessment_criteria",
+            "assessment_dispositions",
+            "assessment_effective_summaries",
+            "assessment_evaluation_revisions",
+            "assessment_evaluations",
+            "assessment_exception_dispositions",
+            "assessment_exception_occurrences",
+            "assessment_exceptions",
+            "assessment_fact_sources",
+            "assessment_facts",
+            "assessment_opportunities",
+            "assessment_population_members",
+            "assessment_populations",
+            "assessment_sample_members",
+            "assessment_samples",
+            "assessment_summaries",
+            "citation_sources",
+            "clients",
+            "document_pages",
+            "document_renders",
+            "engagement_assignments",
+            "engagement_setup_messages",
+            "engagement_setups",
+            "engagements",
+            "evidence_originals",
+            "evidence_reservations",
+            "identities",
+            "knowledge_captures",
+            "knowledge_events",
+            "knowledge_invalidations",
+            "knowledge_layout_events",
+            "knowledge_publications",
+            "knowledge_records",
+            "knowledge_source_corrections",
+            "knowledge_withdrawals",
+            "login_attempts",
+            "membership_events",
+            "membership_invitations",
+            "membership_versions",
+            "methodology_assignments",
+            "methodology_events",
+            "methodology_proposals",
+            "methodology_recalls",
+            "methodology_versions",
+            "model_catalogues",
+            "model_invocations",
+            "model_profiles",
+            "model_results",
+            "model_tool_bindings",
+            "operation_attempts",
+            "operation_claims",
+            "operation_decisions",
+            "operation_receipt_producers",
+            "operation_receipt_slots",
+            "operation_receipts",
+            "operations",
+            "organisation_memberships",
+            "organisations",
+            "permission_heads",
+            "permission_versions",
+            "sessions",
+            "skill_events",
+            "skill_status",
+            "skill_versions",
+            "task_claims",
+            "task_commands",
+            "task_context_compactions",
+            "task_counters",
+            "task_cycles",
+            "task_deliveries",
+            "task_events",
+            "task_guidance_applications",
+            "task_investigation_notes",
+            "task_method_fetches",
+            "task_method_notes",
+            "task_methodology_bindings",
+            "task_methodology_changes",
+            "task_methodology_heads",
+            "task_observations",
+            "task_page_reads",
+            "task_page_requests",
+            "task_program_runs",
+            "task_receipt_slots",
+            "task_routing_answers",
+            "task_routing_questions",
+            "task_skill_selections",
+            "task_skill_uses",
+            "task_steps",
+            "task_wakeups",
+            "task_work_claims",
+            "tasks",
+            "trusted_attachment_metadata",
+            "zobba_bootstrap",
+        ] {
+        21
+    } else if tables
         == [
             "_sqlx_migrations",
             "analysis_descendants",
@@ -742,7 +886,8 @@ async fn check_schema(
             "tasks",
             "trusted_attachment_metadata",
             "zobba_bootstrap",
-        ] {
+        ]
+    {
         20
     } else if tables
         == [
@@ -1839,8 +1984,10 @@ async fn check_schema(
         include_str!("schema-v18.catalog")
     } else if version == 19 {
         include_str!("schema-v19.catalog")
-    } else {
+    } else if version == 20 {
         include_str!("schema-v20.catalog")
+    } else {
+        include_str!("schema-v21.catalog")
     };
     if signature.len() >= 8193 || !signature.iter().map(String::as_str).eq(expected.lines()) {
         return Err(BootstrapError::SchemaMismatch);
@@ -1893,9 +2040,12 @@ async fn check_schema(
     if version >= 20 {
         check_revision_functions(conn, None).await?;
     }
+    if version >= 21 {
+        check_exception_functions(conn, None).await?;
+    }
     // Compare bounded booleans, never allocate untrusted metadata strings/blobs.
     let versions: Vec<i64> =
-        sqlx::query_scalar("SELECT version FROM public._sqlx_migrations ORDER BY version LIMIT 21")
+        sqlx::query_scalar("SELECT version FROM public._sqlx_migrations ORDER BY version LIMIT 22")
             .fetch_all(&mut *conn)
             .await
             .map_err(|_| BootstrapError::SchemaMismatch)?;
@@ -2089,7 +2239,7 @@ async fn migrate_locked(conn: &mut PgConnection, runtime_role: &str) -> Result<(
         "{grants} GRANT SELECT,INSERT ON public.knowledge_captures,public.knowledge_events,public.knowledge_invalidations,public.knowledge_layout_events,public.knowledge_publications,public.knowledge_records,public.knowledge_source_corrections,public.knowledge_withdrawals,public.model_profiles,public.model_catalogues,public.model_invocations,public.model_results,public.model_tool_bindings,public.task_steps,public.task_guidance_applications,public.task_routing_questions,public.task_routing_answers,public.task_work_claims TO \"{runtime_role}\"; GRANT EXECUTE ON FUNCTION public.knowledge_audit(text,text,text,text),public.knowledge_release_active(text,text),public.model_configuration_admin(text,text,text) TO \"{runtime_role}\";"
     );
     let grants = format!(
-        "{grants} GRANT SELECT,INSERT ON public.engagement_setups,public.engagement_setup_messages,public.task_context_compactions,public.analysis_jobs,public.analysis_job_events,public.analysis_descendants,public.analysis_rejections,public.document_renders,public.document_pages,public.task_page_reads,public.task_page_requests,public.task_program_runs,public.answer_verifications,public.answer_citations,public.citation_sources,public.task_skill_uses,public.task_method_fetches,public.task_method_notes,public.task_investigation_notes,public.methodology_proposals,public.assessment_criteria,public.assessment_bases,public.assessment_basis_criteria,public.assessment_facts,public.assessment_fact_sources,public.assessment_evaluations,public.assessment_populations,public.assessment_population_members,public.assessment_samples,public.assessment_sample_members,public.assessment_opportunities,public.assessment_summaries,public.assessment_basis_carries,public.assessment_basis_carried_facts,public.assessment_evaluation_revisions,public.assessment_dispositions TO \"{runtime_role}\"; GRANT EXECUTE ON FUNCTION public.skills_work(text,text,jsonb) TO \"{runtime_role}\"; GRANT UPDATE(state,candidates,resolved_client_id,resolved_client_name,new_client_name,period_start,period_end,client_id,engagement_id,task_id,cycle_id,receipt,message_count,established_at) ON public.engagement_setups TO \"{runtime_role}\"; GRANT EXECUTE ON FUNCTION public.engagement_setup_access(text,text,text,boolean),public.engagement_setup_organisations(text,text,text,integer),public.engagement_setup_clients(text,text,text,text,integer),public.engagement_setup_duplicate(text,text,text,text,date,date),public.engagement_setup_refuse(text,text,text,text,integer,text,text),public.engagement_establish(text,text,text,text,text,text,integer) TO \"{runtime_role}\";"
+        "{grants} GRANT SELECT,INSERT ON public.engagement_setups,public.engagement_setup_messages,public.task_context_compactions,public.analysis_jobs,public.analysis_job_events,public.analysis_descendants,public.analysis_rejections,public.document_renders,public.document_pages,public.task_page_reads,public.task_page_requests,public.task_program_runs,public.answer_verifications,public.answer_citations,public.citation_sources,public.task_skill_uses,public.task_method_fetches,public.task_method_notes,public.task_investigation_notes,public.methodology_proposals,public.assessment_criteria,public.assessment_bases,public.assessment_basis_criteria,public.assessment_facts,public.assessment_fact_sources,public.assessment_evaluations,public.assessment_populations,public.assessment_population_members,public.assessment_samples,public.assessment_sample_members,public.assessment_opportunities,public.assessment_summaries,public.assessment_basis_carries,public.assessment_basis_carried_facts,public.assessment_evaluation_revisions,public.assessment_dispositions,public.assessment_exceptions,public.assessment_exception_occurrences,public.assessment_exception_dispositions,public.assessment_effective_summaries TO \"{runtime_role}\"; GRANT EXECUTE ON FUNCTION public.assessment_criterion_root(text,text,text,text),public.assessment_population_lineage(text,text,text,text),public.assessment_exception_key(text,text,text,text,text,text),public.assessment_evidence(jsonb),public.assessment_exception_observations(text,text,text,text),public.assessment_exception_status(text,text,text,text),public.assessment_effective_outcomes(text,text,text,text) TO \"{runtime_role}\"; GRANT EXECUTE ON FUNCTION public.skills_work(text,text,jsonb) TO \"{runtime_role}\"; GRANT UPDATE(state,candidates,resolved_client_id,resolved_client_name,new_client_name,period_start,period_end,client_id,engagement_id,task_id,cycle_id,receipt,message_count,established_at) ON public.engagement_setups TO \"{runtime_role}\"; GRANT EXECUTE ON FUNCTION public.engagement_setup_access(text,text,text,boolean),public.engagement_setup_organisations(text,text,text,integer),public.engagement_setup_clients(text,text,text,text,integer),public.engagement_setup_duplicate(text,text,text,text,date,date),public.engagement_setup_refuse(text,text,text,text,integer,text,text),public.engagement_establish(text,text,text,text,text,text,integer) TO \"{runtime_role}\";"
     );
     sqlx::raw_sql(&grants)
         .execute(&mut *tx)

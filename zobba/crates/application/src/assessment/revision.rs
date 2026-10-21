@@ -831,7 +831,10 @@ pub fn reconsiderations_text(snapshot: &RevisionSnapshot) -> Option<String> {
 
 impl<S, C> Assessment<'_, S, C>
 where
-    S: AssessmentStore + super::coverage::CoverageStore + RevisionStore,
+    S: AssessmentStore
+        + super::coverage::CoverageStore
+        + RevisionStore
+        + super::exception::ExceptionStore,
     C: CitationReader,
 {
     /// Whether `to` is `from` or a version that succeeds it (walking its

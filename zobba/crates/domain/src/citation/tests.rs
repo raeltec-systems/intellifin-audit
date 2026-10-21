@@ -548,6 +548,12 @@ fn assessment_fields_are_optional_bounded_and_counted_when_invalid() {
         assert!(earlier.carry_facts.is_empty());
         assert!(!CitedAnswer::assessment_schema().accepts(&JsonValue::Object(map.clone())));
         map.insert("carry_facts".into(), JsonValue::Array(vec![]));
+        // A stored 24.3a answer (no 24.3b field) still decodes, unchanged,
+        // but the assessment schema now asks for summarise_effective too.
+        let earlier = CitedAnswer::from_json(&JsonValue::Object(map.clone())).unwrap();
+        assert!(earlier.summarise_effective.is_empty());
+        assert!(!CitedAnswer::assessment_schema().accepts(&JsonValue::Object(map.clone())));
+        map.insert("summarise_effective".into(), JsonValue::Array(vec![]));
         map.insert(
             "evaluate".into(),
             JsonValue::Array(vec![s("crit-1"), s("crit-1"), s("not an id")]),
@@ -881,4 +887,39 @@ fn carry_facts_is_one_entry_and_a_second_is_dropped_and_counted() {
         panic!("an object schema");
     };
     assert!(!properties.contains_key("carry_facts"));
+}
+
+#[test]
+fn summarise_effective_holds_two_entries_and_drops_and_counts_the_rest() {
+    let mut value = answer_json();
+    let entry = |population: &str| {
+        object(vec![
+            ("basis", s("basis-1")),
+            ("population", s(population)),
+            ("sample", s("")),
+        ])
+    };
+    if let JsonValue::Object(map) = &mut value {
+        map.insert(
+            "summarise_effective".into(),
+            JsonValue::Array(vec![
+                entry("p1"),
+                entry("p2"),
+                entry("p3"),
+                entry("not an id"),
+            ]),
+        );
+    }
+    let answer = CitedAnswer::from_json(&value).unwrap();
+    assert_eq!(
+        answer.summarise_effective.len(),
+        crate::exception::MAX_SUMMARISE_EFFECTIVE
+    );
+    assert_eq!(answer.summarise_effective[1].population, "p2");
+    assert_eq!(answer.discarded, 2, "one over the bound, one invalid");
+    assert!(answer.requests_assessment());
+    let ArgumentSchema::Object { properties, .. } = CitedAnswer::investigation_schema() else {
+        panic!("an object schema");
+    };
+    assert!(!properties.contains_key("summarise_effective"));
 }

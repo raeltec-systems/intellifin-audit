@@ -1052,10 +1052,13 @@ fn judgments_at_unit(
 
 impl<S, C> Assessment<'_, S, C>
 where
-    S: AssessmentStore + CoverageStore + super::revision::RevisionStore,
+    S: AssessmentStore
+        + CoverageStore
+        + super::revision::RevisionStore
+        + super::exception::ExceptionStore,
     C: CitationReader,
 {
-    async fn population_ref(
+    pub(super) async fn population_ref(
         &self,
         basis: &ClaimBasis,
         coverage: &AnswerCoverage,
@@ -1068,7 +1071,7 @@ where
         }
         self.store.population(basis, reference).await
     }
-    async fn members_of(
+    pub(super) async fn members_of(
         &self,
         basis: &ClaimBasis,
         coverage: &mut AnswerCoverage,
