@@ -94,6 +94,32 @@ pub struct Ledger {
     _lock: Lock,
 }
 
+/// A read-only early check (no lock, no write), so a run that the ledger
+/// would refuse is refused before the engagement is set up.
+pub fn precheck(path: &Path, comparison: &str, total_cap_usd: f64, run_cap_usd: f64) -> Result<(), String> {
+    if path.with_extension("lock").exists() {
+        return Err(format!(
+            "the ledger lock {} exists: another run is active, or one stopped abnormally",
+            path.with_extension("lock").display()
+        ));
+    }
+    let file = match fs::read(path) {
+        Ok(bytes) => serde_json::from_slice::<LedgerFile>(&bytes)
+            .map_err(|e| format!("the ledger {} is not valid: {e}", path.display()))?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            LedgerFile::new(comparison, total_cap_usd)
+        }
+        Err(error) => return Err(format!("cannot read the ledger {}: {error}", path.display())),
+    };
+    if file.comparison != comparison || (file.total_cap_usd - total_cap_usd).abs() > EPSILON {
+        return Err(format!(
+            "the ledger {} belongs to another comparison or total cap",
+            path.display()
+        ));
+    }
+    file.admission(run_cap_usd)
+}
+
 impl Ledger {
     /// Take the ledger lock, load (or start) the ledger, refuse the run when
     /// it would pass the total cap, and durably record its reservation.
