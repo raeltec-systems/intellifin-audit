@@ -2,7 +2,7 @@
 title: '24.5 — Review and issue the exact work honestly'
 type: 'feature'
 created: '2026-10-21'
-status: 'draft'
+status: 'ready-for-dev'
 baseline_commit: '4128527f01190291990c0f26b017b770648a77fb'
 review_loop_iteration: 0
 context:
@@ -134,6 +134,13 @@ Size: about 8,000 tokens, far above the 1,600 target (24.3 and 24.4 were also la
 - Read the shelf as a solo practitioner and as a team reviewer: the labels say who checked what, and nothing says independent where it is not.
 
 ## Open Questions (owner decisions)
+
+**Owner decisions (2026-10-21):** all six recommendations approved (independent advisor agreed): (1) SPLIT — 24.5a review (migration 0025/v25), then 24.5b issue and corrections (0026/v26) directly after 24.5a and before 24.6; 24.5a reserves `issue_state` and the issue refusal codes in its API vocabulary. (2) typed `review_mode` on the method requirement; self-approval needs `audit_manager`. (3) contributor = anyone who took part anywhere in the version's history; Guide messages, review notes and a manager's 24.3a disposition on a cited record are NOT contributions. (4) no named reviewer in 24.5; any eligible assigned manager; "Ready for team review" shows on the engagement shelf for every manager, and 25.2/25.3 turn a submission into a durable question and digest line. (5) record recipients only, send nothing, and say so. (6) issue needs the head version, unchanged support and method, and a firm method with review rules; the neutral starter can never be issued; the demo fixture's firm method carries `review_rules` and a `review_mode`.
+
+Additional owner-approved changes (2026-10-21):
+- **A. The agent never silently stales a human approval.** While a review package is open or an approval is current, an agent own-initiative successor (24.4 refresh) is held as a proposal/question to the accountable person, not recorded as the new head; Guide and `changes_requested` still let the agent record directly. 25.2 later makes it a durable question.
+- **B. Honest review wording.** Records and exports say "Reviewed by <name>, who did not prepare this work (team review; not an engagement quality review)" — never "independently reviewed" unless the firm's method defines an EQR step. When no eligible reviewer remains (e.g. a two-manager firm where both prepared), the 409 says so and names the ways out (another assigned manager, or the firm's solo mode).
+- **C. Issuer-stated report date.** The issuer states the report date; the guard bounds it to the database day ±1; both the stated date and the database time are recorded (24.5b).
 
 1. **Split.** (a) Recommended **S**: 24.5a review, then 24.5b issue and corrections. (b) **K**: one story, one migration 0025.
 2. **Where solo practice is configured.** (a) Recommended: typed `review_mode` on methodology requirements, saved by Admin with ordinary Save, bound into the Task's method binding; a mandatory `independent_review` cannot be relaxed; solo self-review needs the `audit_manager` role (the same authority as team review). (b) A separate Admin "review settings" record per engagement plus a method flag for required independence (two configurations, more UI). (c) As (a), but solo also requires the person to hold both `auditor` and `audit_manager`.
