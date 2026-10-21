@@ -1647,3 +1647,413 @@ fn binding_templates_carry_their_neutral_standing() {
                 .ends_with("Neutral starter (not firm methodology)")
     );
 }
+
+// ---------------------------------------------------------- review round 1
+
+/// A person's edit of the narrative, as a version on the latest.
+fn person_edit(store: &Store, v: &Version, key: &str, text: &str) -> Version {
+    let narrative_id = v.blocks[0].id.clone();
+    run(save_edit(
+        store,
+        &Reader,
+        "actor",
+        &basis("p1").scope,
+        "s",
+        "task",
+        &v.product_id,
+        &EditRequest {
+            key: key.into(),
+            base_version: v.id.clone(),
+            blocks: v
+                .blocks
+                .iter()
+                .map(|b| EditBlock {
+                    block: b.id.clone(),
+                    text: (b.id == narrative_id).then(|| text.into()),
+                })
+                .collect(),
+        },
+    ))
+    .unwrap()
+    .version
+}
+
+#[test]
+fn a_bad_quote_is_refused_by_block_and_never_fails_the_cycle() {
+    let store = Store::new();
+    for source in [
+        // An original the Task does not hold.
+        CitationSource {
+            original_id: "missing".into(),
+            locator: Locator::parse("bytes:0-48"),
+            quote: POLICY.into(),
+        },
+        // A locator past the end of the original.
+        CitationSource {
+            original_id: "ap-policy".into(),
+            locator: Locator::parse("bytes:4000-4048"),
+            quote: POLICY.into(),
+        },
+        // No locator at all, and an empty quote.
+        CitationSource {
+            original_id: "ap-policy".into(),
+            locator: None,
+            quote: String::new(),
+        },
+    ] {
+        let mut d = first_draft();
+        d.blocks.push(claim(
+            "results",
+            "The policy says so.",
+            vec![ProposedAssertion::Quote { source }],
+        ));
+        // Ok(false), never Err: the cycle continues with per-block feedback.
+        let (recorded, feedback) = record(&store, "turn-q", &d);
+        assert!(!recorded, "{feedback:?}");
+        assert!(
+            feedback
+                .iter()
+                .any(|l| l.contains("quote_unverified") || l.contains("unknown_record")),
+            "{feedback:?}"
+        );
+    }
+    assert!(store.state.lock().unwrap().versions.is_empty());
+}
+
+#[test]
+fn a_claims_verdict_words_agree_with_its_own_records() {
+    let store = Store::new();
+    // The evaluation is not_met: a sentence saying it was met is refused,
+    // and so is a positive word over a failing count.
+    for (statement, assertions) in [
+        (
+            "INV-0042 met the criterion.",
+            vec![outcome(Some(Verdict::NotMet))],
+        ),
+        ("INV-0042 passed.", vec![outcome(Some(Verdict::NotMet))]),
+        (
+            "15 of 1,000 applicable invoices passed.",
+            vec![
+                count(CountMeasure::NotMet, 15),
+                count(CountMeasure::Applicable, 1_000),
+            ],
+        ),
+    ] {
+        let mut d = first_draft();
+        d.blocks.push(claim("results", statement, assertions));
+        let (recorded, feedback) = record(&store, "turn-v", &d);
+        assert!(!recorded, "{statement}: {feedback:?}");
+    }
+    // The agreeing words pass.
+    let mut d = first_draft();
+    d.blocks.push(claim(
+        "results",
+        "INV-0042 did not meet the criterion.",
+        vec![outcome(Some(Verdict::NotMet))],
+    ));
+    let (recorded, feedback) = record(&store, "turn-v2", &d);
+    assert!(recorded, "{feedback:?}");
+}
+
+#[test]
+fn hidden_display_characters_are_refused_in_titles_and_blocks() {
+    let store = Store::new();
+    let mut d = first_draft();
+    d.title = "AP approvals\u{202e} paper".into();
+    let (recorded, feedback) = record(&store, "turn-h1", &d);
+    assert!(
+        !recorded && feedback.join("\n").contains("hidden_character"),
+        "{feedback:?}"
+    );
+    let mut d = first_draft();
+    d.blocks.push(narrative(
+        "results",
+        NarrativeLabel::Narrative,
+        "Approvals\u{200b} were tested.",
+    ));
+    let (recorded, feedback) = record(&store, "turn-h2", &d);
+    assert!(
+        !recorded && feedback.join("\n").contains("hidden_character"),
+        "{feedback:?}"
+    );
+    assert!(store.state.lock().unwrap().versions.is_empty());
+}
+
+#[test]
+fn claims_are_numbered_in_section_order_whatever_their_version_order() {
+    let store = Store::new();
+    let mut d = first_draft();
+    // A conclusion claim drafted first, an objective claim drafted last.
+    d.blocks.insert(
+        0,
+        claim(
+            "conclusion",
+            "Segregation was not met for INV-0042.",
+            vec![outcome(Some(Verdict::NotMet))],
+        ),
+    );
+    d.blocks.push(claim(
+        "objective",
+        "The basis covers 2026-01-01 to 2026-12-31.",
+        vec![ProposedAssertion::Period {
+            basis_id: hex("basis", '1'),
+        }],
+    ));
+    assert!(record(&store, "turn-n", &d).0);
+    let v = latest(&store);
+    let view = run(views(
+        &store,
+        "actor",
+        &basis("p1").scope,
+        "task",
+        &[Store::stored(&v)],
+        None,
+    ))
+    .unwrap()
+    .remove(0);
+    let numbered: Vec<(String, usize)> = claim_order(&v)
+        .iter()
+        .map(|b| (b.section.clone(), view.claims[&b.id].number))
+        .collect();
+    assert_eq!(numbered.first().unwrap(), &("objective".to_string(), 1));
+    assert_eq!(numbered.last().unwrap().0, "conclusion");
+    assert!(numbered.windows(2).all(|w| w[0].1 + 1 == w[1].1));
+    // The version keeps the order the agent drafted.
+    assert_eq!(v.blocks[0].section, "conclusion");
+}
+
+#[test]
+fn a_heading_alone_completes_no_required_section() {
+    let store = Store::new();
+    let mut d = first_draft();
+    d.blocks.push(ProposedBlock::New {
+        section: "conclusion".into(),
+        content: ProposedContent::Heading {
+            text: "Conclusion".into(),
+        },
+    });
+    assert!(record(&store, "turn-r", &d).0);
+    assert_eq!(latest(&store).missing_required, ["conclusion"]);
+}
+
+#[test]
+fn the_agent_changes_a_persons_block_only_at_their_request_and_confirmation() {
+    let store = Store::new();
+    assert!(record(&store, "turn-1", &first_draft()).0);
+    let v1 = latest(&store);
+    let v2 = person_edit(&store, &v1, "e1", "Test every invoice, as Alex wrote it.");
+    let person_block = v2.blocks[0].id.clone();
+    let change = |request: Option<&str>| {
+        let mut blocks = keep_all(&v2);
+        blocks[0] = ProposedBlock::Change {
+            block: person_block.clone(),
+            text: "Test every invoice above the threshold, as Alex asked.".into(),
+            assertions: vec![],
+        };
+        Draft {
+            request: request.map(String::from),
+            ..draft(Some(v2.id.clone()), blocks)
+        }
+    };
+    // Without a request: refused, nothing recorded.
+    let (recorded, feedback) = record(&store, "turn-2", &change(None));
+    assert!(
+        !recorded && feedback.join("\n").contains("change_not_requested"),
+        "{feedback:?}"
+    );
+    // A request from another person: refused.
+    store.state.lock().unwrap().guide.push(GuideRequest {
+        command_id: "cmd-other".into(),
+        author_id: "someone-else".into(),
+        label: None,
+        content: "Rewrite the objective.".into(),
+    });
+    let (recorded, feedback) = record(&store, "turn-3", &change(Some("cmd-other")));
+    assert!(
+        !recorded && feedback.join("\n").contains("change_not_requested"),
+        "{feedback:?}"
+    );
+    // At the person's own applied request: a proposal, never a version.
+    store.state.lock().unwrap().guide.push(GuideRequest {
+        command_id: "cmd-alex".into(),
+        author_id: "actor".into(),
+        label: Some("Alex".into()),
+        content: "Please reword my objective.".into(),
+    });
+    let versions = store.state.lock().unwrap().versions.len();
+    let (recorded, feedback) = record(&store, "turn-4", &change(Some("cmd-alex")));
+    assert!(recorded, "{feedback:?}");
+    assert!(
+        feedback.iter().any(|l| l.contains("must confirm it")),
+        "{feedback:?}"
+    );
+    assert_eq!(store.state.lock().unwrap().versions.len(), versions);
+    let proposal = store.state.lock().unwrap().proposals[0].proposal.clone();
+    assert_eq!(
+        proposal.changes,
+        vec![(person_block.clone(), ChangeKind::Changed)]
+    );
+    assert_eq!(proposal.requested_by, "actor");
+    let scope = basis("p1").scope;
+    // Another person may not decide on it.
+    store.state.lock().unwrap().editors.push("other".into());
+    assert_eq!(
+        run(decide(
+            &store,
+            &Reader,
+            "other",
+            &scope,
+            "s",
+            "task",
+            &v2.product_id,
+            &proposal.id,
+            "d0",
+            true
+        ))
+        .unwrap_err(),
+        EditError::Denied
+    );
+    // The person confirms: the agent's version, at their request.
+    let outcome = run(decide(
+        &store,
+        &Reader,
+        "actor",
+        &scope,
+        "s",
+        "task",
+        &v2.product_id,
+        &proposal.id,
+        "d1",
+        true,
+    ))
+    .unwrap();
+    let v3 = outcome.version.unwrap().version;
+    assert!(outcome.decision.confirmed);
+    let request = v3.change.clone().unwrap();
+    assert_eq!(
+        (
+            request.requested_by.as_str(),
+            request.request_id.as_str(),
+            request.proposal_id.as_str()
+        ),
+        ("actor", "cmd-alex", proposal.id.as_str())
+    );
+    assert_eq!(request.confirmation_id, outcome.decision.id);
+    assert!(matches!(v3.author, Author::Agent { .. }));
+    assert_eq!(v3.predecessor.as_deref(), Some(v2.id.as_str()));
+    assert_eq!(
+        v3.blocks
+            .iter()
+            .find(|b| b.id == person_block)
+            .unwrap()
+            .text(),
+        Some("Test every invoice above the threshold, as Alex asked.")
+    );
+    assert!(v3.is_valid());
+    // An exact retry returns the original; a second decision is refused.
+    let again = run(decide(
+        &store,
+        &Reader,
+        "actor",
+        &scope,
+        "s",
+        "task",
+        &v2.product_id,
+        &proposal.id,
+        "d1",
+        true,
+    ))
+    .unwrap();
+    assert_eq!(again.decision, outcome.decision);
+    assert_eq!(
+        run(decide(
+            &store,
+            &Reader,
+            "actor",
+            &scope,
+            "s",
+            "task",
+            &v2.product_id,
+            &proposal.id,
+            "d2",
+            false
+        ))
+        .unwrap_err(),
+        EditError::Conflict
+    );
+}
+
+#[test]
+fn a_declined_proposal_records_nothing_and_a_removal_names_its_block() {
+    let store = Store::new();
+    assert!(record(&store, "turn-1", &first_draft()).0);
+    let v1 = latest(&store);
+    let v2 = person_edit(&store, &v1, "e1", "Alex's objective.");
+    store.state.lock().unwrap().guide.push(GuideRequest {
+        command_id: "cmd-alex".into(),
+        author_id: "actor".into(),
+        label: Some("Alex".into()),
+        content: "Remove my objective.".into(),
+    });
+    let mut blocks = keep_all(&v2);
+    blocks[0] = ProposedBlock::Remove(v2.blocks[0].id.clone());
+    let d = Draft {
+        request: Some("cmd-alex".into()),
+        ..draft(Some(v2.id.clone()), blocks)
+    };
+    assert!(record(&store, "turn-2", &d).0);
+    let proposal = store.state.lock().unwrap().proposals[0].proposal.clone();
+    assert_eq!(
+        proposal.changes,
+        vec![(v2.blocks[0].id.clone(), ChangeKind::Removed)]
+    );
+    let versions = store.state.lock().unwrap().versions.len();
+    let outcome = run(decide(
+        &store,
+        &Reader,
+        "actor",
+        &basis("p1").scope,
+        "s",
+        "task",
+        &v2.product_id,
+        &proposal.id,
+        "d1",
+        false,
+    ))
+    .unwrap();
+    assert!(!outcome.decision.confirmed && outcome.version.is_none());
+    assert_eq!(store.state.lock().unwrap().versions.len(), versions);
+}
+
+#[test]
+fn the_agent_context_lists_every_product_with_peoples_blocks_and_requests() {
+    let store = Store::new();
+    assert!(record(&store, "turn-1", &first_draft()).0);
+    let v1 = latest(&store);
+    person_edit(&store, &v1, "e1", "Alex's objective.");
+    let scope = basis("p1").scope;
+    let heads = run(store.products("actor", &scope, "task")).unwrap();
+    let latest_versions: Vec<VersionRecord> = heads.iter().map(|h| h.head.clone()).collect();
+    let views = run(views(
+        &store,
+        "actor",
+        &scope,
+        "task",
+        &latest_versions,
+        None,
+    ))
+    .unwrap();
+    let requests = vec![GuideRequest {
+        command_id: "cmd-alex".into(),
+        author_id: "actor".into(),
+        label: Some("Alex".into()),
+        content: "Please reword my objective.".into(),
+    }];
+    let paired: Vec<_> = heads.into_iter().zip(views).collect();
+    let text = products_text(&paired, &requests).unwrap();
+    // The person's block is listed by ID with its author, and their request
+    // by its ID.
+    let person = &paired[0].0.head.version.blocks[0];
+    assert!(text.contains(&person.id), "{text}");
+    assert!(text.contains("cmd-alex"), "{text}");
+}

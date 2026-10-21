@@ -2529,18 +2529,24 @@ where
 /// 200 ms. Setup that outlives the 5-second lease would otherwise leave the
 /// next loop fenced at its first boundary (the 22.1 intermittent). The
 /// production lease is never lengthened for this.
+/// The renewal runs beside the setup, never in its place: a renewal that
+/// waits on a row the setup's own transaction holds must not stop the setup.
 async fn renewing<F: std::future::Future>(f: &Fixture, basis: &ClaimBasis, setup: F) -> F::Output {
-    let mut setup = Box::pin(setup);
+    let setup = Box::pin(setup);
     let mut ticker = tokio::time::interval(std::time::Duration::from_millis(200));
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-    loop {
-        tokio::select! {
-            biased;
-            out = &mut setup => return out,
-            _ = ticker.tick() => {
-                let _ = tokio::time::timeout(std::time::Duration::from_secs(2), f.tasks.current(basis)).await;
-            }
+    let renewal = async {
+        loop {
+            ticker.tick().await;
+            let _ = tokio::time::timeout(std::time::Duration::from_secs(2), f.tasks.current(basis))
+                .await;
         }
+    };
+    tokio::pin!(renewal);
+    tokio::select! {
+        biased;
+        out = setup => out,
+        () = &mut renewal => unreachable!("the renewal never ends"),
     }
 }
 

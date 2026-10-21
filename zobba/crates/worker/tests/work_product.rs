@@ -1306,6 +1306,35 @@ async fn every_claim_of_a_recorded_version_agrees_with_its_records() {
                                 assertion("count", &es, "undetermined", id, &n("undetermined")),
                             ]));
                     }
+                    // One claim each on a period, a fact and an exception, so
+                    // every assertion kind is stored (and forged below).
+                    let f = fy().await;
+                    let fact: String = scalar("SELECT id FROM public.assessment_facts WHERE task_id=$1 AND subject='INV-0050' AND name='invoice'").await;
+                    let (exception, exception_subject): (String, String) = sqlx::query_as("SELECT id, subject FROM public.assessment_exceptions WHERE task_id=$1 ORDER BY id COLLATE \"C\" LIMIT 1")
+                        .bind(&task_id).fetch_one(&lookup).await.unwrap();
+                    let status: String = sqlx::query_scalar("SELECT status FROM public.assessment_exception_statuses('org-a','client-a','engagement-a',$1,ARRAY[$2])")
+                        .bind(&task_id).bind(&exception).fetch_one(&lookup).await.unwrap();
+                    blocks.push(block(
+                        "claim",
+                        "results",
+                        "The basis covers 1 January 2026 to 31 December 2026.",
+                        "",
+                        vec![assertion("period", &f, "", "", "")],
+                    ));
+                    blocks.push(block(
+                        "claim",
+                        "results",
+                        "Invoice INV-0050 is in the AP export.",
+                        "",
+                        vec![assertion("fact", &fact, "", "", "INV-0050")],
+                    ));
+                    blocks.push(block(
+                        "claim",
+                        "results",
+                        &format!("An exception of {exception_subject} is recorded."),
+                        "",
+                        vec![assertion("exception", &exception, "", "", &status)],
+                    ));
                     text_reply(&answer(serde_json::json!({
                         "draft_work_product": [draft("AP approvals working paper", "ap-wp:1", &latest, blocks)],
                     })))
@@ -1900,7 +1929,10 @@ async fn every_claim_of_a_recorded_version_agrees_with_its_records() {
             .fetch_one(&mut admin)
             .await
             .unwrap();
-    assert_eq!(claims, 24, "four kept claims and twenty new ones");
+    assert_eq!(
+        claims, 27,
+        "four kept claims, twenty new ones and one each on a period, a fact and an exception"
+    );
 
     // Realistic size: reads of a version with 24 claims and 85 assertions
     // stay well within the runtime's statement bound.
@@ -2127,9 +2159,145 @@ async fn database_guards_refuse_altered_work_product_records(
         "a quote with another digest",
     );
 
+    // Every assertion kind: one forged row of a stored claim of that kind
+    // (its value, or a quote's digest) is refused.
+    for kind in [
+        "outcome",
+        "count",
+        "conclusion",
+        "exception",
+        "fact",
+        "quote",
+        "period",
+    ] {
+        let found: Option<(String, String)> = sqlx::query_as(
+            "SELECT version_id, block_id FROM public.work_product_assertions WHERE kind=$1 AND version_id IN ($2,$3) ORDER BY version_id, block_id LIMIT 1",
+        )
+        .bind(kind)
+        .bind(v1)
+        .bind(v5)
+        .fetch_optional(&mut *admin)
+        .await
+        .unwrap();
+        let (version, block) = found.unwrap_or_else(|| panic!("no stored {kind} assertion"));
+        let setup = [
+            RESET.to_string(),
+            format!(
+                "CREATE TEMP TABLE kept_assertion ON COMMIT DROP AS SELECT * FROM public.work_product_assertions WHERE version_id='{version}' AND block_id='{block}'"
+            ),
+            format!(
+                "DELETE FROM public.work_product_assertions WHERE version_id='{version}' AND block_id='{block}'"
+            ),
+        ];
+        let forged = ASSERTION_COLUMNS
+            .replace(",value,", ",CASE WHEN kind<>$K THEN value WHEN kind='outcome' THEN CASE value WHEN 'met' THEN 'not_met' ELSE 'met' END WHEN kind='conclusion' THEN CASE value WHEN 'no_exception_found' THEN 'exceptions_found' ELSE 'no_exception_found' END WHEN kind='exception' THEN CASE value WHEN 'open' THEN 'closed_by_disposition' ELSE 'open' END WHEN kind='fact' THEN value||'X' WHEN kind='period' THEN '2025-01-01/2025-12-31' WHEN kind='count' THEN (value::bigint+1)::text ELSE value END,")
+            .replace(",record_digest,", &format!(",CASE WHEN kind='quote' AND kind=$K THEN '{}' ELSE record_digest END,", "b".repeat(64)))
+            .replace("$K", &format!("'{kind}'"));
+        let message = refused_in(
+            admin,
+            &setup,
+            &format!("INSERT INTO public.work_product_assertions({ASSERTION_COLUMNS}) SELECT {forged} FROM kept_assertion"),
+        )
+        .await;
+        assert!(
+            message.contains("does not agree with its record now")
+                || message.contains("violates check constraint"),
+            "a forged {kind}: {message}"
+        );
+        assert!(
+            !message.contains("violates check constraint") || kind == "fact",
+            "a forged {kind} is refused by the record check, not a shape check: {message}"
+        );
+    }
+
+    // An agent's version that names a change request no person confirmed.
+    let columns = "organisation_id,client_id,engagement_id,task_id,actor_id,product_id,id,version,predecessor_id,author_kind,author_id,invocation_id,cycle_id,key,title,kind,methodology_binding_id,execution_epoch,blocks,claims,missing_required,document,digest";
+    let next = format!("wpv-{}", "d".repeat(40));
+    let unconfirmed = columns
+        .replace(",id,", &format!(",'{next}',"))
+        .replace(",version,", ",version+1,")
+        .replace(",predecessor_id,", ",id,")
+        .replace(",document,", &format!(",document || jsonb_build_object('id','{next}','version',version+1,'predecessor_id',id,'change_request',jsonb_build_object('requested_by','actor-a','request_id','cmd-x','proposal_id','wpp-{p}','confirmation_id','wpd-{p}')),", p = "e".repeat(40)));
+    assert_refused(
+        &refused_in(admin, &[], &format!("INSERT INTO public.work_product_versions({columns}) SELECT {unconfirmed} FROM public.work_product_versions WHERE id='{v5}'")).await,
+        "only in a proposal that person confirmed",
+        "an unconfirmed change request",
+    );
+    // A person's version whose title holds a character that changes display.
+    let hidden = columns
+        .replace(",id,", &format!(",'wpv-{}',", "f".repeat(40)))
+        .replace(",key,", ",'hidden-key',")
+        .replace(",title,", ",title||U&'\\202E',");
+    assert_refused(
+        &refused_in(admin, &[person(session)], &format!("INSERT INTO public.work_product_versions({columns}) SELECT {hidden} FROM public.work_product_versions WHERE id='{v2}'")).await,
+        "holds no hidden display character",
+        "a hidden character in a title",
+    );
+    // Two writers of one product: the second waits for the first (the
+    // per-product lock), then is refused naming the latest version.
+    let product: String =
+        sqlx::query_scalar("SELECT product_id FROM public.work_product_versions WHERE id=$1")
+            .bind(v5)
+            .fetch_one(&mut *admin)
+            .await
+            .unwrap();
+    let mut holder = pool.acquire().await.unwrap();
+    let mut held = sqlx::Connection::begin(&mut *holder).await.unwrap();
+    sqlx::query("SELECT pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('work_product:org-a/client-a/engagement-a/'||$1, 2404))")
+        .bind(&product)
+        .execute(&mut *held)
+        .await
+        .unwrap();
+    let fork = columns
+        .replace(",id,", &format!(",'wpv-{}',", "a".repeat(40)))
+        .replace(",key,", ",'fork-key',");
+    let statement = format!(
+        "INSERT INTO public.work_product_versions({columns}) SELECT {fork} FROM public.work_product_versions WHERE id='{v2}'"
+    );
+    let waiting = {
+        let statement = statement.clone();
+        let session = session.to_string();
+        let pool = pool.clone();
+        tokio::spawn(async move {
+            let mut conn = pool.acquire().await.unwrap();
+            let mut tx = sqlx::Connection::begin(&mut *conn).await.unwrap();
+            sqlx::query(&person(&session))
+                .execute(&mut *tx)
+                .await
+                .unwrap();
+            let refused = sqlx::query(&statement)
+                .execute(&mut *tx)
+                .await
+                .map(|_| ())
+                .map_err(|e| e.to_string());
+            let _ = tx.rollback().await;
+            refused
+        })
+    };
+    // The second writer is blocked on the lock while the first holds it.
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        let blocked: i64 = sqlx::query_scalar("SELECT count(*) FROM pg_catalog.pg_stat_activity WHERE wait_event_type='Lock' AND wait_event='advisory' AND query LIKE 'INSERT INTO public.work_product_versions%'")
+            .fetch_one(&mut *admin)
+            .await
+            .unwrap();
+        if blocked == 1 {
+            break;
+        }
+        assert!(Instant::now() < deadline, "the second writer never waited");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    held.rollback().await.unwrap();
+    let message = waiting.await.unwrap().expect_err("a fork was recorded");
+    assert!(
+        message.contains(&format!(
+            "a work-product version edits its product's latest version: {v5}"
+        )) || message.contains("edits its product's latest version"),
+        "{message}"
+    );
+
     // A person's version outside a live session, and one in it that does
     // not edit the latest version.
-    let columns = "organisation_id,client_id,engagement_id,task_id,actor_id,product_id,id,version,predecessor_id,author_kind,author_id,invocation_id,cycle_id,key,title,kind,methodology_binding_id,execution_epoch,blocks,claims,missing_required,document,digest";
     let copy = columns
         .replace(",id,", &format!(",'wpv-{}',", "c".repeat(40)))
         .replace(",key,", ",'forged-key',");
