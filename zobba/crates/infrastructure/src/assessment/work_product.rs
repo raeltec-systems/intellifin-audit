@@ -40,7 +40,8 @@ use zobba_domain::{
 /// The upper bound of products one Task may hold, plus one (an exact read).
 const PRODUCTS_READ: i64 = zobba_domain::work_product::MAX_PRODUCTS as i64 + 1;
 
-const VERSION_SELECT: &str = "SELECT v.document, v.digest, v.created_us FROM public.work_product_versions v";
+const VERSION_SELECT: &str =
+    "SELECT v.document, v.digest, v.created_us FROM public.work_product_versions v";
 
 fn version_from(row: &PgRow) -> Result<VersionRecord, ReadingError> {
     let document: Value = row.try_get("document").map_err(unavailable)?;
@@ -133,7 +134,10 @@ async fn products_in(
 }
 
 fn ids(set: &std::collections::BTreeSet<String>) -> Vec<String> {
-    set.iter().filter(|id| valid_scope_id(id)).cloned().collect()
+    set.iter()
+        .filter(|id| valid_scope_id(id))
+        .cloned()
+        .collect()
 }
 
 async fn records_in(
@@ -322,9 +326,7 @@ fn rows_of(version: &Version, actor: &str) -> (Value, Value) {
     for (ordinal, b) in version.blocks.iter().enumerate() {
         let (label, body, record) = match &b.content {
             Content::Heading { text } => (None, Some(text.clone()), None),
-            Content::Narrative { label, text } => {
-                (Some(label.as_str()), Some(text.clone()), None)
-            }
+            Content::Narrative { label, text } => (Some(label.as_str()), Some(text.clone()), None),
             Content::Claim { statement, .. } => (None, Some(statement.clone()), None),
             Content::Coverage { summary_id } => (None, None, Some(summary_id.clone())),
             Content::Exceptions { basis_id } => (None, None, Some(basis_id.clone())),
@@ -557,7 +559,12 @@ impl WorkProductStore for AssessmentRepository {
         if !version.is_valid() || version.task_id != basis.task_id {
             return Err(WriteError::Reading(ReadingError::Invalid));
         }
-        let mut tx = claimed(&self.pool, basis, &format!("work_product:{}", basis.task_id)).await?;
+        let mut tx = claimed(
+            &self.pool,
+            basis,
+            &format!("work_product:{}", basis.task_id),
+        )
+        .await?;
         insert_version(&mut tx, &basis.scope, &basis.actor_id, product, version).await?;
         let stored = stored_version(&mut tx, &version.id).await?;
         tx.commit().await.map_err(write_error)?;
@@ -613,7 +620,10 @@ async fn edit_basis_in(
 const EXPORT_SELECT: &str = "SELECT id,key,actor_id,task_id,version_id,format,withheld_digest,digest,size,namespace,object_version,refresh_count,created_us FROM public.work_product_exports";
 
 fn export_from(row: &PgRow) -> Result<ExportRecord, ExportError> {
-    let t = |n: &str| row.try_get::<String, _>(n).map_err(|_| ExportError::Unavailable);
+    let t = |n: &str| {
+        row.try_get::<String, _>(n)
+            .map_err(|_| ExportError::Unavailable)
+    };
     Ok(ExportRecord {
         id: t("id")?,
         key: t("key")?,
@@ -711,7 +721,12 @@ impl WorkProductPeople for AssessmentRepository {
             // Two first writes of one key at once: answer the winner.
             if error == WriteError::Refused
                 && let Some(found) = self
-                    .version_by_key(actor, scope, session_hash, version.key.as_deref().unwrap_or(""))
+                    .version_by_key(
+                        actor,
+                        scope,
+                        session_hash,
+                        version.key.as_deref().unwrap_or(""),
+                    )
                     .await?
             {
                 return if found.version == *version {
@@ -798,11 +813,10 @@ impl WorkProductPeople for AssessmentRepository {
             .bind(&record.namespace).bind(&record.object_version).bind(record.refresh_count as i32)
             .execute(&mut *tx).await;
         if let Err(error) = inserted {
-            let unique = matches!(&error, sqlx::Error::Database(d) if d.code().as_deref() == Some("23505"));
+            let unique =
+                matches!(&error, sqlx::Error::Database(d) if d.code().as_deref() == Some("23505"));
             drop(tx);
-            if unique
-                && let Some(found) = self.export_by_key(actor, scope, &record.key).await?
-            {
+            if unique && let Some(found) = self.export_by_key(actor, scope, &record.key).await? {
                 return if found.version_id == record.version_id && found.format == record.format {
                     Ok(found)
                 } else {
@@ -911,7 +925,9 @@ impl AssessmentRepository {
         task_id: Option<&str>,
         after: Option<&str>,
     ) -> Result<ShelfPage, ReadingError> {
-        if task_id.is_some_and(|t| !valid_scope_id(t)) || after.is_some_and(|a| !valid_product_id(a)) {
+        if task_id.is_some_and(|t| !valid_scope_id(t))
+            || after.is_some_and(|a| !valid_product_id(a))
+        {
             return Err(ReadingError::Invalid);
         }
         let mut tx = scoped(&self.pool, actor, scope).await?;
@@ -932,7 +948,8 @@ impl AssessmentRepository {
         .fetch_all(&mut *tx)
         .await
         .map_err(unavailable)?;
-        let mut products: Vec<ProductHead> = rows.iter().map(head_from).collect::<Result<_, _>>()?;
+        let mut products: Vec<ProductHead> =
+            rows.iter().map(head_from).collect::<Result<_, _>>()?;
         let next = if products.len() as i64 > page {
             products.truncate(page as usize);
             products.last().map(|p| p.product.id.clone())

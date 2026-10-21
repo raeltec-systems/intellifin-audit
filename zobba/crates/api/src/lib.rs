@@ -7,7 +7,6 @@ pub mod engagement_setup;
 pub mod engagements;
 pub mod evidence;
 pub mod exceptions;
-pub mod work_products;
 pub mod knowledge;
 pub mod membership;
 pub mod methodology;
@@ -17,6 +16,7 @@ pub mod revisions;
 pub mod skills;
 pub mod tasks;
 pub mod work;
+pub mod work_products;
 use axum::{Json, Router, extract::State, http::StatusCode, routing::get};
 use serde::Serialize;
 use utoipa::{OpenApi, ToSchema};
@@ -166,8 +166,8 @@ pub fn authenticated_router_with_proposals(
             |request: axum::extract::Request, next: axum::middleware::Next| async move {
                 let login_document =
                     request.uri().path() == "/auth/login" && auth::wants_html(request.headers());
-                let evidence_io = evidence::is_io_request(&request)
-                    || work_products::is_io_request(&request);
+                let evidence_io =
+                    evidence::is_io_request(&request) || work_products::is_io_request(&request);
                 let deadline = if evidence_io { 120 } else { 15 };
                 let mut response = match tokio::time::timeout(
                     std::time::Duration::from_secs(deadline),

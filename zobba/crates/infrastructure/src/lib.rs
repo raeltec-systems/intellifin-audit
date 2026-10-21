@@ -938,7 +938,8 @@ async fn check_schema(
             "tasks",
             "trusted_attachment_metadata",
             "zobba_bootstrap",
-        ] {
+        ]
+    {
         21
     } else if tables
         == [

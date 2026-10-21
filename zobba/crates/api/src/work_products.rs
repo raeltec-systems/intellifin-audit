@@ -40,8 +40,9 @@ use zobba_application::{
 use zobba_domain::{
     identity::valid_scope_id,
     work_product::{
-        Author, Block, Content, ExportFormat, JUDGMENT_LABEL, NOT_COMPLETED, NarrativeLabel, Pin, REVIEW_STATE, export::media_type, valid_block_id,
-        valid_export_id, valid_product_id, valid_version_id,
+        Author, Block, Content, ExportFormat, JUDGMENT_LABEL, NOT_COMPLETED, NarrativeLabel, Pin,
+        REVIEW_STATE, export::media_type, valid_block_id, valid_export_id, valid_product_id,
+        valid_version_id,
     },
 };
 use zobba_infrastructure::{
@@ -609,7 +610,9 @@ fn edit_refusal(error: EditError) -> Response {
     };
     let code = match &error {
         // A refusal names its first reason (the list names every one).
-        EditError::Refused(r) => r.first().map_or("work_product_refused", |r| r.reason.as_str()),
+        EditError::Refused(r) => r
+            .first()
+            .map_or("work_product_refused", |r| r.reason.as_str()),
         other => other.code(),
     };
     (
@@ -671,7 +674,16 @@ async fn shelf_view(
     }
     let mut computed: BTreeMap<String, VersionView> = BTreeMap::new();
     for (task, heads) in &by_task {
-        match views(&state.assessments, actor, scope, task, heads, Some(&BTreeMap::new())).await {
+        match views(
+            &state.assessments,
+            actor,
+            scope,
+            task,
+            heads,
+            Some(&BTreeMap::new()),
+        )
+        .await
+        {
             Ok(list) => {
                 for v in list {
                     computed.insert(v.record.version.id.clone(), v);
@@ -723,7 +735,11 @@ pub(crate) async fn shelf(
         Ok(scope) => scope,
         Err(error) => return failure(error),
     };
-    if query.cursor.as_deref().is_some_and(|c| !valid_product_id(c)) {
+    if query
+        .cursor
+        .as_deref()
+        .is_some_and(|c| !valid_product_id(c))
+    {
         return failure(TaskError::Invalid);
     }
     shelf_view(
@@ -762,7 +778,12 @@ pub(crate) async fn task_shelf(
         Ok(scope) => scope,
         Err(error) => return failure(error),
     };
-    if !valid_scope_id(&task_id) || query.cursor.as_deref().is_some_and(|c| !valid_product_id(c)) {
+    if !valid_scope_id(&task_id)
+        || query
+            .cursor
+            .as_deref()
+            .is_some_and(|c| !valid_product_id(c))
+    {
         return failure(TaskError::Invalid);
     }
     shelf_view(
@@ -784,7 +805,15 @@ async fn read_version(
     task_id: &str,
     product_id: &str,
     version_id: &str,
-) -> Result<(ProductHead, VersionView, VersionView, BTreeMap<String, String>), Response> {
+) -> Result<
+    (
+        ProductHead,
+        VersionView,
+        VersionView,
+        BTreeMap<String, String>,
+    ),
+    Response,
+> {
     if let Err(error) = state.assessments.work_product_viewer(actor, scope).await {
         return Err(failure(error));
     }
@@ -934,13 +963,7 @@ pub(crate) async fn support(
         Ok(found) => found,
         Err(response) => return response,
     };
-    let Some(block) = view
-        .record
-        .version
-        .blocks
-        .iter()
-        .find(|b| b.id == block_id)
-    else {
+    let Some(block) = view.record.version.blocks.iter().find(|b| b.id == block_id) else {
         return not_found();
     };
     let (Content::Claim { statement, pins }, Some(claim)) =
@@ -1072,7 +1095,16 @@ pub(crate) async fn edit(
     )
     .await
     {
-        Ok(saved) => match read_version(&state, &actor, &scope, &task_id, &product_id, &saved.version.id).await {
+        Ok(saved) => match read_version(
+            &state,
+            &actor,
+            &scope,
+            &task_id,
+            &product_id,
+            &saved.version.id,
+        )
+        .await
+        {
             Ok((head, head_view, view, labels)) => {
                 Json(version_response(&head, &head_view, &view, &labels)).into_response()
             }
@@ -1199,7 +1231,16 @@ pub(crate) async fn content(
     if let Err(error) = state.assessments.work_product_viewer(&actor, &scope).await {
         return failure(error);
     }
-    match download(&state.assessments, objects, &actor, &scope, &task_id, &export_id).await {
+    match download(
+        &state.assessments,
+        objects,
+        &actor,
+        &scope,
+        &task_id,
+        &export_id,
+    )
+    .await
+    {
         Ok((record, bytes)) => {
             let mut response = Response::new(Body::from(bytes));
             let h = response.headers_mut();
@@ -1302,6 +1343,9 @@ mod tests {
         };
         let shown = assertion_response(&pin, true);
         assert!(shown.value.is_none() && shown.withheld);
-        assert_eq!(assertion_response(&pin, false).value.as_deref(), Some("Invoices"));
+        assert_eq!(
+            assertion_response(&pin, false).value.as_deref(),
+            Some("Invoices")
+        );
     }
 }

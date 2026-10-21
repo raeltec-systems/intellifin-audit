@@ -43,13 +43,13 @@ use zobba_domain::{
         Author, AuthorKind, Block, BlockKind, ClaimCurrency, Content, CountMeasure, Current, Draft,
         ExportFormat, Identifiers, MAX_ASSERTIONS, MAX_BLOCKS, MAX_CLAIMS, MAX_HEADING_BYTES,
         MAX_NARRATIVE_BYTES, MAX_PRODUCTS, MAX_STATEMENT_BYTES, MAX_VERSION_BYTES, MAX_VERSIONS,
-        NEUTRAL_SOURCE, NarrativeLabel, Pin, ProposedAssertion,
-        ProposedBlock, ProposedContent, RecordKind, Refusal, Renderings, SectionRef,
-        TemplateRef, Version, agent_version_id, block_id, coverage_line, currency,
-        exception_digest, export::{ExportBlock, ExportCitation, ExportCoverage, ExportSection,
-        ExportView}, export_id, grouped, human_version_id, missing_required, narrative_figures,
-        product_id, record_kind_of, statement_figures_v1, valid_block_id, valid_title,
-        valid_version_id, verdict_value, verdict_word, withheld_digest,
+        NEUTRAL_SOURCE, NarrativeLabel, Pin, ProposedAssertion, ProposedBlock, ProposedContent,
+        RecordKind, Refusal, Renderings, SectionRef, TemplateRef, Version, agent_version_id,
+        block_id, coverage_line, currency, exception_digest,
+        export::{ExportBlock, ExportCitation, ExportCoverage, ExportSection, ExportView},
+        export_id, grouped, human_version_id, missing_required, narrative_figures, product_id,
+        record_kind_of, statement_figures_v1, valid_block_id, valid_title, valid_version_id,
+        verdict_value, verdict_word, withheld_digest,
     },
 };
 
@@ -672,9 +672,7 @@ fn check_assertion(
             }),
             None => Err((
                 Refusal::QuoteUnverified,
-                format!(
-                    "the quote is not the whole value at its exact location of original {id}"
-                ),
+                format!("the quote is not the whole value at its exact location of original {id}"),
             )),
         },
         ProposedAssertion::Period { .. } => {
@@ -1018,8 +1016,10 @@ async fn assemble<S: WorkProductStore, C: CitationReader>(
                         ));
                         None
                     }
-                    ProposedContent::Heading { text } => prose(text, MAX_HEADING_BYTES, &mut refusals)
-                        .then(|| Content::Heading { text: text.clone() }),
+                    ProposedContent::Heading { text } => {
+                        prose(text, MAX_HEADING_BYTES, &mut refusals)
+                            .then(|| Content::Heading { text: text.clone() })
+                    }
                     ProposedContent::Narrative { label, text } => {
                         prose(text, MAX_NARRATIVE_BYTES, &mut refusals).then(|| {
                             Content::Narrative {
@@ -1102,7 +1102,11 @@ fn dropped_human_blocks(base: &Version, plan: &[Planned]) -> Vec<BlockRefusal> {
     base.blocks
         .iter()
         .filter(|b| b.author.kind() == AuthorKind::Human)
-        .filter(|b| !plan.iter().any(|p| matches!(p, Planned::Keep(k) if k.id == b.id)))
+        .filter(|b| {
+            !plan
+                .iter()
+                .any(|p| matches!(p, Planned::Keep(k) if k.id == b.id))
+        })
         .map(|b| {
             refuse(
                 None,
@@ -1352,7 +1356,10 @@ pub async fn record_draft<S: WorkProductStore, C: CitationReader>(
                 refusals.push(refuse(
                     None,
                     Refusal::TemplateUnbound,
-                    format!("work product {} follows template {}:{}", head.product.id, t.id, t.version),
+                    format!(
+                        "work product {} follows template {}:{}",
+                        head.product.id, t.id, t.version
+                    ),
                 ));
             }
             (head.product, false, Some(found.version))
@@ -1937,7 +1944,9 @@ pub fn view_of(
     for id in &cited_bases {
         if let Some(b) = records.basis(id) {
             for l in &b.limitations {
-                limitations.push(format!("Basis {id} limitation (recorded with the basis): {l}"));
+                limitations.push(format!(
+                    "Basis {id} limitation (recorded with the basis): {l}"
+                ));
             }
         }
     }
@@ -2378,13 +2387,16 @@ pub async fn save_edit<S: WorkProductStore + WorkProductPeople, C: CitationReade
                 base.is_some_and(|b| {
                     edit_plan(&b.version, request).is_ok_and(|plan| {
                         plan.len() == found.version.blocks.len()
-                            && plan.iter().zip(&found.version.blocks).all(|(p, f)| match p {
-                                Planned::Keep(k) => k == f,
-                                Planned::Edit { source, text } => {
-                                    source.id == f.id && block_text(f) == Some(text.as_str())
-                                }
-                                Planned::New { .. } => false,
-                            })
+                            && plan
+                                .iter()
+                                .zip(&found.version.blocks)
+                                .all(|(p, f)| match p {
+                                    Planned::Keep(k) => k == f,
+                                    Planned::Edit { source, text } => {
+                                        source.id == f.id && block_text(f) == Some(text.as_str())
+                                    }
+                                    Planned::New { .. } => false,
+                                })
                     })
                 })
             };
@@ -2587,7 +2599,13 @@ pub fn export_view(
                     statement: statement.clone(),
                     coverage: claim.and_then(|c| c.coverage.clone()),
                     refresh: claim
-                        .map(|c| c.currency.reasons.iter().map(|r| r.words().to_string()).collect())
+                        .map(|c| {
+                            c.currency
+                                .reasons
+                                .iter()
+                                .map(|r| r.words().to_string())
+                                .collect()
+                        })
                         .unwrap_or_default(),
                     support: claim.map(|c| c.support.clone()).unwrap_or_default(),
                 }
@@ -2618,7 +2636,10 @@ pub fn export_view(
             "Prepared by Zobba (agent); edited by {}",
             editors
                 .iter()
-                .map(|id| labels.get(*id).cloned().unwrap_or_else(|| (*id).to_string()))
+                .map(|id| labels
+                    .get(*id)
+                    .cloned()
+                    .unwrap_or_else(|| (*id).to_string()))
                 .collect::<Vec<_>>()
                 .join(", ")
         )

@@ -268,20 +268,32 @@ impl Refusal {
         match self {
             Self::OutcomeMismatch => "the stated verdict is not the evaluation's effective outcome",
             Self::CountMismatch => "the stated count is not the summary's stored count",
-            Self::ConclusionMismatch => "the stated conclusion is not the summary's stored conclusion",
+            Self::ConclusionMismatch => {
+                "the stated conclusion is not the summary's stored conclusion"
+            }
             Self::StatusMismatch => "the stated status is not the exception's derived status",
             Self::FactMismatch => "the stated value is not the fact's supported, grounded value",
-            Self::QuoteUnverified => "the quote is not the whole value at its exact location of a registered original",
+            Self::QuoteUnverified => {
+                "the quote is not the whole value at its exact location of a registered original"
+            }
             Self::SupersededSupport => "the record is not current: cite the current one",
-            Self::UnsupportedFigure => "a figure of the sentence is not one of the claim's checked values",
-            Self::FigureInNarrative => "narrative and judgment text carries no figures; put a figure in a checked claim",
-            Self::VerdictWithoutRecord => "a claim that rests only on quotes may not state a verdict",
+            Self::UnsupportedFigure => {
+                "a figure of the sentence is not one of the claim's checked values"
+            }
+            Self::FigureInNarrative => {
+                "narrative and judgment text carries no figures; put a figure in a checked claim"
+            }
+            Self::VerdictWithoutRecord => {
+                "a claim that rests only on quotes may not state a verdict"
+            }
             Self::UnknownRecord => "the record is not one of this Task's records",
             Self::StaleBase => "the version it edits is not the work product's latest version",
             Self::TemplateUnbound => "the template is not one of the Task's current method binding",
             Self::SectionUnknown => "the section is not one of the template's sections",
             Self::HumanBlockDropped => "a person's block must be kept by its ID, unchanged",
-            Self::BoundExceeded => "a bound of the work product is exceeded or a block is malformed",
+            Self::BoundExceeded => {
+                "a bound of the work product is exceeded or a block is malformed"
+            }
         }
     }
 }
@@ -290,11 +302,17 @@ impl RefreshReason {
     pub fn words(self) -> &'static str {
         match self {
             Self::EvaluationRevised => "the evaluation it cites was revised",
-            Self::DispositionChanged => "a person's disposition changed the evaluation's effective outcome",
-            Self::SummarySuperseded => "a newer summary of the same population supersedes the one it cites",
+            Self::DispositionChanged => {
+                "a person's disposition changed the evaluation's effective outcome"
+            }
+            Self::SummarySuperseded => {
+                "a newer summary of the same population supersedes the one it cites"
+            }
             Self::ExceptionStatusChanged => "the exception's derived status changed",
             Self::FactSuperseded => "a successor basis replaced the fact it cites",
-            Self::SourceWithdrawn => "the original it quotes is no longer registered with the digest it was verified against",
+            Self::SourceWithdrawn => {
+                "the original it quotes is no longer registered with the digest it was verified against"
+            }
         }
     }
 }
@@ -356,7 +374,10 @@ pub fn valid_export_id(id: &str) -> bool {
     valid_prefixed(id, "wpx-")
 }
 fn valid_digest(value: &str) -> bool {
-    value.len() == 64 && value.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }
 fn text_ok(value: &str, max: usize) -> bool {
     !value.trim().is_empty()
@@ -581,7 +602,10 @@ impl Pin {
             && match self.kind {
                 AssertionKind::Count => self.measure.is_some_and(|m| {
                     m.per_criterion() == self.criterion_id.is_some()
-                        && self.value.parse::<u64>().is_ok_and(|n| n.to_string() == self.value)
+                        && self
+                            .value
+                            .parse::<u64>()
+                            .is_ok_and(|n| n.to_string() == self.value)
                 }),
                 _ => self.measure.is_none() && self.criterion_id.is_none(),
             }
@@ -592,13 +616,18 @@ impl Pin {
             && self.criterion_id.as_deref().is_none_or(valid_scope_id)
             && self.subject.as_deref().is_none_or(valid_subject)
             && match self.kind {
-                AssertionKind::Quote => text_ok(&self.value, MAX_QUOTE_BYTES)
-                    && self
-                        .locator
-                        .as_ref()
-                        .is_some_and(|l| l.render().len() <= MAX_LOCATOR_BYTES),
+                AssertionKind::Quote => {
+                    text_ok(&self.value, MAX_QUOTE_BYTES)
+                        && self
+                            .locator
+                            .as_ref()
+                            .is_some_and(|l| l.render().len() <= MAX_LOCATOR_BYTES)
+                }
                 AssertionKind::Outcome => {
-                    matches!(self.value.as_str(), "met" | "not_met" | "undetermined" | "none")
+                    matches!(
+                        self.value.as_str(),
+                        "met" | "not_met" | "undetermined" | "none"
+                    )
                 }
                 AssertionKind::Conclusion => Conclusion::parse(&self.value).is_some(),
                 AssertionKind::Exception => ExceptionStatus::parse(&self.value).is_some(),
@@ -696,7 +725,8 @@ impl Block {
                         && pins.iter().all(Pin::is_valid)
                 }
                 Content::Coverage { summary_id } => {
-                    valid_prefixed(summary_id, "summary-") || valid_prefixed(summary_id, "esummary-")
+                    valid_prefixed(summary_id, "summary-")
+                        || valid_prefixed(summary_id, "esummary-")
                 }
                 Content::Exceptions { basis_id } => valid_prefixed(basis_id, "basis-"),
                 Content::Limitations => true,
@@ -1099,10 +1129,16 @@ pub enum Current {
     },
     /// Whether a newer summary or effective summary of the same population
     /// lineage (and sample) supersedes it.
-    Summary { superseded: bool },
-    Exception { status: ExceptionStatus },
+    Summary {
+        superseded: bool,
+    },
+    Exception {
+        status: ExceptionStatus,
+    },
     /// Whether a successor basis replaced the fact.
-    Fact { superseded: bool },
+    Fact {
+        superseded: bool,
+    },
     /// The original's currently registered digest as this reader sees it
     /// (None: not visible to it), and whether this viewer may read it now.
     Quote {
@@ -1430,7 +1466,9 @@ fn block_from(value: &JsonValue) -> Option<ProposedBlock> {
             None => ProposedContent::Malformed,
         },
         "coverage" if plain && body.is_empty() => ProposedContent::Coverage { summary_id: record },
-        "exceptions" if plain && body.is_empty() => ProposedContent::Exceptions { basis_id: record },
+        "exceptions" if plain && body.is_empty() => {
+            ProposedContent::Exceptions { basis_id: record }
+        }
         "limitations" if plain && body.is_empty() && record.is_empty() => {
             ProposedContent::Limitations
         }

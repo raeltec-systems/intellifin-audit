@@ -91,9 +91,15 @@ fn identifiers_resolve_only_to_records_and_template_sections() {
         narrative_figures("about 20 items failed", &ids),
         Err("20".into())
     );
-    assert_eq!(narrative_figures("Invoice 000123", &ids), Err("000123".into()));
+    assert_eq!(
+        narrative_figures("Invoice 000123", &ids),
+        Err("000123".into())
+    );
     // An identifier the version does not name does not resolve.
-    assert_eq!(narrative_figures("FY2025 results", &ids), Err("FY2025".into()));
+    assert_eq!(
+        narrative_figures("FY2025 results", &ids),
+        Err("FY2025".into())
+    );
     assert_eq!(narrative_figures("Under ISA 316", &ids), Err("316".into()));
     // A number in template text is never an identifier in a claim.
     assert_eq!(
@@ -108,14 +114,20 @@ fn identifiers_resolve_only_to_records_and_template_sections() {
     // Non-ASCII digits in narrative are refused.
     assert!(narrative_figures("\u{966}", &ids).is_err());
     assert!(is_decimal_digit('\u{1D7CE}'));
-    assert!(!is_decimal_digit('\u{2160}'), "a Roman numeral is Nl, not Nd");
+    assert!(
+        !is_decimal_digit('\u{2160}'),
+        "a Roman numeral is Nl, not Nd"
+    );
 }
 
 #[test]
 fn verdict_words_are_closed_whole_and_case_insensitive() {
     assert_eq!(verdict_word("The control PASSED."), Some("passed".into()));
     assert_eq!(verdict_word("not met"), Some("met".into()));
-    assert_eq!(verdict_word("No exception was seen"), Some("exception".into()));
+    assert_eq!(
+        verdict_word("No exception was seen"),
+        Some("exception".into())
+    );
     assert_eq!(verdict_word("non-compliant"), Some("compliant".into()));
     assert_eq!(verdict_word("The policy says approvals metre"), None);
     assert_eq!(verdict_word("Invoices require an approver"), None);
@@ -195,9 +207,19 @@ fn currency_is_derived_from_pins_with_one_closed_reason_each() {
         &hex("summary", '3'),
         "1000",
     );
-    assert!(currency(std::slice::from_ref(&count), &[Current::Summary { superseded: false }]).current());
+    assert!(
+        currency(
+            std::slice::from_ref(&count),
+            &[Current::Summary { superseded: false }]
+        )
+        .current()
+    );
     assert_eq!(
-        currency(std::slice::from_ref(&count), &[Current::Summary { superseded: true }]).reasons,
+        currency(
+            std::slice::from_ref(&count),
+            &[Current::Summary { superseded: true }]
+        )
+        .reasons,
         vec![RefreshReason::SummarySuperseded]
     );
     let exception = pin(
@@ -216,14 +238,28 @@ fn currency_is_derived_from_pins_with_one_closed_reason_each() {
         .reasons,
         vec![RefreshReason::ExceptionStatusChanged]
     );
-    let fact = pin(AssertionKind::Fact, RecordKind::Fact, &hex("fact", '5'), "J. Smith");
+    let fact = pin(
+        AssertionKind::Fact,
+        RecordKind::Fact,
+        &hex("fact", '5'),
+        "J. Smith",
+    );
     assert_eq!(
-        currency(std::slice::from_ref(&fact), &[Current::Fact { superseded: true }]).reasons,
+        currency(
+            std::slice::from_ref(&fact),
+            &[Current::Fact { superseded: true }]
+        )
+        .reasons,
         vec![RefreshReason::FactSuperseded]
     );
     // A quote whose original this viewer cannot read is withheld, never
     // stale; one no longer registered with its digest needs refresh.
-    let quote = pin(AssertionKind::Quote, RecordKind::Original, "ap-policy", "Invoices");
+    let quote = pin(
+        AssertionKind::Quote,
+        RecordKind::Original,
+        "ap-policy",
+        "Invoices",
+    );
     let withheld = currency(
         std::slice::from_ref(&quote),
         &[Current::Quote {
@@ -482,7 +518,10 @@ fn the_answer_field_is_strict_and_fits_the_answer_schema() {
     let decoded = decode_draft(&draft).unwrap();
     assert_eq!(decoded.base_version, None);
     assert_eq!(
-        (decoded.template_id.as_str(), decoded.template_version.as_str()),
+        (
+            decoded.template_id.as_str(),
+            decoded.template_version.as_str()
+        ),
         ("ap-wp", "1")
     );
     assert_eq!(

@@ -270,7 +270,10 @@ pub fn docx(view: &ExportView) -> Vec<u8> {
     body.push_str(&paragraph(None, &run(&view.source_revision())));
     body.push_str(&paragraph(
         None,
-        &run(&format!("Kind: {} · Template: {}", view.kind, view.template)),
+        &run(&format!(
+            "Kind: {} · Template: {}",
+            view.kind, view.template
+        )),
     ));
     body.push_str(&paragraph(None, &run(&view.review())));
     for section in &view.sections {
@@ -388,13 +391,48 @@ pub fn docx(view: &ExportView) -> Vec<u8> {
     };
     let styles = format!(
         "{DECLARATION}<w:styles xmlns:w=\"{W}\">{}{}{}{}{}{}{}{}</w:styles>",
-        style("Normal", "paragraph", "Normal", "<w:qFormat/><w:rPr><w:sz w:val=\"22\"/></w:rPr>"),
-        style("Title", "paragraph", "Title", "<w:basedOn w:val=\"Normal\"/><w:qFormat/><w:pPr><w:outlineLvl w:val=\"0\"/></w:pPr><w:rPr><w:b/><w:sz w:val=\"36\"/></w:rPr>"),
-        style("Heading1", "paragraph", "heading 1", "<w:basedOn w:val=\"Normal\"/><w:qFormat/><w:pPr><w:outlineLvl w:val=\"0\"/></w:pPr><w:rPr><w:b/><w:sz w:val=\"28\"/></w:rPr>"),
-        style("Heading2", "paragraph", "heading 2", "<w:basedOn w:val=\"Normal\"/><w:qFormat/><w:pPr><w:outlineLvl w:val=\"1\"/></w:pPr><w:rPr><w:b/><w:sz w:val=\"24\"/></w:rPr>"),
-        style("Note", "paragraph", "Note", "<w:basedOn w:val=\"Normal\"/><w:pPr><w:ind w:left=\"360\"/></w:pPr><w:rPr><w:sz w:val=\"18\"/></w:rPr>"),
-        style("Footer", "paragraph", "footer", "<w:basedOn w:val=\"Normal\"/><w:rPr><w:sz w:val=\"16\"/></w:rPr>"),
-        style("Hyperlink", "character", "Hyperlink", "<w:rPr><w:color w:val=\"0B57A4\"/><w:u w:val=\"single\"/></w:rPr>"),
+        style(
+            "Normal",
+            "paragraph",
+            "Normal",
+            "<w:qFormat/><w:rPr><w:sz w:val=\"22\"/></w:rPr>"
+        ),
+        style(
+            "Title",
+            "paragraph",
+            "Title",
+            "<w:basedOn w:val=\"Normal\"/><w:qFormat/><w:pPr><w:outlineLvl w:val=\"0\"/></w:pPr><w:rPr><w:b/><w:sz w:val=\"36\"/></w:rPr>"
+        ),
+        style(
+            "Heading1",
+            "paragraph",
+            "heading 1",
+            "<w:basedOn w:val=\"Normal\"/><w:qFormat/><w:pPr><w:outlineLvl w:val=\"0\"/></w:pPr><w:rPr><w:b/><w:sz w:val=\"28\"/></w:rPr>"
+        ),
+        style(
+            "Heading2",
+            "paragraph",
+            "heading 2",
+            "<w:basedOn w:val=\"Normal\"/><w:qFormat/><w:pPr><w:outlineLvl w:val=\"1\"/></w:pPr><w:rPr><w:b/><w:sz w:val=\"24\"/></w:rPr>"
+        ),
+        style(
+            "Note",
+            "paragraph",
+            "Note",
+            "<w:basedOn w:val=\"Normal\"/><w:pPr><w:ind w:left=\"360\"/></w:pPr><w:rPr><w:sz w:val=\"18\"/></w:rPr>"
+        ),
+        style(
+            "Footer",
+            "paragraph",
+            "footer",
+            "<w:basedOn w:val=\"Normal\"/><w:rPr><w:sz w:val=\"16\"/></w:rPr>"
+        ),
+        style(
+            "Hyperlink",
+            "character",
+            "Hyperlink",
+            "<w:rPr><w:color w:val=\"0B57A4\"/><w:u w:val=\"single\"/></w:rPr>"
+        ),
         style("Emphasis", "character", "Emphasis", "<w:rPr><w:i/></w:rPr>"),
     );
     let types = format!(
@@ -557,7 +595,11 @@ pub fn xlsx(view: &ExportView) -> Vec<u8> {
     ]];
     for c in &view.citations {
         let (file, locator, quote) = match (&c.quote, c.withheld) {
-            (_, true) => (String::new(), String::new(), "withheld for this viewer".into()),
+            (_, true) => (
+                String::new(),
+                String::new(),
+                "withheld for this viewer".into(),
+            ),
             (Some((f, l, q)), false) => (f.clone(), l.clone(), q.clone()),
             (None, false) => (String::new(), String::new(), String::new()),
         };
