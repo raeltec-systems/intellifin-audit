@@ -1055,7 +1055,8 @@ where
     S: AssessmentStore
         + CoverageStore
         + super::revision::RevisionStore
-        + super::exception::ExceptionStore,
+        + super::exception::ExceptionStore
+        + crate::work_product::WorkProductStore,
     C: CitationReader,
 {
     pub(super) async fn population_ref(

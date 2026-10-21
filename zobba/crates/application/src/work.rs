@@ -1274,6 +1274,17 @@ where
                     ),
                 ));
             }
+            // Story 24.4: the templates of the current binding and each work
+            // product's latest version, in a message with its own bound.
+            if let Some(text) = crate::work_product::work_products_message(
+                &boundary.methodology,
+                assessment.work_products.as_deref(),
+            ) {
+                fixed.push((
+                    Some(entry(crate::work_product::WORK_PRODUCTS_SOURCE, None)),
+                    user(crate::work_product::WORK_PRODUCTS_SOURCE, text),
+                ));
+            }
         }
         // Story 22.5: what the agent may read and what it has read this cycle,
         // as attributed data. Bounded by the reading service.

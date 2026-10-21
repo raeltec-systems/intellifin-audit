@@ -833,6 +833,74 @@ impl revision::RevisionStore for Store {
         })
     }
 }
+
+// Story 24.4: these tests draft no work product.
+macro_rules! no_work_products {
+    ($t:ty) => {
+        impl crate::work_product::WorkProductStore for $t {
+            async fn invocation_version(
+                &self,
+                _: &ClaimBasis,
+                _: &str,
+            ) -> Result<Option<crate::work_product::VersionRecord>, ReadingError> {
+                Ok(None)
+            }
+            async fn products(
+                &self,
+                _: &str,
+                _: &zobba_domain::identity::Scope,
+                _: &str,
+            ) -> Result<Vec<crate::work_product::ProductHead>, ReadingError> {
+                Ok(Vec::new())
+            }
+            async fn product(
+                &self,
+                _: &str,
+                _: &zobba_domain::identity::Scope,
+                _: &str,
+                _: &str,
+            ) -> Result<Option<crate::work_product::ProductHead>, ReadingError> {
+                Ok(None)
+            }
+            async fn version(
+                &self,
+                _: &str,
+                _: &zobba_domain::identity::Scope,
+                _: &str,
+                _: &str,
+            ) -> Result<Option<crate::work_product::VersionRecord>, ReadingError> {
+                Ok(None)
+            }
+            async fn records(
+                &self,
+                _: &str,
+                _: &zobba_domain::identity::Scope,
+                _: &str,
+                _: &crate::work_product::RecordQuery,
+            ) -> Result<crate::work_product::RecordsNow, ReadingError> {
+                Ok(Default::default())
+            }
+            async fn current(
+                &self,
+                _: &str,
+                _: &zobba_domain::identity::Scope,
+                _: &str,
+                _: &[String],
+            ) -> Result<Vec<crate::work_product::CurrentRow>, ReadingError> {
+                Ok(Vec::new())
+            }
+            async fn record_agent(
+                &self,
+                _: &ClaimBasis,
+                _: Option<&crate::work_product::ProductRecord>,
+                _: &zobba_domain::work_product::Version,
+            ) -> Result<crate::work_product::VersionRecord, crate::work_product::WriteError> {
+                Err(crate::work_product::WriteError::Refused)
+            }
+        }
+    };
+}
+no_work_products!(Store);
 impl exception::ExceptionStore for Store {
     async fn invocation_effective(
         &self,
@@ -1375,7 +1443,11 @@ fn evaluation<'a>(
         .unwrap_or_else(|| panic!("no evaluation of {criterion} for {subject}"))
 }
 fn feedback_of<
-    S: AssessmentStore + coverage::CoverageStore + revision::RevisionStore + exception::ExceptionStore,
+    S: AssessmentStore
+        + coverage::CoverageStore
+        + revision::RevisionStore
+        + exception::ExceptionStore
+        + crate::work_product::WorkProductStore,
     C: CitationReader,
 >(
     assessment: &Assessment<'_, S, C>,
@@ -2615,6 +2687,7 @@ fn a_refused_write_is_feedback_never_a_failed_cycle() {
             self.0.coverage_snapshot(b).await
         }
     }
+    no_work_products!(Racing<'_>);
     impl exception::ExceptionStore for Racing<'_> {
         async fn invocation_effective(
             &self,

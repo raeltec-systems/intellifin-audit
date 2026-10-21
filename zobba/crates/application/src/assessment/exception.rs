@@ -415,7 +415,8 @@ where
     S: AssessmentStore
         + super::coverage::CoverageStore
         + super::revision::RevisionStore
-        + ExceptionStore,
+        + ExceptionStore
+        + crate::work_product::WorkProductStore,
     C: CitationReader,
 {
     /// Step: effective summaries. Trusted code reruns the 24.2 partition

@@ -834,7 +834,8 @@ where
     S: AssessmentStore
         + super::coverage::CoverageStore
         + RevisionStore
-        + super::exception::ExceptionStore,
+        + super::exception::ExceptionStore
+        + crate::work_product::WorkProductStore,
     C: CitationReader,
 {
     /// Whether `to` is `from` or a version that succeeds it (walking its

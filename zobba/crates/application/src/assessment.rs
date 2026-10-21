@@ -65,7 +65,7 @@ pub const MAX_ASSESSMENT_FEEDBACK_BYTES: usize = 8 * 1024;
 
 use revision::{ChainHead, Planned, head_line};
 
-pub const ASSESSMENT_CONSTRAINTS: &str = "When you are ready to assess, use the assessment fields. Propose criteria in propose_criteria: an assertion, its authority (method: a requirement ID and the 0-based criterion ordinal of the bound method; or original: a registered original, an exact locator and the exact quote), the facts it needs with their types and units or ISO 4217 currency, an optional applicability test, and either a rule (one closed predicate that trusted code evaluates) or a judgment rubric. Propose one assessment basis in propose_basis: the objective, its criteria (IDs, or keys of criteria in the same answer), the business period, population references to registered originals, and limitations. Record typed facts in record_facts for one subject each (kept exactly, leading zeros included): the value in canonical form (decimals like 1250.00 with a unit or currency, dates YYYY-MM-DD, instants in RFC 3339 with the source offset), the closed parse rule that turns your quote into that value, and the exact quoted sources; or unavailable with a closed reason, or ambiguous with the number of candidates. Trusted code verifies each quote at its location and re-parses it; a value the source does not show is unsupported. Ask trusted code to evaluate rule criteria in evaluate; you never write a rule verdict. Propose judgments only for judgment criteria, with the facts that support and contradict them and your reasoning and uncertainty in words. Missing, unavailable or unsupported evidence is never an exception, and there is no confidence score. Records are immutable: to change one, propose a new version that supersedes it. To show exact coverage, propose one population manifest in propose_population once you have found the population source: the registered original, the sheet and 1-based header row of a workbook (no sheet and header row 1 for CSV or plain text), the subject unit, one to three grain columns whose exact cell texts form each subject key, an optional period column with its date or instant rule, typed value columns (header, fact name, type, parse rule, a decimal's unit or ISO 4217 currency and the column in the same row that shows it), whether the source is the whole population (a search export or a filtered view is not), and optionally a control count you cite at its exact location. Trusted code reads every row and counts; you never count, list members or decide a row's scope. Propose a sample in propose_sample (all_in_scope, judgmental, or seeded_random with a seed; trusted code recomputes a seeded selection), ask evaluate_population to evaluate a criterion of the population's basis over every in-scope member, and ask summarise for the coverage summary. Counts are exact; there are no percentages and no statistical inference, and a sample describes only the items it selected. When late evidence arrives, record the new fact on the same basis (a fact not yet recorded there) and ask evaluate or propose the judgment again: trusted code finds the current evaluation, derives why it changed and appends a revision, and records nothing when nothing changed. To correct a recorded fact, propose a successor basis that supersedes it, list it in carry_facts with the (subject, name) pairs to leave out, and record the corrected facts on the successor; every other fact is carried by reference with its original verification. A person may ask you to reconsider an evaluation: the outline shows their concern and their words as quoted data; reconsider by evaluating or judging again. You never choose a predecessor, a cause or a disposition. Every not_met result is an occurrence of a Task-scoped exception (criterion lineage and subject); its status is derived by trusted code, never stated by you: open, resolved by evidence (a later evaluation of new evidence meets the criterion), replaced by human judgment, or closed by a person's disposition with evidence. A later read that does not observe a failing subject keeps its exception open: that is not evidence of remediation. Ask summarise_effective for a population (and optionally a sample) to have trusted code rerun the coverage count over the current revisions and dispositions, with exception counts by status; you never count or close an exception.";
+pub const ASSESSMENT_CONSTRAINTS: &str = "When you are ready to assess, use the assessment fields. Propose criteria in propose_criteria: an assertion, its authority (method: a requirement ID and the 0-based criterion ordinal of the bound method; or original: a registered original, an exact locator and the exact quote), the facts it needs with their types and units or ISO 4217 currency, an optional applicability test, and either a rule (one closed predicate that trusted code evaluates) or a judgment rubric. Propose one assessment basis in propose_basis: the objective, its criteria (IDs, or keys of criteria in the same answer), the business period, population references to registered originals, and limitations. Record typed facts in record_facts for one subject each (kept exactly, leading zeros included): the value in canonical form (decimals like 1250.00 with a unit or currency, dates YYYY-MM-DD, instants in RFC 3339 with the source offset), the closed parse rule that turns your quote into that value, and the exact quoted sources; or unavailable with a closed reason, or ambiguous with the number of candidates. Trusted code verifies each quote at its location and re-parses it; a value the source does not show is unsupported. Ask trusted code to evaluate rule criteria in evaluate; you never write a rule verdict. Propose judgments only for judgment criteria, with the facts that support and contradict them and your reasoning and uncertainty in words. Missing, unavailable or unsupported evidence is never an exception, and there is no confidence score. Records are immutable: to change one, propose a new version that supersedes it. To show exact coverage, propose one population manifest in propose_population once you have found the population source: the registered original, the sheet and 1-based header row of a workbook (no sheet and header row 1 for CSV or plain text), the subject unit, one to three grain columns whose exact cell texts form each subject key, an optional period column with its date or instant rule, typed value columns (header, fact name, type, parse rule, a decimal's unit or ISO 4217 currency and the column in the same row that shows it), whether the source is the whole population (a search export or a filtered view is not), and optionally a control count you cite at its exact location. Trusted code reads every row and counts; you never count, list members or decide a row's scope. Propose a sample in propose_sample (all_in_scope, judgmental, or seeded_random with a seed; trusted code recomputes a seeded selection), ask evaluate_population to evaluate a criterion of the population's basis over every in-scope member, and ask summarise for the coverage summary. Counts are exact; there are no percentages and no statistical inference, and a sample describes only the items it selected. When late evidence arrives, record the new fact on the same basis (a fact not yet recorded there) and ask evaluate or propose the judgment again: trusted code finds the current evaluation, derives why it changed and appends a revision, and records nothing when nothing changed. To correct a recorded fact, propose a successor basis that supersedes it, list it in carry_facts with the (subject, name) pairs to leave out, and record the corrected facts on the successor; every other fact is carried by reference with its original verification. A person may ask you to reconsider an evaluation: the outline shows their concern and their words as quoted data; reconsider by evaluating or judging again. You never choose a predecessor, a cause or a disposition. Every not_met result is an occurrence of a Task-scoped exception (criterion lineage and subject); its status is derived by trusted code, never stated by you: open, resolved by evidence (a later evaluation of new evidence meets the criterion), replaced by human judgment, or closed by a person's disposition with evidence. A later read that does not observe a failing subject keeps its exception open: that is not evidence of remediation. Ask summarise_effective for a population (and optionally a sample) to have trusted code rerun the coverage count over the current revisions and dispositions, with exception counts by status; you never count or close an exception. To write a work product (a working paper, analysis, finding summary or report draft), use draft_work_product on a template of the current method binding (template id:version; the built-in neutral starter is labelled as not firm methodology): a title, a kind, the version it edits (empty for a new work product) and its blocks in order, each in a template section. A claim is a sentence in your own words with one to eight assertions naming the exact records it rests on: outcome (an evaluation ID that is its chain's current head, and its effective verdict met, not_met, undetermined or none), count (a summary or effective summary ID, a measure, a criterion ID for a per-criterion measure, and the exact stored count), conclusion (a summary ID and its stored conclusion code), exception (an exception ID and its derived status), fact (a supported fact ID and its exact canonical value), quote (a registered original, an exact locator and the whole value there) or period (a basis ID). Every figure of a claim's sentence must be one of its asserted values; heading, narrative and judgment text carry no figures (identifiers of records and template sections such as A1 or ISA 315 are allowed). A claim that rests only on quotes states no verdict. Label your own assessment as judgment; it is shown as Zobba's judgment, not checked against records. Place coverage (a summary ID) and exceptions (a basis ID) blocks where trusted code should render them; trusted code adds the limitations block. To edit, keep blocks of the latest version by their IDs (a person's block must be kept unchanged) and write new ones; trusted code checks every claim and records the version only if all pass, otherwise nothing is recorded and you are told which block failed and why. A claim needing refresh is refreshed by drafting a successor version.";
 
 /// The state of an analysis job a fact depends on, from its latest
 /// outcome event (a `collected` event repeats the outcome before it).
@@ -310,6 +310,10 @@ pub struct AssessmentContext {
     /// Story 24.3a: the pending reconsiderations, in their own message with
     /// its own fixed bound (never dropped by the outline's byte budget).
     pub reconsiderations: Option<String>,
+    /// Story 24.4: the work products' latest versions block by block, in
+    /// their own message with its own fixed bound (the templates of the
+    /// current binding are added where the binding is read).
+    pub work_products: Option<String>,
 }
 
 /// The trusted assessment tools: a store under claim custody and the 22.5
@@ -1401,7 +1405,11 @@ fn context_for<'f>(
 }
 
 impl<
-    S: AssessmentStore + coverage::CoverageStore + revision::RevisionStore + exception::ExceptionStore,
+    S: AssessmentStore
+        + coverage::CoverageStore
+        + revision::RevisionStore
+        + exception::ExceptionStore
+        + crate::work_product::WorkProductStore,
     C: CitationReader,
 > Assessment<'_, S, C>
 {
@@ -1431,6 +1439,12 @@ impl<
             .store
             .invocation_effective(basis, &invocation.id)
             .await?;
+        let existing_version = crate::work_product::WorkProductStore::invocation_version(
+            self.store,
+            basis,
+            &invocation.id,
+        )
+        .await?;
         let mut answer_coverage = coverage::AnswerCoverage::default();
         let mut feedback: Vec<String> = Vec::new();
         let mut progress = false;
@@ -2292,6 +2306,24 @@ impl<
                 &mut feedback,
             )
             .await?;
+        // 8. Story 24.4: the work-product draft, every claim checked against
+        // its records before a version is recorded (all or nothing).
+        for draft in answer
+            .draft_work_product
+            .iter()
+            .take(zobba_domain::work_product::MAX_DRAFTS)
+        {
+            progress |= crate::work_product::record_draft(
+                self.store,
+                self.reader,
+                basis,
+                binding,
+                invocation,
+                draft,
+                &mut feedback,
+            )
+            .await?;
+        }
         *self.feedback.lock().expect("feedback lock") = Some((invocation.id.clone(), feedback));
         // A reclaim finds this answer's records already written: the work
         // continues exactly as it did when they were first recorded.
@@ -2304,7 +2336,8 @@ impl<
             && existing_coverage.populations.is_empty()
             && existing_coverage.samples.is_empty()
             && existing_coverage.summaries.is_empty()
-            && existing_effective.is_empty());
+            && existing_effective.is_empty()
+            && existing_version.is_none());
         // Story 24.3a: a person's request to reconsider that the next request
         // will list (every listed one is always rendered, in its own message)
         // but this turn's request did not (it arrived during or after the
@@ -2371,10 +2404,44 @@ impl<
             .as_ref()
             .filter(|(_, lines)| !lines.is_empty())
             .map(|(_, lines)| feedback_text(lines));
+        // Story 24.4: each work product's latest version, with its claims'
+        // currency derived now.
+        let heads = crate::work_product::WorkProductStore::products(
+            self.store,
+            &basis.actor_id,
+            &basis.scope,
+            &basis.task_id,
+        )
+        .await?;
+        let latest: Vec<crate::work_product::VersionRecord> =
+            heads.iter().map(|h| h.head.clone()).collect();
+        let views = crate::work_product::views(
+            self.store,
+            &basis.actor_id,
+            &basis.scope,
+            &basis.task_id,
+            &latest,
+            None,
+        )
+        .await?;
+        let paired: Vec<_> = heads.into_iter().zip(views).collect();
+        let mut outline = outline_all(&snapshot, &covered, &revisions, &exceptions);
+        if !paired.is_empty() {
+            let lines: Vec<String> = paired
+                .iter()
+                .map(|(head, view)| crate::work_product::product_line(head, view))
+                .collect();
+            let lines = lines.join("\n");
+            outline = Some(match outline {
+                Some(text) => format!("{text}\nWork products:\n{lines}"),
+                None => format!("Work products:\n{lines}"),
+            });
+        }
         Ok(AssessmentContext {
-            outline: outline_all(&snapshot, &covered, &revisions, &exceptions),
+            outline,
             feedback,
             reconsiderations: revision::reconsiderations_text(&revisions),
+            work_products: crate::work_product::products_text(&paired),
         })
     }
 }
@@ -2691,7 +2758,11 @@ impl WorkAssessment for NoAssessment {
 }
 
 impl<
-    S: AssessmentStore + coverage::CoverageStore + revision::RevisionStore + exception::ExceptionStore,
+    S: AssessmentStore
+        + coverage::CoverageStore
+        + revision::RevisionStore
+        + exception::ExceptionStore
+        + crate::work_product::WorkProductStore,
     C: CitationReader,
 > WorkAssessment for Assessment<'_, S, C>
 {
