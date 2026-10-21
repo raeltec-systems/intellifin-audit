@@ -237,3 +237,54 @@ Verification after the last change (sequential, exact):
 9. Web:
    - `zobba/web/src/revision.ts` and `EvaluationReview.tsx`;
    - `tests/revision.test.mjs` and `tests/browser/revision.spec.ts`.
+
+## 24.3b delivered
+
+Built on `codex/zobba-foundation-batch` (commits 6124596d … HEAD). Migration
+0021 / catalogue v21 / `SCHEMA_VERSION` 21; 0001–0020 and v1–v20 unchanged
+(`published.rs` pins 0020 and v20).
+
+Tasks (24.3b parts):
+- [x] `domain/src/exception.rs` (+ tests) — exception ID, observation ordering, `resolves`, `exception_status` (open / resolved_by_evidence / replaced_by_human_judgment / closed_by_disposition, never stored), status words with the not-remediation sentence, exception disposition request/check (no waivers; a closure needs evidence), `summarise_effective` (24.2 partition over effective outcomes, per-criterion human/pending/undisposed/superseded counts, exception counts by status and distinct subjects, 50 listed, closed limitations in words, "at least" on an incomplete population), document round trip and consistency.
+- [x] `domain/src/citation.rs` — the `summarise_effective` answer field (≤2, excess dropped and counted); older answers still decode.
+- [x] `application/src/assessment/exception.rs`, `assessment.rs` (+ tests) — the effective-summary step (unchanged result records nothing; a database refusal is feedback, never a failed cycle; missing opportunities and foreign populations are feedback), outline lines counting exceptions by status per newest basis version, `effective_row`.
+- [x] `application/src/exception.rs` (+ tests) — the exception disposition command: write-time reference verification (shared `verified_references` from 24.3a), closing authority, idempotent key with authority rechecked on replay.
+- [x] `migrations/0021_assessment_exceptions.sql`, `infrastructure/src/assessment/exception.rs`, `schema-v21.catalog`, `lib.rs` (inventory, ACLs), `published.rs`, `tests/bootstrap.rs` — four tables, the writer trigger on evaluations/revisions/opportunities/dispositions, statement guards, the disposition guard (session, assignment, closing authority, status, lock, references), the effective-summary recount guard, immutability, RLS, backfill.
+- [x] `worker/tests/exception.rs` — synthetic-model end to end through the real worker, PostgreSQL and API (see AC evidence below), DB guard forgeries, a held-lock race and the backfill re-run; records `web/tests/fixtures/task-exceptions.json`.
+- [x] `api/src/exceptions.rs` + `openapi.json` + generated client — list, detail and disposition routes; unit tests for vocabulary and refusal statuses.
+- [x] `web/src/exceptions.ts`, `Exceptions.tsx`, `TaskWorkPanel.tsx` (+ `tests/exceptions.test.mjs`, `tests/browser/exceptions.spec.ts` with keyboard path and contrast); schema 21 in health, smoke and the browser runtime; the browser fixture reset deletes the four new tables.
+- [x] `zobba/README.md` — what is proven offline. No `generate.py` change was needed.
+
+Deviations (documented, each with tests):
+- Exception identity is (Task, criterion lineage root, subject): 24.1 evaluations record no subject unit (as for 24.3a chains).
+- An effective summary supersedes the newest effective summary of the same population **and sample**, not of the population lineage.
+- Population and criterion lineage walks are bounded at 64 versions (the 24.3a bound).
+- A judgment's population opportunity that is not met is also an occurrence (it is a not_met result naming the judgment), so a judged subject's exception typically holds two occurrences.
+- AC3's literal numbers are reached with an analogous AP-invoices scenario (rule `history` over the population and judgment `segregation`), because a rule-only fixture cannot exercise a person's replaced verdict. Its exact numbers are asserted below.
+- Rule-opportunity resolution by a newer population version is proven by the domain and SQL status rules; the worker proof resolves exceptions through judgment revisions.
+
+AC evidence (`worker/tests/exception.rs`, real worker and API):
+- After the judgments and population: 6 exceptions (5 subjects) from 11 occurrences; late approver evidence revises INV-0042 and INV-0055 to met (`inputs_changed`) → resolved_by_evidence; others open. First effective summary: exceptions_found_inconclusive; failing 3, meets 2, unresolved 4, failing opportunities 4; exceptions 4 open · 2 resolved; limitations unresolved (4), unreviewed model proposals (5); in scope 9.
+- A person's `replaced` met on 000123 → replaced_by_human_judgment; INV-0051 closed (accountable person, verified reference), reopened (Audit manager), closed again; refusals: no evidence 400, another Auditor 403 `exception_close_forbidden`, Admin alone 403, reopen of an open exception 409, unverified reference 409 with index, key conflict 409, closed twice 409, revoked replay 403; occurrences unchanged by every disposition.
+- A reconsideration request on INV-0054 wakes the Task; the second effective summary supersedes the first: failing 2 (a closure never drops INV-0051's failure), meets 3, unresolved 4, failing opportunities 3; human replaced 1, pending 1, undisposed 3; exceptions 2 open · 2 resolved · 1 replaced · 1 closed over 5 subjects; limitations unresolved (4), pending reconsideration (1), unreviewed model proposals (3). A third, unchanged request records nothing.
+- DB: owner/admin/reset UPDATE and DELETE/TRUNCATE refusals on all four tables, runtime DELETE denied, RLS by engagement; forged exception (wrong ID, no not_met result) refused in a two-row insert with exactly one bad row (the good row alone accepted); forged occurrences refused; runtime forged exception refused; a disposition without the person's session refused; closing a closed exception refused; two concurrent closes serialise on the exception lock and the second is refused; forged effective summaries (an exception moved between statuses; a failing count dropped) refused by the recount; the backfill block reproduces every exception and occurrence.
+
+## Suggested Review Order (24.3b)
+
+1. `zobba/migrations/0021_assessment_exceptions.sql`:
+   - helpers (`assessment_criterion_root`, `assessment_population_lineage`, `assessment_exception_key`, `assessment_evidence`);
+   - `assessment_exception_observations`, `assessment_exception_status`, `assessment_effective_outcomes`;
+   - the backfill block, `exception_record` (writer) and `exception_batch` (statement guards);
+   - `exception_guard` (session, assignment, closing authority, lock, status, references) and `effective_guard` (recount);
+   - immutability, RLS and grants.
+2. `zobba/crates/domain/src/exception.rs`: `exception_status`, `resolves`, `latest_observation`, `ExceptionDispositionRequest::check`, `summarise_effective`, `EffectiveSummary::is_consistent` (+ `exception/tests.rs`).
+3. `zobba/crates/application/src/assessment/exception.rs` (`effective_summarise`, `effective_row`, lines) and its call in `assessment.rs`; `application/src/exception.rs` (command) and the shared `disposition::verified_references`.
+4. `zobba/crates/infrastructure/src/assessment/exception.rs`: `ENTRIES` + `entry_of` (status derived in Rust from the database's observations), `outcomes_of`, `record_effective`, `may_close`, `refused`, the viewer reads; `lib.rs` inventory and ACL checks.
+5. `zobba/crates/api/src/exceptions.rs`: routes, refusal statuses, `effective_response`.
+6. `zobba/crates/worker/tests/exception.rs`: the end-to-end proof and `database_guards_refuse_altered_exception_records`.
+7. Web: `zobba/web/src/exceptions.ts`, `Exceptions.tsx`; `tests/exceptions.test.mjs`, `tests/browser/exceptions.spec.ts`.
+
+Verification (24.3b, sequential, one database):
+- `cargo fmt --check` clean; `cargo clippy --workspace --all-targets --locked -- -D warnings` clean.
+- `cargo test --workspace --locked --no-fail-fast -- --test-threads=1`: 765 passed, 3 failed. All three were the 24.1/24.2/24.3a worker proofs, whose loopback answers lacked the new `summarise_effective` key (the strict structured-output schema requires every key, as with `carry_facts`), so turn 1 failed. Fixed in the fixtures; reruns: `--test assessment` 3/3, `--test revision` 3/3, `--test coverage` 3/3 (the coverage proof also stopped mid-cycle once after the fix, with no recorded failure step; four later instrumented runs and the full file passed, and the cause was not found — named, not claimed fixed).
+- `--test exception` 3/3 (the new proof). `pnpm --dir web check`: 231 tests, 229 pass, 2 fail (the known IPv6 loopback cases). `pnpm --dir web build`: ok. Browser: `exceptions.spec.ts` 4/4; `revision`, `coverage`, `assessment`, `investigation` specs 11/11. `python3 scripts/smoke.py`: passed (schema 21).
