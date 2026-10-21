@@ -133,6 +133,11 @@ jobs:
           digest=$(zobba/deploy/qualification/analysis/general/build.sh 127.0.0.1:5000/zobba/analysis-general:ci | tail -n 1)
           test "$digest" = "sha256:8241deca19d20b576c0d4b2ad75deac753492d335de45d284766df3d5666ea5f"
           docker pull "127.0.0.1:5000/zobba/analysis-general@$digest"
+      - name: Install LibreOffice headless (Story 24.4 export fixtures must open in it)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libreoffice-writer-nogui libreoffice-calc-nogui
+          soffice --version
       - name: Test Rust, immutable S3 protocol, PostgreSQL refusal cases and hostile analysis fixtures
         run: |
           source "$ZOBBA_FIXTURE_DIR/env.sh"
