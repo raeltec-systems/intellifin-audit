@@ -75,3 +75,10 @@ Remaining critical path: Milestone A — 24.2 (in progress), 24.3a, 24.3b, 24.4,
 
 Remaining critical path: Milestone A — 24.4 (in review), 24.5, 24.6, 21.7, 25.1,
 25.2, 25.3; Milestone B — 22.7, 21.5, 23.1–23.6, then 25.4.
+
+## Owner decision 2026-10-21 (later): who builds screens
+
+- All user-interface work (web screens, components, browser tests) is built by Opus
+  5.5 agents, never handed to Codex. Codex may take back-end work (domain, database,
+  API, worker) only on an owner-approved plan, and Fable's reviewers check it before
+  it is merged into the working branch.
