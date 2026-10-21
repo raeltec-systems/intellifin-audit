@@ -330,7 +330,9 @@ impl RefreshReason {
             }
             Self::ExceptionStatusChanged => "the exception's derived status changed",
             Self::FactSuperseded => "a successor basis replaced the fact it cites",
-            Self::SourceWithdrawn => "the original it quotes was corrected by a replacement source",
+            Self::SourceWithdrawn => {
+                "the original it quotes is no longer registered with its digest, or a replacement source corrects it"
+            }
             Self::BasisSuperseded => "a successor basis supersedes the basis it cites",
         }
     }

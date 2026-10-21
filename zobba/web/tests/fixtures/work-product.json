@@ -11,6 +11,7 @@
           "conclusion"
         ],
         "neutral": false,
+        "platform_refresh": "0",
         "recorded_us": "1760000000000000",
         "refresh": "0",
         "review_state": "Draft",
@@ -118,8 +119,9 @@
   "version": {
     "author_kind": "agent",
     "author_label": "Zobba (agent)",
+    "change_request": null,
     "digest": "0000000000000000000000000000000000000000000000000000000000000008",
-    "figure_rule": "statement_figures_v1",
+    "figure_rule": "statement_figures_v2",
     "id": "wpv-0000000000000000000000000000000000000003",
     "kind": "working_paper",
     "limitations": [
@@ -131,6 +133,7 @@
       "conclusion"
     ],
     "newer_version_id": null,
+    "platform_refresh": "0",
     "predecessor_id": null,
     "product": {
       "author_kind": "agent",
@@ -141,6 +144,7 @@
         "conclusion"
       ],
       "neutral": false,
+      "platform_refresh": "0",
       "recorded_us": "1760000000000000",
       "refresh": "0",
       "review_state": "Draft",
@@ -152,6 +156,7 @@
       "version": "1",
       "version_id": "wpv-0000000000000000000000000000000000000003"
     },
+    "proposals": [],
     "recorded_us": "1760000000000000",
     "refresh": "0",
     "review_state": "Draft",
@@ -169,9 +174,13 @@
             "label": null,
             "label_words": null,
             "lines": [],
+            "ordinal": "0",
             "record_id": null,
+            "refresh": [],
+            "refresh_words": [],
             "section_id": "objective",
-            "text": "Approval testing"
+            "text": "Approval testing",
+            "text_withheld": false
           },
           {
             "author_id": "0000000000000000000000000000000000000000000000000000000000000009",
@@ -184,9 +193,13 @@
             "label": "narrative",
             "label_words": null,
             "lines": [],
+            "ordinal": "1",
             "record_id": null,
+            "refresh": [],
+            "refresh_words": [],
             "section_id": "objective",
-            "text": "Test whether every invoice above the threshold was approved."
+            "text": "Test whether every invoice above the threshold was approved.",
+            "text_withheld": false
           }
         ],
         "id": "objective",
@@ -207,9 +220,13 @@
             "label": "judgment",
             "label_words": "Zobba's judgment — not checked against records",
             "lines": [],
+            "ordinal": "2",
             "record_id": null,
+            "refresh": [],
+            "refresh_words": [],
             "section_id": "results",
-            "text": "Approvals appear weak across the population; segregation needs a closer look."
+            "text": "Approvals appear weak across the population; segregation needs a closer look.",
+            "text_withheld": false
           },
           {
             "author_id": "0000000000000000000000000000000000000000000000000000000000000009",
@@ -267,9 +284,13 @@
             "label": null,
             "label_words": null,
             "lines": [],
+            "ordinal": "3",
             "record_id": null,
+            "refresh": [],
+            "refresh_words": [],
             "section_id": "results",
-            "text": "15 of 1,000 applicable invoices had no recorded approver."
+            "text": "15 of 1,000 applicable invoices had no recorded approver.",
+            "text_withheld": false
           },
           {
             "author_id": "0000000000000000000000000000000000000000000000000000000000000009",
@@ -286,9 +307,13 @@
               "Subjects: 20 failing · 960 meeting every applicable criterion · 20 unresolved · 200 not applicable to any",
               "Conclusion: exceptions found inconclusive"
             ],
+            "ordinal": "4",
             "record_id": "summary-0000000000000000000000000000000000000007",
+            "refresh": [],
+            "refresh_words": [],
             "section_id": "results",
-            "text": null
+            "text": null,
+            "text_withheld": false
           },
           {
             "author_id": "0000000000000000000000000000000000000000000000000000000000000009",
@@ -329,9 +354,13 @@
             "label": null,
             "label_words": null,
             "lines": [],
+            "ordinal": "5",
             "record_id": null,
+            "refresh": [],
+            "refresh_words": [],
             "section_id": "results",
-            "text": "Segregation of duties was not met for INV-0042."
+            "text": "Segregation of duties was not met for INV-0042.",
+            "text_withheld": false
           },
           {
             "author_id": "0000000000000000000000000000000000000000000000000000000000000009",
@@ -372,9 +401,13 @@
             "label": null,
             "label_words": null,
             "lines": [],
+            "ordinal": "6",
             "record_id": null,
+            "refresh": [],
+            "refresh_words": [],
             "section_id": "results",
-            "text": "INV-0055 did not meet the segregation criterion."
+            "text": "INV-0055 did not meet the segregation criterion.",
+            "text_withheld": false
           },
           {
             "author_id": "0000000000000000000000000000000000000000000000000000000000000009",
@@ -428,9 +461,13 @@
             "label": null,
             "label_words": null,
             "lines": [],
+            "ordinal": "7",
             "record_id": null,
+            "refresh": [],
+            "refresh_words": [],
             "section_id": "results",
-            "text": "The policy requires an approver above 1,000.00 USD."
+            "text": "The policy requires an approver above 1,000.00 USD.",
+            "text_withheld": false
           },
           {
             "author_id": "0000000000000000000000000000000000000000000000000000000000000009",
@@ -471,9 +508,13 @@
             "label": null,
             "label_words": null,
             "lines": [],
+            "ordinal": "8",
             "record_id": null,
+            "refresh": [],
+            "refresh_words": [],
             "section_id": "results",
-            "text": "The coverage summary concludes that exceptions were found and the result is inconclusive."
+            "text": "The coverage summary concludes that exceptions were found and the result is inconclusive.",
+            "text_withheld": false
           },
           {
             "author_id": "0000000000000000000000000000000000000000000000000000000000000009",
@@ -486,12 +527,16 @@
             "label": null,
             "label_words": null,
             "lines": [
-              "Exceptions under basis basis-0000000000000000000000000000000000000019: 27 open · 0 resolved by evidence · 0 replaced by human judgment · 0 closed by disposition",
+              "Exceptions of the criteria of basis basis-0000000000000000000000000000000000000019 (Task-wide, by derived status): 27 open · 0 resolved by evidence · 0 replaced by human judgment · 0 closed by disposition",
               "An exception not observed in the latest revision stays open; this is not evidence of remediation."
             ],
+            "ordinal": "9",
             "record_id": "basis-0000000000000000000000000000000000000019",
+            "refresh": [],
+            "refresh_words": [],
             "section_id": "results",
-            "text": null
+            "text": null,
+            "text_withheld": false
           }
         ],
         "id": "results",
@@ -516,9 +561,13 @@
               "An exception not observed in the latest revision stays open; this is not evidence of remediation.",
               "Section Conclusion is required by the template and is not completed in this version."
             ],
+            "ordinal": "10",
             "record_id": null,
+            "refresh": [],
+            "refresh_words": [],
             "section_id": "conclusion",
-            "text": null
+            "text": null,
+            "text_withheld": false
           }
         ],
         "id": "conclusion",

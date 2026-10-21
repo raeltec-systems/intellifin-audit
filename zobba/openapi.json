@@ -7818,6 +7818,191 @@
         ]
       }
     },
+    "/engagements/{engagement_id}/tasks/{task_id}/work-products/{product_id}/proposals/{proposal_id}/decision": {
+      "post": {
+        "tags": [
+          "work_products"
+        ],
+        "operationId": "decide_work_product_proposal",
+        "parameters": [
+          {
+            "name": "engagement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "product_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "proposal_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organisation_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "description": "Exact configured HTTPS application origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "description": "Current session-bound token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Expected-Actor",
+            "in": "header",
+            "description": "Required refusal fence for the current session actor",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkProductDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The decision (an exact retry returns the original); a confirmation records the agent's version, changed by the agent at this person's request, with the request and confirmation IDs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkProductDecisionOutcomeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkProductErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "access_denied: only the person who asked decides, as a currently assigned Auditor or Audit manager in their own session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkProductErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkProductErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "stale_base, a closed refusal reason, or work_product_edit_conflict (already decided)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkProductErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkProductErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      }
+    },
     "/engagements/{engagement_id}/tasks/{task_id}/work-products/{product_id}/versions": {
       "post": {
         "tags": [
@@ -22788,7 +22973,7 @@
       },
       "WorkProductAssertionResponse": {
         "type": "object",
-        "description": "One checked assertion of a claim. A quote's value is withheld from a\nviewer who may not read its original now.",
+        "description": "One checked assertion of a claim. A quote's value (or a fact's) is\nwithheld from a viewer who may not read its original (or any of its\nverified sources) now.",
         "required": [
           "kind",
           "record_kind",
@@ -22887,18 +23072,22 @@
         "description": "One block of a version.",
         "required": [
           "id",
+          "ordinal",
           "section_id",
           "kind",
           "label",
           "label_words",
           "text",
+          "text_withheld",
           "record_id",
           "author_kind",
           "author_id",
           "author_label",
           "authored_in_version",
           "claim",
-          "lines"
+          "lines",
+          "refresh",
+          "refresh_words"
         ],
         "properties": {
           "author_id": {
@@ -22954,13 +23143,33 @@
               "type": "string"
             },
             "description": "Platform lines of a coverage, exceptions or limitations block.",
-            "maxItems": 256
+            "maxItems": 512
+          },
+          "ordinal": {
+            "type": "string",
+            "description": "Its 0-based position in the version (an editor keeps this order).",
+            "pattern": "^[0-9]+$"
           },
           "record_id": {
             "type": [
               "string",
               "null"
             ]
+          },
+          "refresh": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Closed reasons a coverage or exceptions block needs refresh now.",
+            "maxItems": 6
+          },
+          "refresh_words": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 6
           },
           "section_id": {
             "type": "string"
@@ -22970,7 +23179,49 @@
               "string",
               "null"
             ],
-            "description": "A heading's or narrative's text, or a claim's sentence."
+            "description": "A heading's or narrative's text, or a claim's sentence (absent when\nthe sentence restates a record withheld for this viewer)."
+          },
+          "text_withheld": {
+            "type": "boolean",
+            "description": "The claim's sentence is withheld for this viewer."
+          }
+        }
+      },
+      "WorkProductChangeRequestResponse": {
+        "type": "object",
+        "description": "The person's confirmed request an agent's version answers.",
+        "required": [
+          "requested_by",
+          "requested_by_label",
+          "request_id",
+          "proposal_id",
+          "confirmation_id",
+          "words"
+        ],
+        "properties": {
+          "confirmation_id": {
+            "type": "string",
+            "pattern": "^wpd-[0-9a-f]{40}$"
+          },
+          "proposal_id": {
+            "type": "string",
+            "pattern": "^wpp-[0-9a-f]{40}$"
+          },
+          "request_id": {
+            "type": "string"
+          },
+          "requested_by": {
+            "type": "string"
+          },
+          "requested_by_label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "words": {
+            "type": "string",
+            "description": "\"Changed by the agent at <person>'s request\"."
           }
         }
       },
@@ -23035,7 +23286,78 @@
           },
           "withheld": {
             "type": "boolean",
-            "description": "A quote this viewer may not read now (withheld, never stale)."
+            "description": "A quote or fact this viewer may not read now (withheld, never stale):\nthe claim's sentence, which restates it, is withheld too."
+          }
+        }
+      },
+      "WorkProductDecisionOutcomeResponse": {
+        "type": "object",
+        "description": "The recorded decision and, when it confirms, the agent's version.",
+        "required": [
+          "decision",
+          "version"
+        ],
+        "properties": {
+          "decision": {
+            "$ref": "#/components/schemas/WorkProductDecisionResponse"
+          },
+          "version": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkProductVersionResponse"
+              }
+            ]
+          }
+        }
+      },
+      "WorkProductDecisionRequest": {
+        "type": "object",
+        "description": "A person's decision on the agent's proposal to change their blocks.",
+        "required": [
+          "key",
+          "decision"
+        ],
+        "properties": {
+          "decision": {
+            "type": "string",
+            "description": "`confirm` records the agent's version; `decline` records nothing else."
+          },
+          "key": {
+            "type": "string",
+            "description": "Request key, idempotent per actor and bound to the session.",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "WorkProductDecisionResponse": {
+        "type": "object",
+        "description": "A person's decision on a proposal.",
+        "required": [
+          "id",
+          "decision",
+          "recorded_us"
+        ],
+        "properties": {
+          "decision": {
+            "type": "string",
+            "description": "`confirmed` or `declined`."
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^wpd-[0-9a-f]{40}$"
+          },
+          "recorded_us": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9]+$"
           }
         }
       },
@@ -23199,6 +23521,91 @@
           }
         }
       },
+      "WorkProductProposalChangeResponse": {
+        "type": "object",
+        "description": "One block a proposal changes or removes: its text before and after.",
+        "required": [
+          "block_id",
+          "change",
+          "before",
+          "after"
+        ],
+        "properties": {
+          "after": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "before": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "block_id": {
+            "type": "string",
+            "pattern": "^blk-[0-9a-f]{40}$"
+          },
+          "change": {
+            "type": "string",
+            "description": "`changed` or `removed`."
+          }
+        }
+      },
+      "WorkProductProposalResponse": {
+        "type": "object",
+        "description": "The agent's proposal, at this viewer's request, to change or remove\ntheir blocks of this version. Only the person who asked sees it and may\nconfirm or decline it.",
+        "required": [
+          "id",
+          "request_id",
+          "version_id",
+          "title",
+          "changes",
+          "decision",
+          "recorded_us"
+        ],
+        "properties": {
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkProductProposalChangeResponse"
+            },
+            "maxItems": 64
+          },
+          "decision": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkProductDecisionResponse"
+              }
+            ]
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^wpp-[0-9a-f]{40}$"
+          },
+          "recorded_us": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9]+$"
+          },
+          "request_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "version_id": {
+            "type": "string",
+            "pattern": "^wpv-[0-9a-f]{40}$"
+          }
+        }
+      },
       "WorkProductRefusalItemResponse": {
         "type": "object",
         "description": "A refusal of a person's edit, per block (or the edit as a whole).",
@@ -23312,6 +23719,7 @@
           "review_state",
           "claims",
           "refresh",
+          "platform_refresh",
           "missing_required",
           "recorded_us"
         ],
@@ -23342,6 +23750,11 @@
           "neutral": {
             "type": "boolean",
             "description": "The built-in neutral starter or a neutral source: \"Neutral starter\n(not firm methodology)\"."
+          },
+          "platform_refresh": {
+            "type": "string",
+            "description": "Exact count of coverage and exceptions blocks needing refresh now.",
+            "pattern": "^[0-9]+$"
           },
           "recorded_us": {
             "type": [
@@ -23447,9 +23860,12 @@
           "template",
           "figure_rule",
           "review_state",
+          "change_request",
+          "proposals",
           "sections",
           "limitations",
           "refresh",
+          "platform_refresh",
           "withheld",
           "missing_required",
           "newer_version_id",
@@ -23465,12 +23881,24 @@
               "null"
             ]
           },
+          "change_request": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkProductChangeRequestResponse",
+                "description": "The person's confirmed request when the agent changed their blocks."
+              }
+            ]
+          },
           "digest": {
             "type": "string",
             "description": "SHA-256 of the version's canonical document."
           },
           "figure_rule": {
-            "type": "string"
+            "type": "string",
+            "description": "`statement_figures_v1` or `statement_figures_v2`."
           },
           "id": {
             "type": "string",
@@ -23500,6 +23928,11 @@
             ],
             "description": "The latest version's ID when this is not the latest (a newer version\nis announced, never swapped in)."
           },
+          "platform_refresh": {
+            "type": "string",
+            "description": "Exact count of coverage and exceptions blocks needing refresh now.",
+            "pattern": "^[0-9]+$"
+          },
           "predecessor_id": {
             "type": [
               "string",
@@ -23508,6 +23941,14 @@
           },
           "product": {
             "$ref": "#/components/schemas/WorkProductSummaryResponse"
+          },
+          "proposals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkProductProposalResponse"
+            },
+            "description": "Proposals on this version the viewer asked for (at most 16).",
+            "maxItems": 16
           },
           "recorded_us": {
             "type": [

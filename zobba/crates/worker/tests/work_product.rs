@@ -753,7 +753,17 @@ fn draft(
     base: &str,
     blocks: Vec<serde_json::Value>,
 ) -> serde_json::Value {
-    serde_json::json!({"title": title, "kind": "working_paper", "template": template, "base": base, "blocks": blocks})
+    draft_at(title, template, base, "", blocks)
+}
+/// A draft that names a person's Guide request (to change their blocks).
+fn draft_at(
+    title: &str,
+    template: &str,
+    base: &str,
+    request: &str,
+    blocks: Vec<serde_json::Value>,
+) -> serde_json::Value {
+    serde_json::json!({"title": title, "kind": "working_paper", "template": template, "base": base, "request": request, "blocks": blocks})
 }
 fn quote_assertion() -> serde_json::Value {
     assertion("quote", "ap-policy", "", "bytes:0-48", POLICY_QUOTE)

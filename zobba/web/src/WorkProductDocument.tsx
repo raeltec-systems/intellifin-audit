@@ -3,10 +3,10 @@ import type { AccessError, Session } from './auth';
 import type { Scope } from './engagements';
 import { Citation } from './Citation';
 import {
-  AGENT_LABEL, MAX_BYTES, blockKindLabel, bytes, downloadExport, editBlocks, editErrorLabel, exportErrorLabel, formats, kindLabel,
+  AGENT_LABEL, MAX_BYTES, blockKindLabel, bytes, decideProposal, downloadExport, editBlocks, editErrorLabel, exportErrorLabel, formats, kindLabel,
   readSupport, readVersion, refusalLabel, requestExport, saveEdit, textProblem,
 } from './work-product';
-import type { DraftBlock, EditResult, WorkProductBlock, WorkProductExport, WorkProductSupport, WorkProductVersion } from './work-product';
+import type { DecisionResult, DraftBlock, EditResult, WorkProductBlock, WorkProductExport, WorkProductProposal, WorkProductSupport, WorkProductVersion } from './work-product';
 
 interface Props {
   taskId: string;
@@ -57,7 +57,9 @@ export function WorkProductDocument({ taskId, scope, session, product, version, 
       <p className="context-note">{kindLabel[view.kind]} · version {number(view.version)} · <span className="review-state">{view.review_state} — not reviewed</span> · {view.author_kind === 'agent' ? `drafted by ${AGENT_LABEL}` : `edited by ${view.author_label ?? 'a person'}`}</p>
       <p className="context-note">Template: {view.template} · source revision {short(view.id)} · sha256 {short(view.digest)}</p>
       <p className={view.refresh === '0' ? 'context-note' : 'needs-refresh'} role="status">{view.refresh === '0' ? 'Every claim is current.' : `${plural(view.refresh, 'claim needs', 'claims need')} refresh: the records it cites changed after this version was recorded.`}</p>
-      {view.withheld !== '0' ? <p className="context-note">{plural(view.withheld, 'claim rests', 'claims rest')} on a quote you may not read now; its text is withheld for you and the claim is not stale.</p> : null}
+      {view.platform_refresh !== '0' ? <p className="needs-refresh">{plural(view.platform_refresh, 'coverage or exceptions block needs', 'coverage or exceptions blocks need')} refresh: the summary or basis it shows changed after this version was recorded.</p> : null}
+      {view.withheld !== '0' ? <p className="context-note">{plural(view.withheld, 'claim rests', 'claims rest')} on a quote or fact you may not read now; what it restates is withheld for you and the claim is not stale.</p> : null}
+      {view.change_request ? <p className="context-note">{view.change_request.words} (request {short(view.change_request.request_id)}, confirmation {short(view.change_request.confirmation_id)}).</p> : null}
       {view.newer_version_id ? <p className="newer-version" role="status">A newer version ({number(view.product.version)}) of this work product was recorded. This one is shown unchanged.{' '}
         <button type="button" className="text-button" onClick={() => onOpenVersion(view.newer_version_id!)}>Open version {number(view.product.version)}</button></p> : null}
       {saved ? <p role="status" className="disposition-saved">{saved}</p> : null}
@@ -67,6 +69,7 @@ export function WorkProductDocument({ taskId, scope, session, product, version, 
         <button type="button" className="text-button" onClick={onClose}>Close</button>
       </div>
     </header>
+    {view.proposals.length ? <Proposals view={view} taskId={taskId} scope={scope} session={session} product={product} onOpenVersion={onOpenVersion} /> : null}
     {editing ? <Editor view={view} taskId={taskId} scope={scope} session={session} product={product}
       onCancel={() => setEditing(false)}
       onSaved={next => { setEditing(false); setSaved(`Saved as version ${number(next.version)}. The earlier version is unchanged.`); onOpenVersion(next.id); }} />
@@ -109,10 +112,12 @@ function BlockView({ block: b, scope, accessReady, onSourceAccessFailure, select
       const c = b.claim!;
       const sources = c.assertions.flatMap(a => a.source ? [a.source] : []);
       return <div className={`work-product-claim${selected ? ' selected' : ''}${c.current ? '' : ' stale'}`} id={`claim-${b.id}`}>
-        <p><span className="claim-number">[{c.number}]</span> <span className="retained-text">{b.text}</span>
+        <p><span className="claim-number">[{c.number}]</span> {b.text_withheld
+          ? <span className="context-note">Its sentence is withheld for you: it restates a record you may not read now.</span>
+          : <span className="retained-text">{b.text}</span>}
           {sources.length ? <> <Citation scope={scope} sources={sources} accessReady={accessReady} onSourceAccessFailure={onSourceAccessFailure} /></> : null}{by}</p>
         <p className={c.current ? 'claim-current' : 'claim-refresh'}>{c.current ? 'Current: its records say what it says.' : `Needs refresh: ${c.refresh_words.join('; ')}.`}</p>
-        {c.withheld ? <p className="context-note">A quote it rests on is withheld for you; the claim is not stale.</p> : null}
+        {c.withheld ? <p className="context-note">A quote or fact it rests on is withheld for you; the claim is not stale.</p> : null}
         {c.coverage ? <p className="coverage-line">{c.coverage}</p> : null}
         <button ref={opener} type="button" className="text-button" aria-expanded={selected} aria-controls={selected ? `support-${b.id}` : undefined} onClick={onSupport}>
           {selected ? `Hide support of claim ${c.number}` : `Show support of claim ${c.number}`}
@@ -123,6 +128,7 @@ function BlockView({ block: b, scope, accessReady, onSourceAccessFailure, select
     case 'coverage': case 'exceptions': case 'limitations':
       return <div className={`work-product-platform work-product-${b.kind}`}>
         <p className="platform-label">{blockKindLabel[b.kind]}</p>
+        {b.refresh_words.length ? <p className="claim-refresh">Needs refresh: {b.refresh_words.join('; ')}. The lines below are as this version recorded them.</p> : null}
         {b.lines.length ? <ul>{b.lines.map((line, i) => <li key={i}>{line}</li>)}</ul> : <p className="context-note">Nothing to list.</p>}
       </div>;
     default: return null;
@@ -174,9 +180,11 @@ function Editor({ view, taskId, scope, session, product, onCancel, onSaved }: {
   view: WorkProductVersion; taskId: string; scope: Scope; session: Session; product: string; onCancel: () => void; onSaved: (version: WorkProductVersion) => void;
 }) {
   const id = useId();
-  const initial = useMemo<(DraftBlock & { block: WorkProductBlock; section: string })[]>(() => view.sections.flatMap(s => s.blocks.map(b => ({
-    id: b.id, kind: b.kind, text: b.text, original: b.text, block: b, section: s.title,
-  }))), [view]);
+  // In the version's own order (never re-sorted by section, which would
+  // reorder blocks silently on save).
+  const initial = useMemo<(DraftBlock & { block: WorkProductBlock; section: string })[]>(() => view.sections
+    .flatMap(s => s.blocks.map(b => ({ id: b.id, kind: b.kind, text: b.text, original: b.text, block: b, section: s.title })))
+    .sort((a, b) => Number(BigInt(a.block.ordinal) - BigInt(b.block.ordinal))), [view]);
   const [draft, setDraft] = useState(initial);
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState<EditResult | null>(null);
@@ -200,9 +208,16 @@ function Editor({ view, taskId, scope, session, product, onCancel, onSaved }: {
   const problems = draft.map(b => b.text === null ? null : textProblem(b.kind, b.text));
   const unchanged = draft.length === initial.length && draft.every((b, i) => b.id === initial[i]!.id && b.text === b.original);
   const disabled = saving || unchanged || problems.some(p => p !== null);
+  // A block moves past the nearest block of its own section: blocks of
+  // other sections are shown in their own sections, so passing them would
+  // change nothing a reader sees.
+  const neighbour = (index: number, delta: number) => {
+    for (let i = index + delta; i >= 0 && i < draft.length; i += delta) if (draft[i]!.section === draft[index]!.section) return i;
+    return -1;
+  };
   const move = (index: number, delta: number) => {
-    const target = index + delta;
-    if (target < 0 || target >= draft.length) return;
+    const target = neighbour(index, delta);
+    if (target < 0) return;
     focusAfter.current = `${id}-${draft[index]!.id}-${delta < 0 ? 'up' : 'down'}`;
     setDraft(d => { const next = [...d]; [next[index], next[target]] = [next[target]!, next[index]!]; return next; });
   };
@@ -235,6 +250,7 @@ function Editor({ view, taskId, scope, session, product, onCancel, onSaved }: {
     <p className="context-note">Edit headings, narrative and claim sentences, or remove and reorder blocks. A claim keeps its records: its edited sentence is checked again and may state only figures its records hold. Narrative may not state figures. Saving records a new version; this one stays unchanged.</p>
     <ol className="editor-blocks">{draft.map((b, index) => {
       const writable = b.text !== null;
+      const withheld = b.block.text_withheld;
       const max = writable ? MAX_BYTES[b.kind as 'heading' | 'narrative' | 'claim'] : 0;
       const label = `${blockKindLabel[b.kind]}${b.block.label === 'judgment' ? ' (Zobba’s judgment)' : ''}${b.block.claim ? ` [${b.block.claim.number}]` : ''} in ${b.section}`;
       const fieldId = `${id}-${b.id}-text`;
@@ -249,11 +265,12 @@ function Editor({ view, taskId, scope, session, product, onCancel, onSaved }: {
             : <textarea id={fieldId} ref={index === 0 ? el => { first.current = el; } : undefined} rows={b.kind === 'claim' ? 2 : 4} value={b.text!} aria-describedby={`${fieldId}-bytes`} aria-invalid={problem || refused.length ? true : undefined}
               onChange={e => { const value = e.target.value; setDraft(d => d.map((x, i) => i === index ? { ...x, text: value } : x)); }} />}
           <p id={`${fieldId}-bytes`} className={problem ? 'form-error' : 'context-note'} aria-live="polite">{problem ?? `${bytes(b.text!).toLocaleString('en-GB')} of ${max.toLocaleString('en-GB')} bytes`}</p>
-        </> : <p className="editor-platform">{label} · written by the platform from its records</p>}
+        </> : withheld ? <p className="editor-platform">{label} · its sentence is withheld for you, so you may keep, move or remove it but not rewrite it</p>
+          : <p className="editor-platform">{label} · written by the platform from its records</p>}
         {refused.map((r, i) => <p key={i} role="alert" className="form-error">Refused: {refusalLabel[r.reason]}{r.detail ? ` (${r.detail})` : ''}.</p>)}
         <div className="editor-controls" role="group" aria-label={`Arrange ${label}`}>
-          <button type="button" id={`${id}-${b.id}-up`} className="text-button" disabled={index === 0} onClick={() => move(index, -1)}>Move up</button>
-          <button type="button" id={`${id}-${b.id}-down`} className="text-button" disabled={index === draft.length - 1} onClick={() => move(index, 1)}>Move down</button>
+          <button type="button" id={`${id}-${b.id}-up`} className="text-button" disabled={neighbour(index, -1) < 0} onClick={() => move(index, -1)}>Move up</button>
+          <button type="button" id={`${id}-${b.id}-down`} className="text-button" disabled={neighbour(index, 1) < 0} onClick={() => move(index, 1)}>Move down</button>
           {b.kind !== 'limitations' ? <button type="button" id={`${id}-${b.id}-remove`} className="text-button" onClick={() => remove(index)}>Remove</button> : null}
         </div>
       </li>;
@@ -275,12 +292,18 @@ function Exports({ view, taskId, scope, session, product }: { view: WorkProductV
   const [message, setMessage] = useState('');
   const [links, setLinks] = useState<{ record: WorkProductExport; url: string }[]>([]);
   const urls = useRef(new Set<string>());
+  // A request whose reply was lost keeps its key: retrying it returns the
+  // export already made, never a second one.
+  const pending = useRef(new Map<string, string>());
   useEffect(() => () => { for (const url of urls.current) URL.revokeObjectURL(url); }, []);
   const run = async (format: (typeof formats)[number]) => {
     setBusy(format); setMessage('');
     const controller = new AbortController();
+    const key = pending.current.get(format) ?? newKey();
+    pending.current.set(format, key);
     try {
-      const made = await requestExport(scope, taskId, product, view.id, format, newKey(), session, controller.signal);
+      const made = await requestExport(scope, taskId, product, view.id, format, key, session, controller.signal);
+      pending.current.delete(format);
       if (!made.ok) { setMessage(exportErrorLabel[made.error] ?? exportErrorLabel.work_product_export_unavailable!); return; }
       const got = await downloadExport(scope, taskId, product, made.export, session, controller.signal);
       if (!got.ok) { setMessage(exportErrorLabel[got.error] ?? exportErrorLabel.work_product_export_unavailable!); return; }
@@ -294,11 +317,62 @@ function Exports({ view, taskId, scope, session, product }: { view: WorkProductV
   };
   const file = (record: WorkProductExport) => `${view.title.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'work-product'}-v${view.version}.${record.format}`;
   return <section className="work-product-exports" aria-label="Exports">
-    <p className="context-note">An export is rendered by the platform from this exact version, with its source revision, citations, coverage and limitations. Quotes you may not read are withheld in it.</p>
+    <p className="context-note">An export is rendered by the platform from this exact version, frozen as it was recorded: its names, counts and what needed refresh then. Quotes and facts you may not read are withheld in it.</p>
     <div className="work-product-actions">{formats.map(f => <button key={f} type="button" disabled={busy !== null} onClick={() => void run(f)}>
       {busy === f ? `Exporting ${f.toUpperCase()}…` : `Export ${f.toUpperCase()}`}</button>)}</div>
     {message ? <p role="status">{message}</p> : null}
     {links.length ? <ul>{links.map(l => <li key={l.record.id}><a href={l.url} download={file(l.record)}>Download {file(l.record)}</a>
       <span className="context-note"> · sha256 {short(l.record.digest)}{l.record.refresh_count !== '0' ? ` · ${plural(l.record.refresh_count, 'claim')} marked needs refresh` : ''}</span></li>)}</ul> : null}
+  </section>;
+}
+
+/// The agent's proposals, at this person's request, to change or remove
+/// their blocks: each shows before and after and is recorded as a version
+/// only when the person confirms it here.
+function Proposals({ view, taskId, scope, session, product, onOpenVersion }: {
+  view: WorkProductVersion; taskId: string; scope: Scope; session: Session; product: string; onOpenVersion: (version: string) => void;
+}) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [message, setMessage] = useState('');
+  const [decided, setDecided] = useState(new Map<string, string>());
+  const keys = useRef(new Map<string, string>());
+  const decide = async (p: WorkProductProposal, decision: 'confirm' | 'decline') => {
+    setBusy(p.id); setMessage('');
+    const marker = `${p.id}:${decision}`;
+    const key = keys.current.get(marker) ?? newKey();
+    keys.current.set(marker, key);
+    let result: DecisionResult;
+    try {
+      result = await decideProposal(scope, taskId, product, p.id, decision, key, session, new AbortController().signal);
+    } catch {
+      setBusy(null);
+      setMessage('The decision may not have been recorded. Decide again: the same request is not recorded twice.');
+      return;
+    }
+    keys.current.delete(marker);
+    setBusy(null);
+    if (!result.ok) { setMessage(editErrorLabel[result.error] ?? editErrorLabel.work_product_refused!); return; }
+    setDecided(d => new Map(d).set(p.id, result.decision.decision));
+    if (result.version) onOpenVersion(result.version.id);
+    else setMessage('Declined. Nothing was changed.');
+  };
+  return <section className="work-product-proposals" aria-label="Proposed changes to your blocks">
+    <p className="context-note">Zobba proposes, at your request, to change or remove blocks you wrote. Nothing changes until you confirm.</p>
+    {view.proposals.map(p => {
+      const state = decided.get(p.id) ?? p.decision?.decision ?? null;
+      return <div key={p.id} className="work-product-proposal">
+        <p><strong>Proposal for your request {short(p.request_id)}</strong>{state ? <span className="context-note"> · {state}</span> : null}</p>
+        <ul>{p.changes.map(c => <li key={c.block_id}>
+          {c.change === 'removed' ? 'Remove' : 'Change'} block {short(c.block_id)}
+          <p className="context-note">Before: <span className="retained-text">{c.before ?? '(not text)'}</span></p>
+          {c.change === 'changed' ? <p className="context-note">After: <span className="retained-text">{c.after ?? '(not text)'}</span></p> : null}
+        </li>)}</ul>
+        {state === null ? <div className="work-product-actions">
+          <button type="button" disabled={busy !== null} onClick={() => void decide(p, 'confirm')}>{busy === p.id ? 'Recording…' : 'Confirm the change'}</button>
+          <button type="button" className="text-button" disabled={busy !== null} onClick={() => void decide(p, 'decline')}>Decline</button>
+        </div> : null}
+      </div>;
+    })}
+    {message ? <p role="status">{message}</p> : null}
   </section>;
 }

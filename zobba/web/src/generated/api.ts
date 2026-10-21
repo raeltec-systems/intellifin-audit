@@ -837,6 +837,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/engagements/{engagement_id}/tasks/{task_id}/work-products/{product_id}/proposals/{proposal_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["decide_work_product_proposal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/engagements/{engagement_id}/tasks/{task_id}/work-products/{product_id}/versions": {
         parameters: {
             query?: never;
@@ -3927,8 +3943,9 @@ export interface components {
             rule: string;
         };
         /**
-         * @description One checked assertion of a claim. A quote's value is withheld from a
-         *     viewer who may not read its original now.
+         * @description One checked assertion of a claim. A quote's value (or a fact's) is
+         *     withheld from a viewer who may not read its original (or any of its
+         *     verified sources) now.
          */
         WorkProductAssertionResponse: {
             criterion_id: string | null;
@@ -3965,10 +3982,30 @@ export interface components {
             label_words: string | null;
             /** @description Platform lines of a coverage, exceptions or limitations block. */
             lines: string[];
+            /** @description Its 0-based position in the version (an editor keeps this order). */
+            ordinal: string;
             record_id: string | null;
+            /** @description Closed reasons a coverage or exceptions block needs refresh now. */
+            refresh: string[];
+            refresh_words: string[];
             section_id: string;
-            /** @description A heading's or narrative's text, or a claim's sentence. */
+            /**
+             * @description A heading's or narrative's text, or a claim's sentence (absent when
+             *     the sentence restates a record withheld for this viewer).
+             */
             text: string | null;
+            /** @description The claim's sentence is withheld for this viewer. */
+            text_withheld: boolean;
+        };
+        /** @description The person's confirmed request an agent's version answers. */
+        WorkProductChangeRequestResponse: {
+            confirmation_id: string;
+            proposal_id: string;
+            request_id: string;
+            requested_by: string;
+            requested_by_label: string | null;
+            /** @description "Changed by the agent at <person>'s request". */
+            words: string;
         };
         /** @description A claim's currency, derived now (never stored). */
         WorkProductClaimResponse: {
@@ -3983,8 +4020,30 @@ export interface components {
             refresh_words: string[];
             /** @description What each record says, in the platform's words. */
             support: string[];
-            /** @description A quote this viewer may not read now (withheld, never stale). */
+            /**
+             * @description A quote or fact this viewer may not read now (withheld, never stale):
+             *     the claim's sentence, which restates it, is withheld too.
+             */
             withheld: boolean;
+        };
+        /** @description The recorded decision and, when it confirms, the agent's version. */
+        WorkProductDecisionOutcomeResponse: {
+            decision: components["schemas"]["WorkProductDecisionResponse"];
+            version: null | components["schemas"]["WorkProductVersionResponse"];
+        };
+        /** @description A person's decision on the agent's proposal to change their blocks. */
+        WorkProductDecisionRequest: {
+            /** @description `confirm` records the agent's version; `decline` records nothing else. */
+            decision: string;
+            /** @description Request key, idempotent per actor and bound to the session. */
+            key: string;
+        };
+        /** @description A person's decision on a proposal. */
+        WorkProductDecisionResponse: {
+            /** @description `confirmed` or `declined`. */
+            decision: string;
+            id: string;
+            recorded_us: string | null;
         };
         /**
          * @description One block a person keeps, in order: a base block by ID, with new text
@@ -4032,6 +4091,28 @@ export interface components {
             /** @description The digest of the requesting viewer's withheld set. */
             withheld_digest: string;
         };
+        /** @description One block a proposal changes or removes: its text before and after. */
+        WorkProductProposalChangeResponse: {
+            after: string | null;
+            before: string | null;
+            block_id: string;
+            /** @description `changed` or `removed`. */
+            change: string;
+        };
+        /**
+         * @description The agent's proposal, at this viewer's request, to change or remove
+         *     their blocks of this version. Only the person who asked sees it and may
+         *     confirm or decline it.
+         */
+        WorkProductProposalResponse: {
+            changes: components["schemas"]["WorkProductProposalChangeResponse"][];
+            decision: null | components["schemas"]["WorkProductDecisionResponse"];
+            id: string;
+            recorded_us: string | null;
+            request_id: string;
+            title: string;
+            version_id: string;
+        };
         /** @description A refusal of a person's edit, per block (or the edit as a whole). */
         WorkProductRefusalItemResponse: {
             /** Format: int32 */
@@ -4075,6 +4156,8 @@ export interface components {
              *     (not firm methodology)".
              */
             neutral: boolean;
+            /** @description Exact count of coverage and exceptions blocks needing refresh now. */
+            platform_refresh: string;
             recorded_us: string | null;
             /** @description Exact count of claims needing refresh now. */
             refresh: string;
@@ -4107,8 +4190,10 @@ export interface components {
         WorkProductVersionResponse: {
             author_kind: string;
             author_label: string | null;
+            change_request: null | components["schemas"]["WorkProductChangeRequestResponse"];
             /** @description SHA-256 of the version's canonical document. */
             digest: string;
+            /** @description `statement_figures_v1` or `statement_figures_v2`. */
             figure_rule: string;
             id: string;
             kind: string;
@@ -4119,8 +4204,12 @@ export interface components {
              *     is announced, never swapped in).
              */
             newer_version_id: string | null;
+            /** @description Exact count of coverage and exceptions blocks needing refresh now. */
+            platform_refresh: string;
             predecessor_id: string | null;
             product: components["schemas"]["WorkProductSummaryResponse"];
+            /** @description Proposals on this version the viewer asked for (at most 16). */
+            proposals: components["schemas"]["WorkProductProposalResponse"][];
             recorded_us: string | null;
             refresh: string;
             review_state: string;
@@ -8434,6 +8523,103 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkProductErrorResponse"];
+                };
+            };
+        };
+    };
+    decide_work_product_proposal: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+            };
+            header: {
+                /** @description Exact configured HTTPS application origin */
+                Origin: string;
+                /** @description Current session-bound token */
+                "X-CSRF-Token": string;
+                /** @description Required refusal fence for the current session actor */
+                "X-Expected-Actor": string;
+            };
+            path: {
+                engagement_id: string;
+                task_id: string;
+                product_id: string;
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkProductDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description The decision (an exact retry returns the original); a confirmation records the agent's version, changed by the agent at this person's request, with the request and confirmation IDs */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkProductDecisionOutcomeResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkProductErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description access_denied: only the person who asked decides, as a currently assigned Auditor or Audit manager in their own session */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkProductErrorResponse"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkProductErrorResponse"];
+                };
+            };
+            /** @description stale_base, a closed refusal reason, or work_product_edit_conflict (already decided) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkProductErrorResponse"];
                 };
             };
             429: {
