@@ -1,0 +1,11 @@
+AP approval roles 2026. Synthetic test data: every name and value is invented.
+Who requested each invoice of the AP invoice listing (AP invoices.xlsx):
+INV-0042 was requested by J. Smith.
+INV-0050 was requested by P. Brown.
+INV-0051 was requested by P. Brown.
+INV-0052 was requested by B. Lee.
+INV-0053 was requested by J. Smith.
+INV-0054 was requested by B. Lee.
+INV-0055 was requested by B. Lee.
+INV-0057 was requested by A. Jones.
+Rule AP-2: the approver of an invoice must not be the person who requested it.
