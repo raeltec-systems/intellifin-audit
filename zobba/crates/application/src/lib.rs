@@ -19,6 +19,7 @@ pub mod reading;
 pub mod skills;
 pub mod task;
 pub mod work;
+pub mod work_product;
 use std::{fmt, future::Future};
 use zobba_domain::SchemaVersion;
 
