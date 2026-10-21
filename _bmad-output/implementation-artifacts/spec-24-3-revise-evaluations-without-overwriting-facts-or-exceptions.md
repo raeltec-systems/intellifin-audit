@@ -323,6 +323,14 @@ Reports: `review-24-3b-blind-hunter.md` (BH), `review-24-3b-edge-case-hunter.md`
 
 Evidence (round 1, `worker/tests/exception.rs`): after the judgments and population, 6 exceptions over 5 subjects; INV-0042 resolved only once a person accepted its met proposal; INV-0055's unreviewed met proposal kept open (`proposed_met`), then a person's `replaced undetermined` kept it open (`person_undetermined`), then `replaced not_met` added a human occurrence; first effective summary failing 3 · meets 2 · unresolved 4 · failing opportunities 4, exceptions 6 open, limitations unresolved (4), unreviewed (5), open exceptions (6). After the reconsideration turn: INV-0051's closure reopened by a revision reading unseen evidence; INV-0054's closure stands over a revision reading the same evidence; `invoices-v2` with the judgment criterion adds no occurrence (9 occurrences in all); second effective summary failing 3 · meets 2 · unresolved 4, human replaced 2, undisposed 2, exceptions 3 open · 1 resolved · 1 replaced · 1 closed over 5 subjects, conclusion `exceptions_found_inconclusive`. Scale: a 20,000-invoice population (19,000 not in the history) records 19,000 exceptions and its effective summary (failing 19,000, unresolved 1,000); the list reads in 1.7 s, the detail in 0.2 s, the turn in about 75 s.
 
+Verification (round 1, sequential, one disposable `_test` database, after the last code change):
+- `cargo fmt --check` clean; `cargo clippy --workspace --all-targets --locked -- -D warnings` clean.
+- `cargo test --workspace --locked --no-fail-fast -- --test-threads=1` (line-table debug info to fit the disk): 773 passed, 2 failed — the infrastructure unit test `an_observation_is_read_exactly_or_not_at_all` (its JSON lacked the new review state) and the scale proof's list bound (3.3 s against a 3 s assertion under the full suite). Both fixed; reruns: infrastructure `assessment::exception` 2/2, `--test exception` 3/3.
+- `cargo test -p zobba-worker --test coverage` ten times in a row: **10/10 passed**.
+- `pnpm --dir web check`: 232 tests, 230 pass, 2 fail (the known IPv6 loopback cases); `pnpm --dir web build`: ok.
+- Browser: `exceptions.spec.ts` 4/4; `assessment`, `coverage`, `investigation`, `revision` specs 11/11.
+- `python3 scripts/smoke.py`: passed (schema 21).
+
 ## Suggested Review Order (24.3b)
 
 1. `zobba/migrations/0021_assessment_exceptions.sql`:
