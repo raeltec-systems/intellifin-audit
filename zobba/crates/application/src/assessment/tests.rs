@@ -4769,3 +4769,180 @@ fn a_carry_over_the_fact_bound_is_refused_with_feedback() {
     );
     assert!(store.state.lock().unwrap().carries.is_empty());
 }
+
+// ------------------------------------------------------------ Story 24.3b
+
+fn effective_answer(population: &str) -> CitedAnswer {
+    effective_on("b1", population)
+}
+fn effective_on(basis: &str, population: &str) -> CitedAnswer {
+    use zobba_domain::coverage::SummaryRequest;
+    CitedAnswer {
+        summarise_effective: vec![SummaryRequest {
+            basis: basis.into(),
+            population: population.into(),
+            sample: None,
+        }],
+        ..CitedAnswer::default()
+    }
+}
+fn effective_turn(
+    store: &Store,
+    assessment: &Assessment<'_, Store, Reader>,
+    n: u32,
+    answer: &CitedAnswer,
+) -> bool {
+    let _ = store;
+    run(assessment.after_answer(
+        &basis("p1"),
+        &binding("binding-1"),
+        &invocation(&format!("turn-{n}"), "binding-1"),
+        answer,
+        &ModelCancellation::new(),
+    ))
+    .unwrap()
+}
+
+#[test]
+fn an_effective_summary_reruns_the_count_with_exceptions_and_an_unchanged_rerun_records_nothing() {
+    use zobba_domain::exception::{ExceptionEntry, ExceptionStatus, LatestObserved};
+    let (store, reader) = (Store::default(), Reader::new());
+    let assessment = Assessment::new(&store, &reader);
+    let mut answer = coverage_answer("Invoices", Some(("cell:Summary!B1", "5")));
+    answer.summarise_effective = effective_answer("pop1").summarise_effective;
+    // The database writes an exception for the failing opportunity; this
+    // store holds it as the database would derive it.
+    assert!(effective_turn(&store, &assessment, 1, &answer));
+    let (population, root, basis_id) = {
+        let state = store.state.lock().unwrap();
+        (
+            state.populations[0].id.clone(),
+            state.criteria[0].id.clone(),
+            state.bases[0].id.clone(),
+        )
+    };
+    {
+        let state = store.state.lock().unwrap();
+        assert_eq!(state.effective.len(), 1, "recorded with the 24.2 summary");
+        let e = &state.effective[0].effective;
+        // The same partition and denominators as the 24.2 summary over the
+        // same outcomes.
+        assert_eq!(e.summary.partition, state.summaries[0].summary.partition);
+        assert_eq!(e.summary.counts, state.summaries[0].summary.counts);
+        assert_eq!(e.exceptions.total, 0);
+        assert_eq!(state.effective[0].supersedes, None);
+    }
+    store.state.lock().unwrap().exceptions.push(ExceptionEntry {
+        id: format!("exc-{}", "1".repeat(40)),
+        subject: "INV-0001".into(),
+        criterion_root: root,
+        status: ExceptionStatus::Open,
+        latest_observed: LatestObserved::NotMet,
+    });
+    // An exception changes the effective summary: a new version supersedes
+    // the first.
+    let progressed = effective_turn(
+        &store,
+        &assessment,
+        2,
+        &effective_on(&basis_id, &population),
+    );
+    assert!(progressed, "{}", feedback_of(&assessment));
+    let first = {
+        let state = store.state.lock().unwrap();
+        assert_eq!(state.effective.len(), 2);
+        assert_eq!(state.effective[1].effective.exceptions.open, 1);
+        assert_eq!(
+            state.effective[1].supersedes.as_deref(),
+            Some(state.effective[0].id.as_str())
+        );
+        state.effective[1].id.clone()
+    };
+    // Nothing changed since: nothing is recorded and the answer says so.
+    assert!(!effective_turn(
+        &store,
+        &assessment,
+        3,
+        &effective_on(&basis_id, &population)
+    ));
+    assert_eq!(store.state.lock().unwrap().effective.len(), 2);
+    let feedback = feedback_of(&assessment);
+    assert!(
+        feedback.contains(&format!("is unchanged since {first}")),
+        "{feedback}"
+    );
+}
+
+#[test]
+fn a_recount_the_database_refuses_is_feedback_never_a_failed_cycle() {
+    let (store, reader) = (Store::default(), Reader::new());
+    let assessment = Assessment::new(&store, &reader);
+    assert!(effective_turn(
+        &store,
+        &assessment,
+        1,
+        &coverage_answer("Invoices", Some(("cell:Summary!B1", "5")))
+    ));
+    let (population, basis_id) = {
+        let state = store.state.lock().unwrap();
+        (state.populations[0].id.clone(), state.bases[0].id.clone())
+    };
+    store.state.lock().unwrap().refuse_effective = true;
+    assert!(!effective_turn(
+        &store,
+        &assessment,
+        2,
+        &effective_on(&basis_id, &population)
+    ));
+    assert!(store.state.lock().unwrap().effective.is_empty());
+    let feedback = feedback_of(&assessment);
+    assert!(
+        feedback.contains("the platform's recount disagreed"),
+        "{feedback}"
+    );
+    assert!(
+        feedback.contains("Ask summarise_effective again"),
+        "{feedback}"
+    );
+}
+
+#[test]
+fn an_effective_summary_needs_every_criterion_evaluated_and_a_population_of_the_task() {
+    let (store, reader) = (Store::default(), Reader::new());
+    let assessment = Assessment::new(&store, &reader);
+    let mut answer = coverage_answer("Invoices", Some(("cell:Summary!B1", "5")));
+    answer.evaluate_population.truncate(1);
+    answer.summarise.clear();
+    answer.summarise_effective = effective_answer("pop1").summarise_effective;
+    assert!(effective_turn(&store, &assessment, 1, &answer));
+    assert!(store.state.lock().unwrap().effective.is_empty());
+    let feedback = feedback_of(&assessment);
+    assert!(feedback.contains("not yet evaluated over it"), "{feedback}");
+    assert!(!effective_turn(
+        &store,
+        &assessment,
+        2,
+        &effective_answer("pop-unknown")
+    ));
+    let feedback = feedback_of(&assessment);
+    assert!(
+        feedback.contains("it is not a population of this Task"),
+        "{feedback}"
+    );
+}
+
+#[test]
+fn the_outline_counts_exceptions_by_status_and_says_at_least_for_an_incomplete_population() {
+    use super::exception::{ExceptionSnapshot, exception_lines};
+    let lines = exception_lines(&ExceptionSnapshot {
+        summaries: vec![],
+        total_summaries: 0,
+        bases: [("basis-1".to_string(), [2, 1, 0, 3])]
+            .into_iter()
+            .collect(),
+    });
+    assert_eq!(
+        lines,
+        vec!["- exceptions under basis basis-1: 2 open · 1 resolved by evidence · 0 replaced by human judgment · 3 closed by disposition".to_string()]
+    );
+}

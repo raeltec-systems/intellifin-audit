@@ -715,7 +715,8 @@ fn row4(subject: &str, key: &str, status: &str, latest: &str) -> (String, String
 /// its document.
 type EffectiveRow = (String, String, Vec<i32>, Option<String>, serde_json::Value);
 async fn effective_rows(admin: &mut PgConnection) -> Vec<EffectiveRow> {
-    let rows: Vec<(String, String, Vec<i32>, Option<String>, String)> = sqlx::query_as("SELECT id,conclusion,ARRAY[failing_subjects,meets_every_applicable,unresolved_subjects,not_applicable_to_any,failing_opportunities,human_replaced,pending_reconsideration,undisposed,superseded,exceptions_total,exceptions_open,exceptions_resolved,exceptions_replaced,exceptions_closed,exception_subjects,in_scope],supersedes,document::text FROM public.assessment_effective_summaries ORDER BY created_us, id COLLATE \"C\"")
+    type Stored = (String, String, Vec<i32>, Option<String>, String);
+    let rows: Vec<Stored> = sqlx::query_as("SELECT id,conclusion,ARRAY[failing_subjects,meets_every_applicable,unresolved_subjects,not_applicable_to_any,failing_opportunities,human_replaced,pending_reconsideration,undisposed,superseded,exceptions_total,exceptions_open,exceptions_resolved,exceptions_replaced,exceptions_closed,exception_subjects,in_scope],supersedes,document::text FROM public.assessment_effective_summaries ORDER BY created_us, id COLLATE \"C\"")
         .fetch_all(admin)
         .await
         .unwrap();
@@ -1496,7 +1497,15 @@ fn embedded(text: &str, ids: &mut Vec<String>) -> String {
     let mut out = String::new();
     let mut rest = text;
     'scan: while !rest.is_empty() {
-        for prefix in ["crit-", "basis-", "pop-", "eval-", "rev-", "exc-", "esummary-"] {
+        for prefix in [
+            "crit-",
+            "basis-",
+            "pop-",
+            "eval-",
+            "rev-",
+            "exc-",
+            "esummary-",
+        ] {
             if let Some(tail) = rest.strip_prefix(prefix)
                 && tail.len() >= 40
                 && tail.as_bytes()[..40]
@@ -1542,7 +1551,18 @@ fn exceptions_fixture(body: &serde_json::Value) {
                 if let Some((prefix, rest)) = text.split_once('-')
                     && matches!(
                         prefix,
-                        "crit" | "basis" | "fact" | "eval" | "rev" | "disp" | "carry" | "exc" | "esummary" | "pop" | "xdisp" | "summary"
+                        "crit"
+                            | "basis"
+                            | "fact"
+                            | "eval"
+                            | "rev"
+                            | "disp"
+                            | "carry"
+                            | "exc"
+                            | "esummary"
+                            | "pop"
+                            | "xdisp"
+                            | "summary"
                     )
                     && rest.len() == 40
                     && hex(rest)
@@ -1605,12 +1625,20 @@ fn exceptions_fixture(body: &serde_json::Value) {
         .as_array()
         .unwrap()
         .iter()
-        .map(|e| (e["id"].as_str().unwrap().to_string(), e["first_source_kind"].as_str().unwrap().to_string()))
+        .map(|e| {
+            (
+                e["id"].as_str().unwrap().to_string(),
+                e["first_source_kind"].as_str().unwrap().to_string(),
+            )
+        })
         .collect();
     let order = |e: &serde_json::Value| {
         (
             e["subject"].as_str().unwrap_or_default().to_string(),
-            first.get(e["id"].as_str().unwrap_or_default()).cloned().unwrap_or_default(),
+            first
+                .get(e["id"].as_str().unwrap_or_default())
+                .cloned()
+                .unwrap_or_default(),
         )
     };
     if let Some(list) = body["exceptions"].as_array_mut() {
@@ -1690,6 +1718,7 @@ const OCCURRENCE_COLUMNS: &str = "organisation_id,client_id,engagement_id,task_i
 /// an exception disposition outside a person's own session or authority,
 /// and an effective summary whose counts disagree with its own recount. Its
 /// backfill reproduces every occurrence from the stored results.
+#[allow(clippy::too_many_arguments)]
 async fn database_guards_refuse_altered_exception_records(
     admin: &mut PgConnection,
     owner: &mut PgConnection,

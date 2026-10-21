@@ -2231,6 +2231,80 @@ ZOBBA_UPDATE_REVISION_FIXTURE=1 cargo test -p zobba-worker --test revision --loc
 pnpm --dir web exec playwright test tests/browser/revision.spec.ts
 ```
 
+## Task-scoped exceptions and the effective summary (Story 24.3b)
+
+Schema 21 is additive; migrations 0001–0020 and catalogues v1–v20 are
+unchanged (`published.rs` pins 0020 and v20 too).
+
+- **Exceptions and occurrences.** An exception is one Task, criterion lineage
+  (its first version's ID) and subject (the subject unit is not part of it: 24.1
+  evaluations record none — the same documented deviation as 24.3a chains).
+  Every not_met result — a 24.1 evaluation, a revision, a population
+  opportunity (rule or judgment), or a person's `replaced` not_met — adds an
+  immutable occurrence, written by the database (`exception_record`) in the
+  statement that records the result, set-based over the statement's rows; the
+  first creates the exception. Migration 0021 backfills every published
+  not_met result exactly as the writer would (the worker proof deletes all
+  exception records under the fixture reset, runs the migration's own
+  backfill block and gets the same rows back). A direct insert that differs
+  in any column from what the writer derives is refused by statement-level
+  guards; the four tables refuse UPDATE, DELETE and TRUNCATE even for the
+  owner, except DELETE/TRUNCATE under the explicit reset in a `*_test`
+  database.
+- **Derived status, never stored.** On every read the database lists an
+  exception's current observations (`assessment_exception_observations`:
+  every chain head of its lineage and subject under its newest disposition,
+  and for the latest version of each population lineage that held the subject
+  its rule opportunity, or `absent`), and trusted Rust code derives the status:
+  `closed_by_disposition` (newest disposition is a closure and no occurrence
+  is newer), `replaced_by_human_judgment` (the latest observation is a
+  person's non-failing verdict), `resolved_by_evidence` (the latest is a
+  completed, met, non-human result recorded after the latest occurrence, on
+  different evidence, from a revision caused by changed inputs or a revised
+  basis, or a newer population version's opportunity), else `open`. An open
+  exception the latest observation does not show failing says "not observed
+  in the latest revision; this is not evidence of remediation". SQL derives
+  the same status (`assessment_exception_status`) wherever a guard needs it.
+- **Exception dispositions.** Only a currently assigned Auditor or Audit
+  manager in their own session who is also an Audit manager of the
+  organisation or the Task's accountable person may `POST
+  /tasks/{task}/assessment/exceptions/{exception}/dispositions` with `closed`
+  (≥1 evidence reference, each verified at save like a 24.3a disposition) or
+  `reopened` (a closed exception only); anyone else assigned gets `403
+  exception_close_forbidden`. There are no waivers. A closure never changes an
+  occurrence, a revision or a verdict, and never lowers a failing count. Keys
+  are idempotent per actor; an exact replay is answered only after session,
+  assignment and closing authority are checked again. Concurrent closures of
+  one exception serialise on its lock; the second is refused. At most 16 per
+  exception.
+- **Effective summary.** The agent asks `summarise_effective` (≤2 per answer)
+  for a population (and optionally a sample). Trusted code reruns the 24.2
+  partition over each opportunity's effective outcome (a judgment opportunity
+  resolves to its chain head under the head's newest disposition) with the
+  24.2 denominators and "at least"/"total not known" wording, counts per
+  criterion the person's replaced verdicts, pending reconsiderations,
+  undisposed model proposals and superseded inputs, counts the basis's
+  exceptions by derived status and distinct subjects (the first 50 listed),
+  and states closed limitations in words. The database recounts every number
+  with exact SQL (`effective_guard`) and refuses a summary that disagrees; the
+  model then gets feedback to ask again, never a failed cycle. An unchanged
+  result records nothing. Each version supersedes the newest effective summary
+  of the same population and sample.
+- **Reads.** `GET /tasks/{task}/assessment/exceptions` lists every exception
+  (the first 200) with its status, the exact counts, whether the viewer may
+  close one and the newest effective summaries; `GET
+  .../exceptions/{exception}?cursor=` pages its occurrences (50) with every
+  disposition. The work panel shows them and lets the accountable person or
+  an Audit manager close or reopen by keyboard.
+
+Proven offline by `crates/worker/tests/exception.rs` (real worker, loopback
+model, real PostgreSQL, real API): 6 exceptions over 5 subjects from 11
+occurrences, two resolved by late evidence, one replaced by a person, one
+closed/reopened/closed, a reconsideration that wakes the Task, the database
+recount, forgeries refused, immutability, RLS, a held-lock race and the
+backfill. A rule opportunity resolved by a newer population version is proven
+by the domain and SQL status rules, not yet by the worker proof.
+
 ## Establishing an engagement conversationally (Story 22.2 AC4)
 
 Schema 13 is additive; published migrations and catalogues 1–12 are unchanged.

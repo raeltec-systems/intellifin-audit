@@ -854,7 +854,7 @@ impl EffectiveSummary {
                 .limitations
                 .iter()
                 .map(|l| (l.code, l.count))
-                .eq(expected.into_iter())
+                .eq(expected)
     }
 }
 

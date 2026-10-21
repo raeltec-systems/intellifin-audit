@@ -578,7 +578,7 @@ pub(crate) async fn detail(
         Some(text) => match (text.len() <= 7 && text.bytes().all(|b| b.is_ascii_digit()))
             .then(|| text.parse::<u32>().ok())
             .flatten()
-            .filter(|n| *n as usize % OCCURRENCE_PAGE == 0)
+            .filter(|n| (*n as usize).is_multiple_of(OCCURRENCE_PAGE))
         {
             Some(after) => after,
             None => return failure(TaskError::Invalid),
