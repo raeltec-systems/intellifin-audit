@@ -243,6 +243,19 @@ fn currency_is_derived_from_pins_with_one_closed_reason_each() {
         .reasons,
         vec![RefreshReason::SourceWithdrawn]
     );
+    // Not visible to this viewer is withheld, never stale.
+    let hidden = currency(
+        std::slice::from_ref(&quote),
+        &[Current::Quote {
+            registered: None,
+            readable: false,
+        }],
+    );
+    assert!(hidden.current() && hidden.withheld);
+    assert_eq!(
+        currency(std::slice::from_ref(&quote), &[]).reasons,
+        vec![RefreshReason::SourceWithdrawn]
+    );
     // A current fact that cannot be read is never shown as current.
     assert!(!currency(std::slice::from_ref(&count), &[]).current());
     // Reasons are a set in vocabulary order.

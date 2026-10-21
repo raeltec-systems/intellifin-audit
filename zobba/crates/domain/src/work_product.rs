@@ -331,6 +331,18 @@ pub fn block_id(version_id: &str, ordinal: usize) -> String {
 pub fn export_id(actor_id: &str, key: &str) -> String {
     id_of("wpx", &[actor_id, key])
 }
+/// The identity digest an exception pin holds (its record never changes;
+/// its status is derived): SHA-256 of `exception|id|task|criterion
+/// root|subject`, as the database's `work_product_exception_digest`.
+pub fn exception_digest(id: &str, task_id: &str, root: &str, subject: &str) -> String {
+    sha256_hex(format!("exception|{id}|{task_id}|{root}|{subject}").as_bytes())
+}
+/// The digest of a viewer's withheld set: the sorted, distinct original IDs
+/// whose quotes this viewer may not read now (the empty set has a digest too).
+pub fn withheld_digest(ids: &BTreeSet<String>) -> String {
+    let joined: Vec<&str> = ids.iter().map(String::as_str).collect();
+    sha256_hex(format!("withheld\0{}", joined.join("\0")).as_bytes())
+}
 pub fn valid_product_id(id: &str) -> bool {
     valid_prefixed(id, "wp-")
 }
@@ -1091,8 +1103,8 @@ pub enum Current {
     Exception { status: ExceptionStatus },
     /// Whether a successor basis replaced the fact.
     Fact { superseded: bool },
-    /// The original's currently registered digest (None: not registered),
-    /// and whether this viewer may read it now.
+    /// The original's currently registered digest as this reader sees it
+    /// (None: not visible to it), and whether this viewer may read it now.
     Quote {
         registered: Option<String>,
         readable: bool,
@@ -1174,10 +1186,16 @@ pub fn currency(pins: &[Pin], current: &[Current]) -> ClaimCurrency {
                     readable,
                 }),
             ) => {
-                if registered.as_deref() != Some(pin.record_digest.as_str()) {
-                    reasons.insert(RefreshReason::SourceWithdrawn);
-                } else if !readable {
-                    withheld = true;
+                // Registered under another digest: the original it quotes is
+                // not the one it was verified against. Not visible to this
+                // viewer (or not readable now) is never proof of that: the
+                // quote is withheld, not stale.
+                match registered {
+                    Some(digest) if *digest != pin.record_digest => {
+                        reasons.insert(RefreshReason::SourceWithdrawn);
+                    }
+                    Some(_) if *readable => {}
+                    _ => withheld = true,
                 }
             }
             (AssertionKind::Quote, _) => {
