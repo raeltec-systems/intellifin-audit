@@ -30,8 +30,8 @@ use crate::{
     citation::{CitationSource, Locator, MAX_LOCATOR_BYTES, MAX_QUOTE_BYTES},
     context::canonical_json,
     coverage::{
-        CriterionOpportunities, OpportunityFacts, PopulationFacts, Summary, SummaryRequest,
-        summarise,
+        Conclusion, CriterionOpportunities, OpportunityFacts, PopulationFacts, Summary,
+        SummaryRequest, summarise,
     },
     identity::valid_scope_id,
     model::{ArgumentSchema, JsonValue},
@@ -58,6 +58,13 @@ pub const OCCURRENCE_PAGE: usize = 50;
 /// not show it failing.
 pub const NOT_REMEDIATION: &str =
     "not observed in the latest revision; this is not evidence of remediation";
+/// The sentence an open exception carries when an unreviewed model proposal
+/// would resolve it once a person accepts it (owner decision 2026-10-21).
+pub const PROPOSED_MET: &str = "a model proposal suggests this is met; awaiting human review";
+/// The sentence an open exception carries when a person replaced the
+/// failing judgment with `undetermined` (owner decision 2026-10-21).
+pub const PERSON_UNDETERMINED: &str =
+    "a person marked this undetermined; this is not evidence of remediation";
 
 macro_rules! vocabulary {
     ($name:ident { $($variant:ident => $value:literal),+ $(,)? }) => {
@@ -79,10 +86,14 @@ vocabulary!(ExceptionStatus {
     ClosedByDisposition => "closed_by_disposition",
 });
 
-// Whether the latest observation shows the exception failing.
+// What the current observations show: `not_met` while any of them fails;
+// otherwise what the latest one shows when it does not resolve the
+// exception.
 vocabulary!(LatestObserved {
     NotMet => "not_met",
     NotObserved => "not_observed",
+    ProposedMet => "proposed_met",
+    PersonUndetermined => "person_undetermined",
 });
 
 // Which record an occurrence is.
@@ -117,6 +128,7 @@ vocabulary!(EffectiveLimitationCode {
     PendingReconsideration => "pending_reconsideration",
     UnreviewedModelProposals => "unreviewed_model_proposals",
     SupersededInputsNotReevaluated => "superseded_inputs_not_reevaluated",
+    OpenExceptions => "open_exceptions",
     SampleOnly => "sample_only",
 });
 
@@ -162,22 +174,30 @@ pub struct Observation {
     /// The observed record (head, opportunity or population) ID; the second
     /// key of the observation order, in byte order.
     pub id: String,
-    /// Database time of the observation (for a chain head, the later of the
-    /// head and its newest disposition).
+    /// Database time of the observed result itself: a chain head's own
+    /// record time (a disposition never makes an older result newer), a
+    /// person's `replaced` verdict at its own time (it really is new), an
+    /// opportunity's or a population version's record time.
     pub at_us: i64,
     pub verdict: Option<Verdict>,
     /// None for an absent observation.
     pub execution: Option<Execution>,
     pub origin: Option<EffectiveOrigin>,
+    /// A chain head's review state (`accepted` only when its newest
+    /// disposition is an acceptance); `unreviewed` otherwise.
+    pub review: ReviewState,
     /// A chain head's closed causes (none for revision 1).
     pub causes: Vec<RevisionCause>,
     pub criterion_id: Option<String>,
     pub evidence: Vec<String>,
 }
 
-/// The newest occurrence of an exception (by database time, then source ID).
+/// One occurrence of an exception, as status derivation reads it: its place
+/// in the exception's order (`seq`, commit order under the Task's exception
+/// lock), its database time, criterion version and evidence.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Occurrence {
+    pub seq: i64,
     pub at_us: i64,
     pub criterion_id: String,
     pub evidence: Vec<String>,
@@ -186,8 +206,9 @@ pub struct Occurrence {
 /// Everything an exception's status is derived from.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExceptionFacts {
-    pub latest: Occurrence,
-    /// The newest exception disposition and its database time.
+    /// Every occurrence of the exception (at least one).
+    pub occurrences: Vec<Occurrence>,
+    /// The newest exception disposition and its place in the order.
     pub decision: Option<(ExceptionDispositionKind, i64)>,
     pub observations: Vec<Observation>,
 }
@@ -199,14 +220,41 @@ pub fn latest_observation(observations: &[Observation]) -> Option<&Observation> 
         .max_by(|a, b| (a.at_us, a.id.as_bytes()).cmp(&(b.at_us, b.id.as_bytes())))
 }
 
-/// Whether an observation is new evidence that the criterion is met: a
-/// completed `met` that is not a person's verdict, after the failing
-/// occurrence, reading different evidence, and either a revision caused by
-/// changed inputs or a revised basis, or a later read of the same criterion.
-pub fn resolves(observation: &Observation, failing: &Occurrence) -> bool {
+/// The newest occurrence (by its place in the order).
+pub fn newest_occurrence(occurrences: &[Occurrence]) -> Option<&Occurrence> {
+    occurrences.iter().max_by_key(|o| o.seq)
+}
+
+/// Whether a closure saved at `closed_at` (a place in the order) still
+/// stands: no later occurrence is one the closer did not see, i.e. one whose
+/// criterion version and evidence differ from every occurrence before the
+/// closure. The same failure read again over identical evidence does not
+/// reopen it; a new failure does.
+pub fn closure_stands(occurrences: &[Occurrence], closed_at: i64) -> bool {
+    occurrences
+        .iter()
+        .filter(|o| o.seq > closed_at)
+        .all(|later| {
+            occurrences.iter().any(|seen| {
+                seen.seq < closed_at
+                    && seen.criterion_id == later.criterion_id
+                    && seen.evidence == later.evidence
+            })
+        })
+}
+
+/// Whether an observation would be new evidence that the criterion is met,
+/// apart from review: a completed `met` that is not a person's verdict, newer
+/// than the failing occurrence, reading different evidence, and either a
+/// revision caused by changed inputs or a revised basis, or a later read of
+/// the same criterion version.
+pub fn would_resolve(observation: &Observation, failing: &Occurrence) -> bool {
     observation.verdict == Some(Verdict::Met)
         && observation.execution == Some(Execution::Completed)
-        && observation.origin != Some(EffectiveOrigin::Human)
+        && matches!(
+            observation.origin,
+            Some(EffectiveOrigin::Deterministic | EffectiveOrigin::ModelProposal)
+        )
         && observation.at_us > failing.at_us
         && observation.evidence != failing.evidence
         && match observation.kind {
@@ -223,26 +271,74 @@ pub fn resolves(observation: &Observation, failing: &Occurrence) -> bool {
         }
 }
 
-/// The derived status and whether the latest observation shows it failing.
+/// Whether an observation is new evidence that resolves the exception: it
+/// would resolve it, and it is a deterministic result or a model proposal a
+/// person accepted (owner decision 2026-10-21: an unreviewed model proposal
+/// never resolves an exception).
+pub fn resolves(observation: &Observation, failing: &Occurrence) -> bool {
+    would_resolve(observation, failing)
+        && (observation.origin == Some(EffectiveOrigin::Deterministic)
+            || observation.review == ReviewState::Accepted)
+}
+
+/// The derived status and what the latest observation shows:
+/// 1. `closed_by_disposition` while the newest exception disposition is a
+///    closure that still stands ([`closure_stands`]);
+/// 2. `open` (latest observed `not_met`) while any current observation is
+///    `not_met`: a failure still observed is never hidden by another one;
+/// 3. `replaced_by_human_judgment` when the latest observation is a
+///    person's `met` (owner decision 2026-10-21: a person's `undetermined` is
+///    not evidence of remediation);
+/// 4. `resolved_by_evidence` when it [`resolves`] the newest occurrence;
+/// 5. `open` otherwise: `proposed_met` when an unreviewed model proposal
+///    would resolve it once accepted, `person_undetermined` for a person's
+///    undetermined, `not_observed` for everything else.
 pub fn exception_status(facts: &ExceptionFacts) -> (ExceptionStatus, LatestObserved) {
+    let failing = facts
+        .observations
+        .iter()
+        .any(|o| o.verdict == Some(Verdict::NotMet));
     let latest = latest_observation(&facts.observations);
-    let observed = match latest {
-        Some(o) if o.verdict == Some(Verdict::NotMet) => LatestObserved::NotMet,
-        _ => LatestObserved::NotObserved,
+    let newest = newest_occurrence(&facts.occurrences);
+    let meets = match (latest, newest) {
+        (Some(l), Some(o)) => would_resolve(l, o),
+        _ => false,
     };
-    // A closure stands until a newer occurrence (a later not_met) reopens it.
+    let observed = match latest {
+        _ if failing => LatestObserved::NotMet,
+        None => LatestObserved::NotObserved,
+        Some(l)
+            if l.origin == Some(EffectiveOrigin::Human)
+                && l.verdict == Some(Verdict::Undetermined) =>
+        {
+            LatestObserved::PersonUndetermined
+        }
+        Some(l)
+            if meets
+                && l.origin == Some(EffectiveOrigin::ModelProposal)
+                && l.review != ReviewState::Accepted =>
+        {
+            LatestObserved::ProposedMet
+        }
+        Some(_) => LatestObserved::NotObserved,
+    };
     if let Some((ExceptionDispositionKind::Closed, at)) = facts.decision
-        && facts.latest.at_us <= at
+        && closure_stands(&facts.occurrences, at)
     {
         return (ExceptionStatus::ClosedByDisposition, observed);
     }
-    let Some(latest) = latest else {
+    let Some(l) = latest else {
         return (ExceptionStatus::Open, observed);
     };
-    if latest.origin == Some(EffectiveOrigin::Human) && latest.verdict != Some(Verdict::NotMet) {
+    if failing {
+        return (ExceptionStatus::Open, observed);
+    }
+    if l.origin == Some(EffectiveOrigin::Human) && l.verdict == Some(Verdict::Met) {
         return (ExceptionStatus::ReplacedByHumanJudgment, observed);
     }
-    if resolves(latest, &facts.latest) {
+    if meets
+        && (l.origin == Some(EffectiveOrigin::Deterministic) || l.review == ReviewState::Accepted)
+    {
         return (ExceptionStatus::ResolvedByEvidence, observed);
     }
     (ExceptionStatus::Open, observed)
@@ -253,19 +349,25 @@ pub fn exception_status(facts: &ExceptionFacts) -> (ExceptionStatus, LatestObser
 pub fn status_words(status: ExceptionStatus, latest: LatestObserved) -> String {
     match (status, latest) {
         (ExceptionStatus::Open, LatestObserved::NotMet) => {
-            "Open: the latest observation does not meet the criterion.".into()
+            "Open: a current observation does not meet the criterion.".into()
         }
         (ExceptionStatus::Open, LatestObserved::NotObserved) => {
             format!("Open: {NOT_REMEDIATION}.")
+        }
+        (ExceptionStatus::Open, LatestObserved::ProposedMet) => {
+            format!("Open: {PROPOSED_MET}.")
+        }
+        (ExceptionStatus::Open, LatestObserved::PersonUndetermined) => {
+            format!("Open: {PERSON_UNDETERMINED}.")
         }
         (ExceptionStatus::ResolvedByEvidence, _) => {
             "Resolved by evidence: a later evaluation of new evidence meets the criterion.".into()
         }
         (ExceptionStatus::ReplacedByHumanJudgment, _) => {
-            "Replaced by human judgment: a person's verdict replaces the failing judgment.".into()
+            "Replaced by human judgment: a person's verdict that the criterion is met replaces the failing judgment.".into()
         }
         (ExceptionStatus::ClosedByDisposition, _) => {
-            "Closed by a disposition with evidence; a later failing observation reopens it.".into()
+            "Closed by a disposition with evidence; a later failing observation on new evidence reopens it.".into()
         }
     }
 }
@@ -568,6 +670,9 @@ impl EffectiveLimitation {
             EffectiveLimitationCode::SupersededInputsNotReevaluated => format!(
                 "{at}{n} evaluations read a basis version that a later version supersedes; they were not evaluated again."
             ),
+            EffectiveLimitationCode::OpenExceptions => format!(
+                "{at}{n} exceptions of these subjects are open: while one is open, no summary concludes that no exception exists."
+            ),
             EffectiveLimitationCode::SampleOnly => format!(
                 "A sample of {n} selected items: the counts describe the selected items only, never the population."
             ),
@@ -576,13 +681,18 @@ impl EffectiveLimitation {
 }
 
 /// The effective summary: the 24.2 partition over effective outcomes, the
-/// counts the 24.2 summary does not carry, the exceptions of the basis's
-/// criterion lineages by derived status (the first 50 listed, with the exact
-/// total) and closed limitations in words. Its denominators are the 24.2
-/// ones: the same population (or sample) subjects.
+/// counts the 24.2 summary does not carry, the exceptions of its own
+/// subjects (the population's in-scope subjects, or the sample's selected
+/// ones) under the basis's criterion lineages by derived status (the first
+/// 50 listed, with the exact total), its effective conclusion and closed
+/// limitations in words. Its denominators are the 24.2 ones: the same
+/// population (or sample) subjects.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EffectiveSummary {
     pub summary: Summary,
+    /// The 24.2 conclusion of the partition, except that it is never
+    /// `no_exception_found` while one of its subjects' exceptions is open.
+    pub conclusion: Conclusion,
     pub criteria: Vec<EffectiveCounts>,
     pub exceptions: ExceptionCounts,
     pub listed: Vec<ExceptionEntry>,
@@ -632,6 +742,14 @@ pub fn summarise_effective(
         .collect();
     let summary = summarise(population, in_scope, &plain, sample);
     let domain: &BTreeSet<String> = sample.unwrap_or(in_scope);
+    // Only the exceptions of the summary's own subjects: an exception of a
+    // subject outside its population or sample is never counted here.
+    let exceptions: Vec<ExceptionEntry> = exceptions
+        .iter()
+        .filter(|e| domain.contains(&e.subject))
+        .cloned()
+        .collect();
+    let exceptions = exceptions.as_slice();
     let counts: Vec<EffectiveCounts> = criteria
         .iter()
         .map(|c| {
@@ -693,6 +811,10 @@ pub fn summarise_effective(
         EffectiveLimitationCode::SupersededInputsNotReevaluated,
         counts.iter().map(|k| k.superseded).sum(),
     );
+    add(
+        EffectiveLimitationCode::OpenExceptions,
+        exception_counts.open,
+    );
     if let Some(selected) = sample {
         limitations.push(EffectiveLimitation {
             code: EffectiveLimitationCode::SampleOnly,
@@ -700,11 +822,22 @@ pub fn summarise_effective(
         });
     }
     EffectiveSummary {
+        conclusion: effective_conclusion(summary.conclusion, &exception_counts),
         summary,
         criteria: counts,
         exceptions: exception_counts,
         listed: listed(exceptions),
         limitations,
+    }
+}
+
+/// The effective conclusion: the 24.2 conclusion, but never that no
+/// exception was found while an exception of the summary's subjects is open.
+pub fn effective_conclusion(conclusion: Conclusion, exceptions: &ExceptionCounts) -> Conclusion {
+    if conclusion == Conclusion::NoExceptionFound && exceptions.open > 0 {
+        Conclusion::Inconclusive
+    } else {
+        conclusion
     }
 }
 
@@ -720,6 +853,7 @@ impl EffectiveSummary {
         let e = &self.exceptions;
         object(vec![
             ("aggregation", s(EFFECTIVE_AGGREGATION)),
+            ("conclusion", s(self.conclusion.as_str())),
             ("summary", self.summary.document()),
             (
                 "criteria",
@@ -819,6 +953,10 @@ impl EffectiveSummary {
                 EffectiveLimitationCode::SupersededInputsNotReevaluated,
                 superseded,
             ),
+            (
+                EffectiveLimitationCode::OpenExceptions,
+                self.exceptions.open,
+            ),
         ] {
             if n > 0 {
                 expected.push((code, Some(n)));
@@ -832,6 +970,8 @@ impl EffectiveSummary {
             .selected
             .unwrap_or(self.summary.counts.in_scope);
         self.summary.is_consistent()
+            && self.conclusion == effective_conclusion(self.summary.conclusion, &self.exceptions)
+            && self.exceptions.subjects <= domain
             && self.criteria.len() == self.summary.criteria.len()
             && self
                 .criteria
@@ -932,6 +1072,7 @@ pub fn effective_from(
         })
         .collect::<Option<Vec<_>>>()?;
     let decoded = EffectiveSummary {
+        conclusion: Conclusion::parse(&text(map, "conclusion")?)?,
         summary,
         criteria,
         exceptions,

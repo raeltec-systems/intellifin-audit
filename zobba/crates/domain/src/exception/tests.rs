@@ -5,8 +5,9 @@ use crate::coverage::{Completeness, IncompleteReason, PopulationCounts, Reconcil
 fn digests(items: &[&str]) -> Vec<String> {
     items.iter().map(|d| (*d).into()).collect()
 }
-fn occurrence(at: i64, evidence: &[&str]) -> Occurrence {
+fn occurrence(seq: i64, at: i64, evidence: &[&str]) -> Occurrence {
     Occurrence {
+        seq,
         at_us: at,
         criterion_id: "crit-a".into(),
         evidence: digests(evidence),
@@ -25,10 +26,33 @@ fn chain(
         verdict,
         execution: Some(Execution::Completed),
         origin: Some(EffectiveOrigin::ModelProposal),
+        review: ReviewState::Unreviewed,
         causes: causes.to_vec(),
         criterion_id: Some("crit-a".into()),
         evidence: digests(evidence),
     }
+}
+/// A deterministic chain head (a rule evaluated per subject).
+fn rule_chain(
+    at: i64,
+    verdict: Option<Verdict>,
+    causes: &[RevisionCause],
+    evidence: &[&str],
+) -> Observation {
+    Observation {
+        origin: Some(EffectiveOrigin::Deterministic),
+        ..chain(at, verdict, causes, evidence)
+    }
+}
+fn accepted(mut o: Observation) -> Observation {
+    o.review = ReviewState::Accepted;
+    o
+}
+fn person(mut o: Observation, verdict: Verdict) -> Observation {
+    o.verdict = Some(verdict);
+    o.origin = Some(EffectiveOrigin::Human);
+    o.review = ReviewState::Replaced;
+    o
 }
 fn opportunity(
     at: i64,
@@ -43,6 +67,7 @@ fn opportunity(
         verdict,
         execution: Some(Execution::Completed),
         origin: Some(EffectiveOrigin::Deterministic),
+        review: ReviewState::Unreviewed,
         causes: vec![],
         criterion_id: Some(criterion.into()),
         evidence: digests(evidence),
@@ -56,14 +81,15 @@ fn absent(at: i64) -> Observation {
         verdict: None,
         execution: None,
         origin: None,
+        review: ReviewState::Unreviewed,
         causes: vec![],
         criterion_id: None,
         evidence: vec![],
     }
 }
-fn facts(latest: Occurrence, observations: Vec<Observation>) -> ExceptionFacts {
+fn facts(occurrence: Occurrence, observations: Vec<Observation>) -> ExceptionFacts {
     ExceptionFacts {
-        latest,
+        occurrences: vec![occurrence],
         decision: None,
         observations,
     }
@@ -75,19 +101,19 @@ use RevisionCause as C;
 #[test]
 fn a_failing_latest_observation_keeps_the_exception_open() {
     let f = facts(
-        occurrence(10, &["d1"]),
+        occurrence(1, 10, &["d1"]),
         vec![chain(10, Some(Verdict::NotMet), &[], &["d1"])],
     );
     assert_eq!(exception_status(&f), (S::Open, L::NotMet));
     assert_eq!(
         status_words(S::Open, L::NotMet),
-        "Open: the latest observation does not meet the criterion."
+        "Open: a current observation does not meet the criterion."
     );
 }
 
 #[test]
 fn an_unobserved_latest_revision_keeps_it_open_and_is_not_remediation() {
-    let failing = occurrence(10, &["d1"]);
+    let failing = occurrence(1, 10, &["d1"]);
     // Undetermined, failed, not applicable or absent: never a resolution.
     let undetermined = chain(
         20,
@@ -99,13 +125,7 @@ fn an_unobserved_latest_revision_keeps_it_open_and_is_not_remediation() {
     failed.execution = Some(Execution::Failed);
     let not_applicable = chain(22, None, &[C::InputsChanged], &["d2"]);
     for latest in [undetermined, failed, not_applicable, absent(23)] {
-        let f = facts(
-            failing.clone(),
-            vec![
-                chain(10, Some(Verdict::NotMet), &[], &["d1"]),
-                latest.clone(),
-            ],
-        );
+        let f = facts(failing.clone(), vec![latest.clone()]);
         assert_eq!(
             exception_status(&f),
             (S::Open, L::NotObserved),
@@ -126,15 +146,12 @@ fn an_unobserved_latest_revision_keeps_it_open_and_is_not_remediation() {
 }
 
 #[test]
-fn a_later_met_from_changed_inputs_resolves_it_by_evidence() {
-    let failing = occurrence(10, &["d1"]);
+fn a_later_deterministic_met_from_changed_inputs_resolves_it_by_evidence() {
+    let failing = occurrence(1, 10, &["d1"]);
     for cause in [C::InputsChanged, C::BasisRevised] {
         let f = facts(
             failing.clone(),
-            vec![
-                chain(10, Some(Verdict::NotMet), &[], &["d1"]),
-                chain(20, Some(Verdict::Met), &[cause], &["d1", "d2"]),
-            ],
+            vec![rule_chain(20, Some(Verdict::Met), &[cause], &["d1", "d2"])],
         );
         assert_eq!(
             exception_status(&f),
@@ -144,19 +161,53 @@ fn a_later_met_from_changed_inputs_resolves_it_by_evidence() {
     }
 }
 
+/// Owner decision 2026-10-21: an unreviewed model proposal of `met` never
+/// resolves an exception; a person's acceptance of it does.
+#[test]
+fn an_unreviewed_model_proposal_of_met_awaits_human_review() {
+    let failing = occurrence(1, 10, &["d1"]);
+    let proposal = chain(20, Some(Verdict::Met), &[C::InputsChanged], &["d1", "d2"]);
+    assert_eq!(
+        exception_status(&facts(failing.clone(), vec![proposal.clone()])),
+        (S::Open, L::ProposedMet)
+    );
+    assert_eq!(
+        status_words(S::Open, L::ProposedMet),
+        "Open: a model proposal suggests this is met; awaiting human review."
+    );
+    // A pending reconsideration is not an acceptance either.
+    let mut pending = proposal.clone();
+    pending.review = ReviewState::PendingReconsideration;
+    assert_eq!(
+        exception_status(&facts(failing.clone(), vec![pending])),
+        (S::Open, L::ProposedMet)
+    );
+    assert_eq!(
+        exception_status(&facts(failing.clone(), vec![accepted(proposal)])),
+        (S::ResolvedByEvidence, L::NotObserved)
+    );
+    // A proposal that would not resolve it even once accepted says only that
+    // it was not observed failing.
+    let same = chain(20, Some(Verdict::Met), &[C::InputsChanged], &["d1"]);
+    assert_eq!(
+        exception_status(&facts(failing, vec![same])),
+        (S::Open, L::NotObserved)
+    );
+}
+
 #[test]
 fn a_met_that_is_not_new_evidence_never_resolves_it() {
-    let failing = occurrence(10, &["d1"]);
+    let failing = occurrence(1, 10, &["d1"]);
     // Only a revised criterion (the rule changed, not the evidence).
-    let rule_only = chain(20, Some(Verdict::Met), &[C::CriterionRevised], &["d2"]);
+    let rule_only = rule_chain(20, Some(Verdict::Met), &[C::CriterionRevised], &["d2"]);
     // The same evidence read again.
-    let same = chain(20, Some(Verdict::Met), &[C::InputsChanged], &["d1"]);
+    let same = rule_chain(20, Some(Verdict::Met), &[C::InputsChanged], &["d1"]);
     // Before the failing occurrence.
-    let earlier = chain(9, Some(Verdict::Met), &[C::InputsChanged], &["d2"]);
+    let earlier = rule_chain(9, Some(Verdict::Met), &[C::InputsChanged], &["d2"]);
     // A first revision (no cause) of another chain.
-    let first = chain(20, Some(Verdict::Met), &[], &["d2"]);
+    let first = rule_chain(20, Some(Verdict::Met), &[], &["d2"]);
     // Only a reconsideration or a completed retry.
-    let asked = chain(
+    let asked = rule_chain(
         20,
         Some(Verdict::Met),
         &[C::ReconsiderationRequested, C::PriorExecutionFailed],
@@ -168,22 +219,52 @@ fn a_met_that_is_not_new_evidence_never_resolves_it() {
         assert!(!resolves(&latest, &failing), "{latest:?}");
     }
     // A met whose execution failed cannot be read (never a resolution).
-    let mut failed = chain(20, Some(Verdict::Met), &[C::InputsChanged], &["d2"]);
+    let mut failed = rule_chain(20, Some(Verdict::Met), &[C::InputsChanged], &["d2"]);
     failed.execution = Some(Execution::Failed);
     assert!(!resolves(&failed, &failing));
 }
 
+/// A disposition saved later never makes an older result newer than the
+/// failing occurrence (BH M1): the observation's time is its own.
+#[test]
+fn an_acceptance_saved_after_a_newer_failure_never_resolves_it() {
+    // R2 met at 10 (deterministic, inputs changed); a later population read
+    // fails at 20 (the newest occurrence); an acceptance of R2 at 30 leaves
+    // R2's observation at 10.
+    let r2 = accepted(rule_chain(
+        10,
+        Some(Verdict::Met),
+        &[C::InputsChanged],
+        &["d2"],
+    ));
+    let failing = occurrence(2, 20, &["m1"]);
+    // The population read is no longer current (a later version holds no
+    // rule observation for the subject): only R2 is observed.
+    let f = facts(failing, vec![r2]);
+    assert_eq!(exception_status(&f), (S::Open, L::NotObserved));
+}
+
+/// Every current observation counts (BH M2): a current deterministic
+/// not_met keeps the exception open whatever the latest observation shows.
+#[test]
+fn any_current_failure_keeps_it_open() {
+    let failing = occurrence(1, 10, &["d1"]);
+    let still = opportunity(10, Some(Verdict::NotMet), "crit-a", &["d1"]);
+    for latest in [
+        rule_chain(20, Some(Verdict::Met), &[C::InputsChanged], &["d2"]),
+        accepted(chain(20, Some(Verdict::Met), &[C::InputsChanged], &["d2"])),
+        person(chain(20, None, &[], &["d2"]), Verdict::Met),
+    ] {
+        let f = facts(failing.clone(), vec![still.clone(), latest.clone()]);
+        assert_eq!(exception_status(&f), (S::Open, L::NotMet), "{latest:?}");
+    }
+}
+
 #[test]
 fn a_later_population_read_of_the_same_criterion_resolves_it() {
-    let failing = occurrence(10, &["member-v1"]);
+    let failing = occurrence(1, 10, &["member-v1"]);
     let v2 = opportunity(30, Some(Verdict::Met), "crit-a", &["member-v2"]);
-    let f = facts(
-        failing.clone(),
-        vec![
-            opportunity(10, Some(Verdict::NotMet), "crit-a", &["member-v1"]),
-            v2,
-        ],
-    );
+    let f = facts(failing.clone(), vec![v2]);
     assert_eq!(
         exception_status(&f),
         (S::ResolvedByEvidence, L::NotObserved)
@@ -199,63 +280,88 @@ fn a_later_population_read_of_the_same_criterion_resolves_it() {
     assert_eq!(exception_status(&facts(failing, vec![same])).0, S::Open);
 }
 
+/// Owner decision 2026-10-21: only a person's `met` replaces the failing
+/// judgment; a person's `undetermined` keeps it open.
 #[test]
-fn a_person_replacing_the_judgment_is_human_judgment_unless_it_fails() {
-    let failing = occurrence(10, &["d1"]);
-    for verdict in [Verdict::Met, Verdict::Undetermined] {
-        let mut person = chain(20, Some(verdict), &[], &["d1"]);
-        person.origin = Some(EffectiveOrigin::Human);
-        let f = facts(failing.clone(), vec![person]);
-        assert_eq!(
-            exception_status(&f),
-            (S::ReplacedByHumanJudgment, L::NotObserved),
-            "{verdict:?}"
-        );
-    }
-    let mut failing_person = chain(20, Some(Verdict::NotMet), &[], &["d1"]);
-    failing_person.origin = Some(EffectiveOrigin::Human);
+fn only_a_person_replacing_the_judgment_with_met_is_human_judgment() {
+    let failing = occurrence(1, 10, &["d1"]);
+    let met = person(chain(20, None, &[], &["d1"]), Verdict::Met);
     assert_eq!(
-        exception_status(&facts(failing.clone(), vec![failing_person])),
+        exception_status(&facts(failing.clone(), vec![met])),
+        (S::ReplacedByHumanJudgment, L::NotObserved)
+    );
+    let undetermined = person(chain(20, None, &[], &["d1"]), Verdict::Undetermined);
+    assert_eq!(
+        exception_status(&facts(failing.clone(), vec![undetermined])),
+        (S::Open, L::PersonUndetermined)
+    );
+    assert_eq!(
+        status_words(S::Open, L::PersonUndetermined),
+        "Open: a person marked this undetermined; this is not evidence of remediation."
+    );
+    let not_met = person(chain(20, None, &[], &["d1"]), Verdict::NotMet);
+    assert_eq!(
+        exception_status(&facts(failing.clone(), vec![not_met])),
         (S::Open, L::NotMet)
     );
     // A person's met is never "new evidence".
-    let mut person = chain(20, Some(Verdict::Met), &[C::InputsChanged], &["d2"]);
-    person.origin = Some(EffectiveOrigin::Human);
-    assert!(!resolves(&person, &failing));
+    let met = person(chain(20, None, &[C::InputsChanged], &["d2"]), Verdict::Met);
+    assert!(!resolves(&met, &failing));
 }
 
 #[test]
-fn a_closure_stands_until_a_newer_occurrence_reopens_it() {
+fn a_closure_stands_until_an_unseen_failure_reopens_it() {
     let observations = vec![chain(10, Some(Verdict::NotMet), &[], &["d1"])];
-    let mut f = facts(occurrence(10, &["d1"]), observations.clone());
-    f.decision = Some((ExceptionDispositionKind::Closed, 15));
+    let mut f = facts(occurrence(1, 10, &["d1"]), observations.clone());
+    f.decision = Some((ExceptionDispositionKind::Closed, 2));
     assert_eq!(exception_status(&f), (S::ClosedByDisposition, L::NotMet));
-    // An occurrence at the same instant is not newer.
-    f.decision = Some((ExceptionDispositionKind::Closed, 10));
-    assert_eq!(exception_status(&f).0, S::ClosedByDisposition);
-    // A later not_met occurrence reopens it (derived, nothing stored).
-    let mut later = facts(occurrence(20, &["d1"]), observations.clone());
-    later.decision = Some((ExceptionDispositionKind::Closed, 15));
+    // A later failure on new evidence reopens it (derived, nothing stored).
+    let mut later = f.clone();
+    later.occurrences.push(occurrence(3, 5, &["d9"]));
     assert_eq!(exception_status(&later), (S::Open, L::NotMet));
+    // Ordered by place, never by clock: a later occurrence with an earlier
+    // time reopens it too (ECH M3).
+    assert_eq!(later.occurrences[1].at_us, 5);
+    // The same failure read again over identical evidence (a new population
+    // version of an unchanged row) is one the closer saw: it stands (ECH M4).
+    let mut again = f.clone();
+    again.occurrences.push(occurrence(3, 30, &["d1"]));
+    assert_eq!(exception_status(&again).0, S::ClosedByDisposition);
+    // ...unless its criterion version changed.
+    let mut revised = f.clone();
+    let mut other = occurrence(3, 30, &["d1"]);
+    other.criterion_id = "crit-b".into();
+    revised.occurrences.push(other);
+    assert_eq!(exception_status(&revised).0, S::Open);
     // A reopening is derived like no disposition at all.
-    let mut reopened = facts(occurrence(10, &["d1"]), observations);
-    reopened.decision = Some((ExceptionDispositionKind::Reopened, 15));
+    let mut reopened = facts(occurrence(1, 10, &["d1"]), observations);
+    reopened.decision = Some((ExceptionDispositionKind::Reopened, 2));
     assert_eq!(exception_status(&reopened), (S::Open, L::NotMet));
+    assert!(closure_stands(&[occurrence(1, 1, &["a"])], 2));
+    assert!(!closure_stands(
+        &[occurrence(1, 1, &["a"]), occurrence(3, 1, &["b"])],
+        2
+    ));
 }
 
 #[test]
 fn the_latest_observation_is_the_greatest_time_then_id_in_byte_order() {
-    let mut a = chain(20, Some(Verdict::NotMet), &[], &["d1"]);
+    let mut a = chain(20, Some(Verdict::Undetermined), &[], &["d1"]);
     a.id = "rev-B".into();
-    let mut b = chain(20, Some(Verdict::Met), &[C::InputsChanged], &["d2"]);
+    let mut b = rule_chain(20, Some(Verdict::Met), &[C::InputsChanged], &["d2"]);
     b.id = "rev-a".into();
     // "rev-a" > "rev-B" in byte order: the met is the latest.
     assert_eq!(
         latest_observation(&[a.clone(), b.clone()]).unwrap().id,
         "rev-a"
     );
-    assert_eq!(latest_observation(&[b, a]).unwrap().id, "rev-a");
+    assert_eq!(
+        latest_observation(&[b.clone(), a.clone()]).unwrap().id,
+        "rev-a"
+    );
     assert!(latest_observation(&[]).is_none());
+    let f = facts(occurrence(1, 10, &["d1"]), vec![a, b]);
+    assert_eq!(exception_status(&f).0, S::ResolvedByEvidence);
 }
 
 #[test]
@@ -580,8 +686,10 @@ fn the_effective_summary_recounts_failing_over_heads_and_dispositions() {
             (X::UnresolvedSubjects, Some(1)),
             (X::PendingReconsideration, Some(1)),
             (X::UnreviewedModelProposals, Some(4)),
+            (X::OpenExceptions, Some(2)),
         ]
     );
+    assert_eq!(e.conclusion, e.summary.conclusion);
     assert!(e.is_consistent());
     // Determinism: the same inputs give the same digest.
     assert_eq!(
@@ -622,12 +730,13 @@ fn a_forged_count_or_limitation_is_not_consistent() {
 
 #[test]
 fn exceptions_are_listed_fifty_with_the_exact_total() {
-    let (p, in_scope, criteria, _) = scenario();
+    let (_, _, criteria, _) = scenario();
+    let in_scope: BTreeSet<String> = (0..53).map(|i| format!("S-{i:03}")).collect();
     let many: Vec<ExceptionEntry> = (0..53)
         .rev()
         .map(|i| entry(&format!("S-{i:03}"), S::Open))
         .collect();
-    let e = summarise_effective(&p, &in_scope, &criteria, None, &many);
+    let e = summarise_effective(&population(53, true), &in_scope, &criteria, None, &many);
     assert_eq!(e.exceptions.total, 53);
     assert_eq!(e.exceptions.subjects, 53);
     assert_eq!(e.listed.len(), MAX_LISTED_EXCEPTIONS);
@@ -737,4 +846,88 @@ fn summarise_effective_is_a_bounded_answer_field() {
         ("sample", s("")),
     ]);
     assert!(decode_summarise_effective(&bad).is_none());
+}
+
+/// An effective summary counts only the exceptions of its own subjects (BH
+/// M4, ECH M2): an exception of a subject outside its population or sample
+/// is never counted or listed, so a change elsewhere in the Task never moves
+/// its digest.
+#[test]
+fn only_the_summarys_own_subjects_exceptions_are_counted() {
+    let (p, in_scope, criteria, mut exceptions) = scenario();
+    let before = summarise_effective(&p, &in_scope, &criteria, None, &exceptions);
+    exceptions.push(entry("OUT-1", S::Open));
+    let after = summarise_effective(&p, &in_scope, &criteria, None, &exceptions);
+    assert_eq!(after, before, "an exception elsewhere changes nothing");
+    assert_eq!(after.digest(), before.digest());
+    let selected: BTreeSet<String> = ["INV-03"].into_iter().map(String::from).collect();
+    let sampled = summarise_effective(&p, &in_scope, &criteria, Some(&selected), &exceptions);
+    assert_eq!(sampled.exceptions.total, 1);
+    assert_eq!(sampled.listed.len(), 1);
+    assert_eq!(sampled.listed[0].subject, "INV-03");
+    assert!(sampled.is_consistent());
+    let mut forged = sampled.clone();
+    forged.exceptions.subjects = 2;
+    forged.exceptions.total = 2;
+    forged.exceptions.open = 2;
+    assert!(
+        !forged.is_consistent(),
+        "never more exception subjects than selected"
+    );
+}
+
+/// An effective summary never concludes that no exception was found while
+/// one of its subjects' exceptions is open (ECH M1): it is inconclusive and
+/// says why.
+#[test]
+fn an_open_exception_caps_no_exception_found_at_inconclusive() {
+    use EffectiveOrigin as O;
+    use ReviewState as R;
+    let in_scope = subjects(2);
+    let criteria = vec![EffectiveCriterion {
+        criterion_id: "crit-a".into(),
+        judgment: false,
+        opportunities: vec![
+            effective(
+                "INV-00",
+                Some(Verdict::Met),
+                O::Deterministic,
+                R::Unreviewed,
+            ),
+            effective(
+                "INV-01",
+                Some(Verdict::Met),
+                O::Deterministic,
+                R::Unreviewed,
+            ),
+        ],
+    }];
+    let clean = summarise_effective(&population(2, true), &in_scope, &criteria, None, &[]);
+    assert_eq!(clean.conclusion, Conclusion::NoExceptionFound);
+    let mut open = entry("INV-01", S::Open);
+    open.latest_observed = L::NotObserved;
+    let capped = summarise_effective(&population(2, true), &in_scope, &criteria, None, &[open]);
+    assert_eq!(capped.summary.conclusion, Conclusion::NoExceptionFound);
+    assert_eq!(capped.conclusion, Conclusion::Inconclusive);
+    assert_eq!(
+        capped
+            .limitations
+            .iter()
+            .map(|l| (l.code, l.count))
+            .collect::<Vec<_>>(),
+        vec![(EffectiveLimitationCode::OpenExceptions, Some(1))]
+    );
+    assert!(capped.is_consistent());
+    let mut forged = capped.clone();
+    forged.conclusion = Conclusion::NoExceptionFound;
+    assert!(!forged.is_consistent());
+    // A resolved exception does not cap it.
+    let resolved = summarise_effective(
+        &population(2, true),
+        &in_scope,
+        &criteria,
+        None,
+        &[entry("INV-01", S::ResolvedByEvidence)],
+    );
+    assert_eq!(resolved.conclusion, Conclusion::NoExceptionFound);
 }

@@ -10,6 +10,12 @@ const DEFAULT_DURATION_MS: u64 = 500;
 pub const MAX_DURATION_MS: u64 = 30_000;
 const AUTHORITY_POLL: Duration = Duration::from_millis(200);
 const AUTHORITY_TIMEOUT: Duration = Duration::from_secs(2);
+/// How long authority may stay unconfirmed (a poll that timed out waiting,
+/// for example, behind an assessment write holding the engagement lock, or
+/// a transient database error) before the work is cancelled: the owner
+/// lease's own lifetime, after which the claim could have lapsed. A poll that
+/// definitely answers "no longer current" cancels at once.
+const AUTHORITY_UNKNOWN: Duration = Duration::from_secs(5);
 
 #[derive(Clone)]
 pub struct Config {
@@ -102,19 +108,7 @@ where
     };
     let mut ticker = tokio::time::interval(AUTHORITY_POLL);
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-    let authority = async {
-        loop {
-            ticker.tick().await;
-            match tokio::time::timeout(AUTHORITY_TIMEOUT, current()).await {
-                Ok(Ok(true)) => {}
-                Ok(Ok(false)) => return,
-                _ => {
-                    config.diagnostics.record(Code::AuthorityFailed);
-                    return;
-                }
-            }
-        }
-    };
+    let authority = poll_authority(&config.diagnostics, &mut ticker, &mut current);
     // Authority I/O is a sibling future: a stalled socket cannot stop polling
     // the actual exit, shutdown signal or hard deadline.
     tokio::pin!(authority);
@@ -140,6 +134,43 @@ where
     }
 }
 
+/// Poll the Task's authority until it is definitely no longer current
+/// (`authority_lost`) or has stayed unconfirmed for the owner lease's
+/// lifetime (`authority_failed`); each unanswered poll is counted
+/// (`authority_unknown`) and retried, never treated as a revocation.
+async fn poll_authority<F, Fut>(
+    diagnostics: &Diagnostics,
+    ticker: &mut tokio::time::Interval,
+    current: &mut F,
+) where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<bool, TaskError>>,
+{
+    let mut confirmed = tokio::time::Instant::now();
+    loop {
+        ticker.tick().await;
+        match tokio::time::timeout(AUTHORITY_TIMEOUT, current()).await {
+            Ok(Ok(true)) => confirmed = tokio::time::Instant::now(),
+            Ok(Ok(false)) => {
+                diagnostics.record(Code::AuthorityLost);
+                return;
+            }
+            // Denied or fenced is a definite answer.
+            Ok(Err(TaskError::Denied | TaskError::Fenced)) => {
+                diagnostics.record(Code::AuthorityLost);
+                return;
+            }
+            _ => {
+                diagnostics.record(Code::AuthorityUnknown);
+                if confirmed.elapsed() >= AUTHORITY_UNKNOWN {
+                    diagnostics.record(Code::AuthorityFailed);
+                    return;
+                }
+            }
+        }
+    }
+}
+
 /// Outcome of a work-loop attempt as an execution observation.
 pub enum WorkExecution {
     /// No qualified profile/catalogue was selectable: run the inert executor.
@@ -154,14 +185,20 @@ pub enum WorkExecution {
 /// reconciliation-pending loop exited unsuccessfully: the coordinator's
 /// separate operation check keeps any possibly dispatched attempt unresolved
 /// for reconciliation, and nothing here claims that it was resolved.
-fn observation(end: zobba_application::work::CycleEnd) -> Observation {
+fn observation(end: zobba_application::work::CycleEnd, diagnostics: &Diagnostics) -> Observation {
     use zobba_application::work::CycleEnd;
     match end {
         CycleEnd::Waiting => Observation::Completed,
-        CycleEnd::Fenced => Observation::Cancelled,
-        CycleEnd::Bounded | CycleEnd::Failed | CycleEnd::Reconcile | CycleEnd::Unavailable => {
+        CycleEnd::Fenced => {
+            diagnostics.record(Code::CycleFenced);
+            Observation::Cancelled
+        }
+        // A stop without a recorded step always says where it stopped.
+        CycleEnd::Unavailable(halt) => {
+            diagnostics.halt(halt);
             Observation::Exited
         }
+        CycleEnd::Bounded | CycleEnd::Failed | CycleEnd::Reconcile => Observation::Exited,
     }
 }
 
@@ -186,26 +223,14 @@ where
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     // The same bounded authority poll as the inert child: Pause/Stop, a new
     // cycle or lost ownership cancels an in-flight model call promptly.
-    let authority = async {
-        loop {
-            ticker.tick().await;
-            match tokio::time::timeout(AUTHORITY_TIMEOUT, current()).await {
-                Ok(Ok(true)) => {}
-                Ok(Ok(false)) => return,
-                _ => {
-                    config.diagnostics.record(Code::AuthorityFailed);
-                    return;
-                }
-            }
-        }
-    };
+    let authority = poll_authority(&config.diagnostics, &mut ticker, &mut current);
     tokio::pin!(authority);
     let by_shutdown = tokio::select! {
         biased;
         end = &mut run => {
             return match end {
                 None => WorkExecution::Unavailable,
-                Some(end) => WorkExecution::Observed(Some(observation(end))),
+                Some(end) => WorkExecution::Observed(Some(observation(end, &config.diagnostics))),
             };
         }
         _ = shutdown.changed() => true,

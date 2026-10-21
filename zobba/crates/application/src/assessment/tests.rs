@@ -970,6 +970,8 @@ impl exception::ExceptionStore for Store {
             summaries: state.effective.clone(),
             total_summaries: state.effective.len() as u64,
             bases: Default::default(),
+            task: None,
+            unavailable: false,
         })
     }
 }
@@ -4832,15 +4834,31 @@ fn an_effective_summary_reruns_the_count_with_exceptions_and_an_unchanged_rerun_
         assert_eq!(e.exceptions.total, 0);
         assert_eq!(state.effective[0].supersedes, None);
     }
+    // An exception of a subject outside this population changes nothing
+    // (24.3b review D): nothing is recorded.
     store.state.lock().unwrap().exceptions.push(ExceptionEntry {
         id: format!("exc-{}", "1".repeat(40)),
         subject: "INV-0001".into(),
+        criterion_root: root.clone(),
+        status: ExceptionStatus::Open,
+        latest_observed: LatestObserved::NotMet,
+    });
+    assert!(!effective_turn(
+        &store,
+        &assessment,
+        5,
+        &effective_on(&basis_id, &population)
+    ));
+    assert_eq!(store.state.lock().unwrap().effective.len(), 1);
+    store.state.lock().unwrap().exceptions.push(ExceptionEntry {
+        id: format!("exc-{}", "2".repeat(40)),
+        subject: "INV-2".into(),
         criterion_root: root,
         status: ExceptionStatus::Open,
         latest_observed: LatestObserved::NotMet,
     });
-    // An exception changes the effective summary: a new version supersedes
-    // the first.
+    // An exception of its own subjects changes the effective summary: a new
+    // version supersedes the first.
     let progressed = effective_turn(
         &store,
         &assessment,
@@ -4940,9 +4958,36 @@ fn the_outline_counts_exceptions_by_status_and_says_at_least_for_an_incomplete_p
         bases: [("basis-1".to_string(), [2, 1, 0, 3])]
             .into_iter()
             .collect(),
+        task: Some(zobba_domain::exception::ExceptionCounts {
+            total: 7,
+            open: 3,
+            resolved_by_evidence: 1,
+            replaced_by_human_judgment: 0,
+            closed_by_disposition: 3,
+            subjects: 5,
+        }),
+        unavailable: false,
     });
     assert_eq!(
         lines,
-        vec!["- exceptions under basis basis-1: 2 open · 1 resolved by evidence · 0 replaced by human judgment · 3 closed by disposition".to_string()]
+        vec![
+            "- exceptions of this Task: 7 (3 open · 1 resolved by evidence · 0 replaced by human judgment · 3 closed by disposition) over 5 distinct subjects".to_string(),
+            "- exceptions under basis basis-1: 2 open · 1 resolved by evidence · 0 replaced by human judgment · 3 closed by disposition".to_string(),
+        ]
     );
+}
+
+/// Exception counts that cannot be read now (a statement timeout or a
+/// capacity limit) are said in the outline; the turn is never failed (24.3b
+/// review A).
+#[test]
+fn unreadable_exception_counts_are_said_never_a_failed_turn() {
+    use super::exception::{ExceptionSnapshot, exception_lines};
+    let lines = exception_lines(&ExceptionSnapshot {
+        unavailable: true,
+        ..ExceptionSnapshot::default()
+    });
+    assert_eq!(lines.len(), 1);
+    assert!(lines[0].contains("could not be read now"), "{lines:?}");
+    assert!(lines[0].contains("says nothing about the exceptions"));
 }

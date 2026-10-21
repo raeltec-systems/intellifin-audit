@@ -10,7 +10,7 @@ use zobba_application::{
         ModelTransport, TransportOutcome,
     },
     operation::OperationError,
-    work::{CycleEnd, SettledAttempt, ToolDispatch, WorkLoop, WorkSettings, settled_attempt},
+    work::{CycleEnd, Halt, SettledAttempt, ToolDispatch, WorkLoop, WorkSettings, settled_attempt},
 };
 use zobba_domain::{
     context::ContextBudget,
@@ -119,7 +119,7 @@ impl<T: ModelTransport + 'static> WorkRunner for Composition<T> {
             let (profile, catalogue) = match models.selection(&basis.actor_id, &basis.scope).await {
                 Ok(Some(selection)) => selection,
                 Ok(None) => return None,
-                Err(_) => return Some(CycleEnd::Unavailable),
+                Err(_) => return Some(CycleEnd::Unavailable(Halt::Configuration)),
             };
             let max_output_tokens = self.max_output_tokens.min(profile.max_output_tokens);
             let work = WorkLoop {
@@ -194,7 +194,7 @@ where
             let (profile, catalogue) = match models.selection(&basis.actor_id, &basis.scope).await {
                 Ok(Some(selection)) => selection,
                 Ok(None) => return None,
-                Err(_) => return Some(CycleEnd::Unavailable),
+                Err(_) => return Some(CycleEnd::Unavailable(Halt::Configuration)),
             };
             let max_output_tokens = base.max_output_tokens.min(profile.max_output_tokens);
             let readers = ModelCoordinator {

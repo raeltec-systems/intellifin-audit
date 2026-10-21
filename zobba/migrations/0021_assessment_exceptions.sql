@@ -1,54 +1,64 @@
 -- Story 24.3b: Task-scoped exceptions and the effective summary. Additive:
--- published schemas 1-20 are unchanged. Every not_met result (a 24.1
--- evaluation, a 24.3a revision, a 24.2 opportunity, or a person's
--- `replaced not_met` disposition) adds one immutable occurrence to the
--- exception of its criterion lineage and subject, written by trusted code in
--- the same statement that records the result. An exception's status is never
--- stored: `assessment_exception_status` derives it from the occurrences, the
--- current observations of its lineage and subject, and the exception
--- dispositions an Audit manager or the Task's accountable person saved. An
--- effective summary is the 24.2 partition over the current revisions and
--- dispositions (`assessment_effective_outcomes`), with exception counts by
--- derived status; the database recounts every number and refuses a summary
--- that disagrees. No waiver, no confidence column, no percentage.
--- `*_us` columns are database time in microseconds.
+-- published schemas 1-20 are unchanged. Every deterministic or judged
+-- not_met result (a 24.1 evaluation, a 24.3a revision, a 24.2 rule
+-- opportunity, or a person's `replaced not_met` disposition) adds one
+-- immutable occurrence to the exception of its criterion lineage and
+-- subject, written by trusted code in the same statement that records the
+-- result. A judgment's population opportunity names a recorded judgment,
+-- whose own record is the occurrence, so it adds none. An exception's status
+-- is never stored: `assessment_exception_statuses` derives it, set-based,
+-- from the occurrences, the current observations of its lineage and subject,
+-- and the exception dispositions an Audit manager or the Task's accountable
+-- person saved; trusted Rust code derives the same status for every listed
+-- exception and refuses a disagreement. Occurrences and dispositions of one
+-- Task are serialised on one Task lock and ordered by their `seq`, never by
+-- clock time. An effective summary is the 24.2 partition over the current
+-- revisions and dispositions (`assessment_effective_outcomes`), with the
+-- exceptions of its own subjects by derived status; the database recounts
+-- every number and refuses a summary that disagrees. No waiver, no
+-- confidence column, no percentage. `*_us` columns are database time in
+-- microseconds.
 
 -- ------------------------------------------------------------ helpers
 -- Read-only, SECURITY INVOKER helpers: each reads only what the caller's
 -- own scope (forced RLS) shows, so the runtime may call them.
 
--- The root of a criterion version's lineage (at most 64 earlier versions,
--- refused beyond that when a version is proposed). NULL for an unknown ID.
+-- The root of a criterion version's lineage, walked to its end (a version
+-- proposed since 24.3a has at most 64 earlier versions; an older, deeper
+-- lineage still reaches its true root). NULL for an unknown ID.
 CREATE FUNCTION public.assessment_criterion_root(org text, client text, engagement text, criterion text) RETURNS text
-LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path=pg_catalog,public AS $body$
-DECLARE walker text := criterion; up text; hops integer := 0;
-BEGIN
- LOOP
-  SELECT c.supersedes INTO up FROM public.assessment_criteria c WHERE (c.organisation_id,c.client_id,c.engagement_id,c.id)=(org,client,engagement,walker);
-  IF NOT FOUND THEN
-   RETURN NULL;
-  END IF;
-  EXIT WHEN up IS NULL OR hops >= 64;
-  walker := up;
-  hops := hops + 1;
- END LOOP;
- RETURN walker;
-END $body$;
+LANGUAGE sql STABLE SECURITY INVOKER SET search_path=pg_catalog,public AS $body$
+ WITH RECURSIVE walk(id, up, hops) AS (
+   SELECT c.id, c.supersedes, 0 FROM public.assessment_criteria c WHERE (c.organisation_id,c.client_id,c.engagement_id,c.id)=(org,client,engagement,criterion)
+   UNION ALL
+   SELECT c.id, c.supersedes, w.hops+1 FROM walk w JOIN public.assessment_criteria c ON (c.organisation_id,c.client_id,c.engagement_id,c.id)=(org,client,engagement,w.up) WHERE w.hops < 100000)
+ SELECT w.id FROM walk w WHERE w.up IS NULL
+$body$;
 
--- A population version and its earlier versions (at most 64 steps up).
-CREATE FUNCTION public.assessment_population_lineage(org text, client text, engagement text, population text) RETURNS SETOF text
-LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path=pg_catalog,public AS $body$
-DECLARE walker text := population; hops integer := 0;
-BEGIN
- WHILE walker IS NOT NULL AND hops <= 64 LOOP
-  RETURN NEXT walker;
-  SELECT p.supersedes INTO walker FROM public.assessment_populations p WHERE (p.organisation_id,p.client_id,p.engagement_id,p.id)=(org,client,engagement,walker);
-  IF NOT FOUND THEN
-   walker := NULL;
-  END IF;
-  hops := hops + 1;
- END LOOP;
-END $body$;
+-- The lineage root of every criterion version of one Task, in one pass.
+CREATE FUNCTION public.assessment_task_criterion_roots(org text, client text, engagement text, task text)
+RETURNS TABLE(criterion_id text, root text)
+LANGUAGE sql STABLE SECURITY INVOKER SET search_path=pg_catalog,public AS $body$
+ WITH RECURSIVE walk(criterion_id, id, up, hops) AS (
+   SELECT c.id, c.id, c.supersedes, 0 FROM public.assessment_criteria c WHERE (c.organisation_id,c.client_id,c.engagement_id,c.task_id)=(org,client,engagement,task)
+   UNION ALL
+   SELECT w.criterion_id, c.id, c.supersedes, w.hops+1 FROM walk w JOIN public.assessment_criteria c ON (c.organisation_id,c.client_id,c.engagement_id,c.id)=(org,client,engagement,w.up) WHERE w.hops < 100000)
+ SELECT w.criterion_id, w.id FROM walk w WHERE w.up IS NULL
+$body$;
+
+-- Every population version of one Task with its lineage root, its creation
+-- time and whether it is a latest version (no version supersedes it).
+CREATE FUNCTION public.assessment_task_population_roots(org text, client text, engagement text, task text)
+RETURNS TABLE(population_id text, root text, tip boolean, created_us bigint)
+LANGUAGE sql STABLE SECURITY INVOKER SET search_path=pg_catalog,public AS $body$
+ WITH RECURSIVE p AS (SELECT p.id, p.supersedes, p.created_us FROM public.assessment_populations p WHERE (p.organisation_id,p.client_id,p.engagement_id,p.task_id)=(org,client,engagement,task)),
+  walk(population_id, id, up, hops) AS (
+   SELECT p.id, p.id, p.supersedes, 0 FROM p
+   UNION ALL
+   SELECT w.population_id, q.id, q.supersedes, w.hops+1 FROM walk w JOIN public.assessment_populations q ON (q.organisation_id,q.client_id,q.engagement_id,q.id)=(org,client,engagement,w.up) WHERE w.hops < 100000)
+ SELECT w.population_id, w.id, NOT EXISTS(SELECT 1 FROM p s WHERE s.supersedes=w.population_id), (SELECT p.created_us FROM p WHERE p.id=w.population_id)
+ FROM walk w WHERE w.up IS NULL
+$body$;
 
 -- The exception ID of a criterion lineage and a subject in one Task. Every
 -- part but the subject is a scope ID (no `|`), and the subject is last.
@@ -64,6 +74,38 @@ LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path=pg_catalog,public AS $bo
    FROM pg_catalog.jsonb_array_elements(CASE WHEN pg_catalog.jsonb_typeof(inputs)='array' THEN inputs ELSE '[]'::jsonb END) x), ARRAY[]::text[])
 $body$;
 
+-- Indexes the set-based status derivation reads by (additive; the
+-- published tables themselves are unchanged).
+CREATE INDEX assessment_evaluations_subject ON public.assessment_evaluations(organisation_id,client_id,engagement_id,task_id,subject COLLATE "C");
+CREATE INDEX assessment_populations_supersedes ON public.assessment_populations(organisation_id,client_id,engagement_id,supersedes);
+CREATE INDEX assessment_criteria_supersedes ON public.assessment_criteria(organisation_id,client_id,engagement_id,supersedes);
+
+-- A new population version is the only successor of the version it
+-- supersedes and has at most 64 earlier versions (the 24.3a rule for
+-- criteria and bases), so a lineage has one latest version. Versions
+-- recorded before Story 24.3b are never refused by this.
+CREATE FUNCTION public.population_succession() RETURNS trigger
+LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,public AS $body$
+DECLARE walker text; hops integer := 0;
+BEGIN
+ IF NEW.supersedes IS NOT NULL THEN
+  PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('successor:'||NEW.organisation_id||'/'||NEW.client_id||'/'||NEW.engagement_id||'/'||NEW.supersedes, 2402));
+  IF EXISTS(SELECT 1 FROM public.assessment_populations p WHERE (p.organisation_id,p.client_id,p.engagement_id,p.supersedes)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.supersedes)) THEN
+   RAISE EXCEPTION 'a population version has at most one successor' USING ERRCODE='23514';
+  END IF;
+  walker := NEW.supersedes;
+  LOOP
+   SELECT p.supersedes INTO walker FROM public.assessment_populations p WHERE (p.organisation_id,p.client_id,p.engagement_id,p.id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,walker);
+   EXIT WHEN walker IS NULL;
+   hops := hops + 1;
+   IF hops >= 64 THEN
+    RAISE EXCEPTION 'a population lineage holds at most 64 earlier versions' USING ERRCODE='23514';
+   END IF;
+  END LOOP;
+ END IF;
+ RETURN NEW;
+END $body$;
+CREATE TRIGGER population_succession BEFORE INSERT ON public.assessment_populations FOR EACH ROW EXECUTE FUNCTION public.population_succession();
 -- ------------------------------------------------------------- tables
 
 -- One exception: the Task, the criterion lineage root and the subject.
@@ -87,7 +129,8 @@ CREATE INDEX assessment_exceptions_task ON public.assessment_exceptions(organisa
 
 -- One not_met result of an exception, as trusted code recorded it: its
 -- source record, the criterion and basis versions it was decided under,
--- its effective origin, the evidence it read and its database time.
+-- its effective origin, the evidence it read, its database time and its
+-- order among the exception's records.
 CREATE TABLE public.assessment_exception_occurrences (
  organisation_id text NOT NULL, client_id text NOT NULL, engagement_id text NOT NULL,
  task_id text NOT NULL,
@@ -102,13 +145,17 @@ CREATE TABLE public.assessment_exception_occurrences (
  origin text NOT NULL CHECK(origin IN ('deterministic','model_proposal','human')),
  evidence text[] NOT NULL CHECK(cardinality(evidence) <= 32 AND array_position(evidence, NULL) IS NULL),
  source_us bigint NOT NULL,
+ -- Its place among its exception's occurrences and dispositions, assigned
+ -- under the Task's exception lock: commit order, never clock time.
+ seq integer NOT NULL CHECK(seq >= 1),
  created_us bigint NOT NULL DEFAULT floor(extract(epoch FROM clock_timestamp())*1000000)::bigint,
  CHECK((source_kind = 'opportunity') = (population_id IS NOT NULL) AND (population_id IS NULL) = (member_ordinal IS NULL)),
  CHECK((source_kind = 'disposition') = (origin = 'human')),
  PRIMARY KEY(organisation_id,client_id,engagement_id,exception_id,source_kind,source_id),
+ UNIQUE(organisation_id,client_id,engagement_id,exception_id,seq),
  FOREIGN KEY(organisation_id,client_id,engagement_id,exception_id) REFERENCES public.assessment_exceptions(organisation_id,client_id,engagement_id,id)
 );
-CREATE INDEX assessment_exception_occurrences_time ON public.assessment_exception_occurrences(organisation_id,client_id,engagement_id,exception_id,source_us);
+CREATE INDEX assessment_exception_occurrences_task ON public.assessment_exception_occurrences(organisation_id,client_id,engagement_id,task_id,exception_id);
 
 -- A person's disposition of one exception: closed (with evidence) or
 -- reopened. It never changes an occurrence, a revision or a verdict, and a
@@ -124,6 +171,9 @@ CREATE TABLE public.assessment_exception_dispositions (
  rationale text NOT NULL CHECK(octet_length(rationale) BETWEEN 1 AND 2000 AND btrim(rationale, E' \n\r\t') <> '' AND rationale !~ '[\x01-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]'),
  document jsonb NOT NULL CHECK(jsonb_typeof(document)='object' AND octet_length(document::text) <= 65536),
  digest text NOT NULL CHECK(digest ~ '^[0-9a-f]{64}$'),
+ -- Assigned by the guard under the Task's exception lock (any supplied
+ -- value is replaced): its order among the exception's records.
+ seq integer NOT NULL CHECK(seq >= 1),
  created_us bigint NOT NULL DEFAULT floor(extract(epoch FROM clock_timestamp())*1000000)::bigint,
  CHECK(coalesce(document->>'record'='exception_disposition' AND document->>'id'=id AND document->>'task_id'=task_id AND document->>'actor_id'=actor_id
    AND document->>'key'=key AND document->>'exception_id'=exception_id AND document->>'kind'=kind AND document->>'rationale'=rationale
@@ -132,13 +182,18 @@ CREATE TABLE public.assessment_exception_dispositions (
    AND (kind <> 'closed' OR jsonb_array_length(document->'references') >= 1), false)),
  PRIMARY KEY(organisation_id,client_id,engagement_id,id),
  UNIQUE(organisation_id,client_id,engagement_id,actor_id,key),
+ UNIQUE(organisation_id,client_id,engagement_id,exception_id,seq),
  FOREIGN KEY(organisation_id,client_id,engagement_id,task_id) REFERENCES public.tasks(organisation_id,client_id,engagement_id,id),
  FOREIGN KEY(organisation_id,client_id,engagement_id,exception_id) REFERENCES public.assessment_exceptions(organisation_id,client_id,engagement_id,id)
 );
-CREATE INDEX assessment_exception_dispositions_exception ON public.assessment_exception_dispositions(organisation_id,client_id,engagement_id,exception_id,created_us);
+CREATE INDEX assessment_exception_dispositions_task ON public.assessment_exception_dispositions(organisation_id,client_id,engagement_id,task_id,exception_id);
 
 -- An effective summary version: the 24.2 partition over the current
--- revisions and dispositions, with exception counts by derived status. It
+-- revisions and dispositions, with the counts by derived status of the
+-- exceptions of its own subjects (the population's in-scope subjects, or the
+-- sample's selected ones) under its basis's criterion lineages. Its
+-- conclusion is the 24.2 conclusion of that partition, except that it never
+-- says no exception was found while one of those exceptions is open. It
 -- supersedes the newest effective summary of the same population and sample.
 CREATE TABLE public.assessment_effective_summaries (
  organisation_id text NOT NULL, client_id text NOT NULL, engagement_id text NOT NULL,
@@ -176,7 +231,8 @@ CREATE TABLE public.assessment_effective_summaries (
  CHECK((sample_id IS NULL) = (selected IS NULL)),
  CHECK((completeness='complete') = (completeness_reason IS NULL)),
  CHECK(failing_subjects + meets_every_applicable + unresolved_subjects + not_applicable_to_any = coalesce(selected, in_scope)),
- CHECK(exceptions_open + exceptions_resolved + exceptions_replaced + exceptions_closed = exceptions_total AND exception_subjects <= exceptions_total),
+ CHECK(exceptions_open + exceptions_resolved + exceptions_replaced + exceptions_closed = exceptions_total AND exception_subjects <= exceptions_total
+   AND exception_subjects <= coalesce(selected, in_scope)),
  CHECK(supersedes IS DISTINCT FROM id),
  -- coalesce(..., false): a missing key makes a comparison NULL, and a CHECK
  -- that is NULL would pass.
@@ -188,7 +244,10 @@ CREATE TABLE public.assessment_effective_summaries (
    AND document->>'summary_digest'=summary_digest
    AND document->'effective'->>'aggregation'=aggregation
    AND (document->'effective'->>'statistical_inference')::boolean=statistical_inference
-   AND document->'effective'->'summary'->>'conclusion'=conclusion
+   AND document->'effective'->>'conclusion'=conclusion
+   AND document->'effective'->'summary'->>'conclusion' IN ('no_eligible_items','exceptions_found','exceptions_found_inconclusive','no_exception_found','inconclusive','no_items_found_absence_not_proven')
+   AND (document->'effective'->>'conclusion' = document->'effective'->'summary'->>'conclusion'
+     OR (document->'effective'->>'conclusion' = 'inconclusive' AND document->'effective'->'summary'->>'conclusion' = 'no_exception_found' AND exceptions_open > 0))
    AND document->'effective'->'summary'->>'completeness'=completeness
    AND document->'effective'->'summary' ? 'completeness_reason' AND document->'effective'->'summary'->>'completeness_reason' IS NOT DISTINCT FROM completeness_reason
    AND document->'effective'->'summary'->>'reconciliation'=reconciliation
@@ -209,9 +268,10 @@ CREATE TABLE public.assessment_effective_summaries (
    AND jsonb_typeof(document->'effective'->'summary'->'criteria')='array'
    AND jsonb_array_length(document->'effective'->'criteria') = jsonb_array_length(document->'effective'->'summary'->'criteria')
    AND jsonb_typeof(document->'effective'->'listed')='array' AND jsonb_array_length(document->'effective'->'listed') <= 50
-   AND jsonb_typeof(document->'effective'->'limitations')='array' AND jsonb_array_length(document->'effective'->'limitations') <= 6
-   AND NOT jsonb_path_exists(document->'effective'->'limitations', '$[*] ? (!(@.code == "population_incomplete" || @.code == "unresolved_subjects" || @.code == "pending_reconsideration" || @.code == "unreviewed_model_proposals" || @.code == "superseded_inputs_not_reevaluated" || @.code == "sample_only"))')
-   AND NOT jsonb_path_exists(document->'effective'->'listed', '$[*] ? (!(@.status == "open" || @.status == "resolved_by_evidence" || @.status == "replaced_by_human_judgment" || @.status == "closed_by_disposition"))'), false)),
+   AND jsonb_typeof(document->'effective'->'limitations')='array' AND jsonb_array_length(document->'effective'->'limitations') <= 7
+   AND NOT jsonb_path_exists(document->'effective'->'limitations', '$[*] ? (!(@.code == "population_incomplete" || @.code == "unresolved_subjects" || @.code == "pending_reconsideration" || @.code == "unreviewed_model_proposals" || @.code == "superseded_inputs_not_reevaluated" || @.code == "open_exceptions" || @.code == "sample_only"))')
+   AND NOT jsonb_path_exists(document->'effective'->'listed', '$[*] ? (!(@.status == "open" || @.status == "resolved_by_evidence" || @.status == "replaced_by_human_judgment" || @.status == "closed_by_disposition"))')
+   AND NOT jsonb_path_exists(document->'effective'->'listed', '$[*] ? (!(@.latest_observed == "not_met" || @.latest_observed == "not_observed" || @.latest_observed == "proposed_met" || @.latest_observed == "person_undetermined"))'), false)),
  PRIMARY KEY(organisation_id,client_id,engagement_id,id),
  UNIQUE(organisation_id,client_id,engagement_id,invocation_id,ordinal),
  UNIQUE(organisation_id,client_id,engagement_id,supersedes),
@@ -227,99 +287,160 @@ CREATE INDEX assessment_effective_summaries_population ON public.assessment_effe
 
 -- --------------------------------------------------- derived functions
 
--- The current observations of one exception's criterion lineage and
--- subject: every evaluation chain head under its newest disposition (a
--- person's `replaced` gives the person's verdict, origin human), and for the
--- latest version of every population lineage that held an opportunity of
--- the lineage and subject, its rule opportunity, or `absent` when it no
--- longer holds the subject in scope. A judgment opportunity is its chain
--- head (listed once, as the chain). Evidence lists are sorted and distinct.
-CREATE FUNCTION public.assessment_exception_observations(org text, client text, engagement text, exception text)
-RETURNS TABLE(kind text, id text, at_us bigint, verdict text, execution text, origin text, causes text[], criterion_id text, evidence text[])
+-- The current observations of exceptions of one Task (every exception when
+-- `ids` is NULL), set-based:
+-- - `chain`: every evaluation chain head of the exception's criterion
+--   lineage and subject, under its newest disposition. Its time is the
+--   head's own record time; only a person's `replaced` verdict, which really
+--   is new, takes the disposition's time (and origin human). `review` is the
+--   head's review state (`accepted` only when its newest disposition is an
+--   acceptance).
+-- - `opportunity`: every decided rule opportunity (no judgment named, a
+--   verdict recorded) of a latest population version, at its own time. A
+--   judgment's opportunity is its chain head, listed once as the chain; an
+--   opportunity that decided nothing is not an observation.
+-- - `absent`: the latest version of a population lineage that held one of
+--   the exception's occurrences, when it no longer holds the subject in
+--   scope, at that version's time.
+-- `inputs` is the outcome's input list (its evidence is
+-- `assessment_evidence(inputs)`).
+CREATE FUNCTION public.assessment_exception_observations(org text, client text, engagement text, task text, ids text[])
+RETURNS TABLE(exception_id text, kind text, id text, at_us bigint, verdict text, execution text, origin text, review text, causes text[], criterion_id text, inputs jsonb)
 LANGUAGE sql STABLE SECURITY INVOKER SET search_path=pg_catalog,public AS $body$
- WITH x AS (SELECT x.task_id, x.criterion_root, x.subject FROM public.assessment_exceptions x
-     WHERE (x.organisation_id,x.client_id,x.engagement_id,x.id)=(org,client,engagement,exception)),
+ WITH x AS MATERIALIZED (SELECT x.id, x.subject, x.criterion_root FROM public.assessment_exceptions x
+     WHERE (x.organisation_id,x.client_id,x.engagement_id,x.task_id)=(org,client,engagement,task)
+       AND (ids IS NULL OR x.id IN (SELECT pg_catalog.unnest(ids)))),
+  roots AS MATERIALIZED (SELECT r.criterion_id, r.root FROM public.assessment_task_criterion_roots(org,client,engagement,task) r),
+  pops AS MATERIALIZED (SELECT p.population_id, p.root, p.tip, p.created_us FROM public.assessment_task_population_roots(org,client,engagement,task) p),
+  firsts AS (
+   SELECT x.id AS exception_id, e.id AS chain_id, e.created_us, e.verdict, e.execution, e.origin, e.criterion_id, e.document
+   FROM x JOIN public.assessment_evaluations e ON (e.organisation_id,e.client_id,e.engagement_id,e.task_id)=(org,client,engagement,task) AND e.subject=x.subject
+   JOIN roots k ON k.criterion_id=e.criterion_id AND k.root=x.criterion_root),
   heads AS (
-   SELECT coalesce(r.id,e.id) AS head_id, coalesce(r.created_us,e.created_us) AS head_us,
-     CASE WHEN r.id IS NULL THEN e.verdict ELSE r.verdict END AS verdict,
-     coalesce(r.execution,e.execution) AS execution, coalesce(r.origin,e.origin) AS origin,
-     coalesce(r.causes,ARRAY[]::text[]) AS causes, coalesce(r.criterion_id,e.criterion_id) AS criterion_id,
-     public.assessment_evidence(coalesce(r.document,e.document)->'inputs') AS evidence
-   FROM public.assessment_evaluations e JOIN x ON e.task_id=x.task_id AND e.subject=x.subject
-   LEFT JOIN LATERAL (SELECT v.id,v.created_us,v.verdict,v.execution,v.origin,v.causes,v.criterion_id,v.document FROM public.assessment_evaluation_revisions v
-     WHERE (v.organisation_id,v.client_id,v.engagement_id,v.chain_id)=(org,client,engagement,e.id) ORDER BY v.revision DESC LIMIT 1) r ON true
-   WHERE (e.organisation_id,e.client_id,e.engagement_id)=(org,client,engagement)
-     AND public.assessment_criterion_root(org,client,engagement,e.criterion_id)=x.criterion_root),
+   SELECT f.exception_id, coalesce(r.id,f.chain_id) AS head_id, coalesce(r.created_us,f.created_us) AS head_us,
+     CASE WHEN r.id IS NULL THEN f.verdict ELSE r.verdict END AS verdict,
+     coalesce(r.execution,f.execution) AS execution, coalesce(r.origin,f.origin) AS origin,
+     coalesce(r.causes,ARRAY[]::text[]) AS causes, coalesce(r.criterion_id,f.criterion_id) AS criterion_id,
+     coalesce(r.document,f.document)->'inputs' AS inputs
+   FROM firsts f LEFT JOIN LATERAL (SELECT v.id,v.created_us,v.verdict,v.execution,v.origin,v.causes,v.criterion_id,v.document FROM public.assessment_evaluation_revisions v
+     WHERE (v.organisation_id,v.client_id,v.engagement_id,v.chain_id)=(org,client,engagement,f.chain_id) ORDER BY v.revision DESC LIMIT 1) r ON true),
   chains AS (
-   SELECT 'chain'::text AS kind, h.head_id AS id, greatest(h.head_us, coalesce(d.created_us,h.head_us)) AS at_us,
+   SELECT h.exception_id, 'chain'::text AS kind, h.head_id AS id,
+     CASE WHEN d.kind='replaced' AND h.origin='model_proposal' THEN d.created_us ELSE h.head_us END AS at_us,
      CASE WHEN d.kind='replaced' AND h.origin='model_proposal' THEN d.verdict ELSE h.verdict END AS verdict,
-     h.execution, CASE WHEN d.kind='replaced' AND h.origin='model_proposal' THEN 'human' ELSE h.origin END AS origin,
-     h.causes, h.criterion_id, h.evidence
+     h.execution,
+     CASE WHEN d.kind='replaced' AND h.origin='model_proposal' THEN 'human' ELSE h.origin END AS origin,
+     CASE WHEN d.kind IS NULL THEN 'unreviewed' WHEN d.kind='replaced' AND h.origin='model_proposal' THEN 'replaced'
+       WHEN d.kind='accepted' THEN 'accepted' WHEN d.kind='needs_reconsideration' THEN 'pending_reconsideration' ELSE 'unreviewed' END AS review,
+     h.causes, h.criterion_id, h.inputs
    FROM heads h LEFT JOIN LATERAL (SELECT y.kind,y.verdict,y.created_us FROM public.assessment_dispositions y
      WHERE (y.organisation_id,y.client_id,y.engagement_id,y.revision_id)=(org,client,engagement,h.head_id)
      ORDER BY y.created_us DESC, y.id COLLATE "C" DESC LIMIT 1) d ON true),
-  tips AS (
-   SELECT p.id, p.created_us FROM public.assessment_populations p JOIN x ON p.task_id=x.task_id
-   WHERE (p.organisation_id,p.client_id,p.engagement_id)=(org,client,engagement)
-     AND NOT EXISTS(SELECT 1 FROM public.assessment_populations q WHERE (q.organisation_id,q.client_id,q.engagement_id,q.supersedes)=(org,client,engagement,p.id))
-     AND EXISTS(SELECT 1 FROM public.assessment_population_lineage(org,client,engagement,p.id) l(id)
-       JOIN public.assessment_opportunities o ON (o.organisation_id,o.client_id,o.engagement_id,o.population_id)=(org,client,engagement,l.id)
-       WHERE o.subject=x.subject AND public.assessment_criterion_root(org,client,engagement,o.criterion_id)=x.criterion_root)),
   rules AS (
-   SELECT 'opportunity'::text AS kind, o.population_id||'#'||o.criterion_id||'#'||o.member_ordinal AS id, o.created_us AS at_us,
-     o.verdict, o.execution, o.origin, ARRAY[]::text[] AS causes, o.criterion_id, public.assessment_evidence(o.inputs) AS evidence
-   FROM tips t JOIN public.assessment_opportunities o ON (o.organisation_id,o.client_id,o.engagement_id,o.population_id)=(org,client,engagement,t.id)
-   JOIN x ON o.subject=x.subject
-   WHERE o.evaluation_id IS NULL AND public.assessment_criterion_root(org,client,engagement,o.criterion_id)=x.criterion_root),
+   SELECT x.id AS exception_id, 'opportunity'::text AS kind, o.population_id||'#'||o.criterion_id||'#'||o.member_ordinal AS id, o.created_us AS at_us,
+     o.verdict, o.execution, o.origin, 'unreviewed'::text AS review, ARRAY[]::text[] AS causes, o.criterion_id, o.inputs
+   FROM pops t JOIN public.assessment_opportunities o ON (o.organisation_id,o.client_id,o.engagement_id,o.population_id)=(org,client,engagement,t.population_id)
+   JOIN roots k ON k.criterion_id=o.criterion_id
+   JOIN x ON x.subject=o.subject AND x.criterion_root=k.root
+   WHERE t.tip AND o.evaluation_id IS NULL AND o.verdict IS NOT NULL),
   absent AS (
-   SELECT 'absent'::text AS kind, t.id, t.created_us AS at_us, NULL::text AS verdict, NULL::text AS execution, NULL::text AS origin,
-     ARRAY[]::text[] AS causes, NULL::text AS criterion_id, ARRAY[]::text[] AS evidence
-   FROM tips t CROSS JOIN x
+   SELECT DISTINCT x.id AS exception_id, 'absent'::text AS kind, t.population_id AS id, t.created_us AS at_us, NULL::text AS verdict, NULL::text AS execution,
+     NULL::text AS origin, 'unreviewed'::text AS review, ARRAY[]::text[] AS causes, NULL::text AS criterion_id, '[]'::jsonb AS inputs
+   FROM x JOIN public.assessment_exception_occurrences y ON (y.organisation_id,y.client_id,y.engagement_id,y.exception_id)=(org,client,engagement,x.id) AND y.population_id IS NOT NULL
+   JOIN pops q ON q.population_id=y.population_id
+   JOIN pops t ON t.root=q.root AND t.tip
    WHERE NOT EXISTS(SELECT 1 FROM public.assessment_population_members m
-     WHERE (m.organisation_id,m.client_id,m.engagement_id,m.population_id)=(org,client,engagement,t.id) AND m.subject=x.subject AND m.disposition='in_scope'))
+     WHERE (m.organisation_id,m.client_id,m.engagement_id,m.population_id)=(org,client,engagement,t.population_id) AND m.subject=x.subject AND m.disposition='in_scope'))
  SELECT * FROM chains UNION ALL SELECT * FROM rules UNION ALL SELECT * FROM absent
 $body$;
 
--- The derived status of one exception and whether its latest observation
--- shows it failing (`zobba_domain::exception::exception_status`):
--- closed_by_disposition while no occurrence is newer than the closure;
--- replaced_by_human_judgment when the latest observation is a person's
--- verdict that is not not_met; resolved_by_evidence when it is a completed
--- met, not a person's, newer than the failing occurrence, reading other
--- evidence, from a revision caused by changed inputs or a revised basis or a
--- later read of the same criterion; open otherwise.
+-- The status rule itself, over one exception's facts (pure; the same rule
+-- as `zobba_domain::exception::exception_status`, compared case by case):
+-- `closed` (its newest disposition is a closure that still stands),
+-- `failing` (a current observation is not_met), its latest observation
+-- (`kind` NULL when there is none) and its newest occurrence.
+CREATE FUNCTION public.assessment_exception_decide(closed boolean, failing boolean, kind text, at_us bigint, verdict text, execution text, origin text,
+  review text, causes text[], criterion_id text, evidence text[], occurrence_at bigint, occurrence_criterion text, occurrence_evidence text[])
+RETURNS TABLE(status text, latest_observed text)
+LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path=pg_catalog,public AS $body$
+ WITH m AS (SELECT (verdict='met' AND execution='completed' AND origin IN ('deterministic','model_proposal')
+      AND at_us > occurrence_at AND evidence IS DISTINCT FROM occurrence_evidence
+      AND ((kind='chain' AND causes && ARRAY['inputs_changed','basis_revised']::text[])
+        OR (kind='opportunity' AND criterion_id IS NOT DISTINCT FROM occurrence_criterion))) IS TRUE AS meets)
+ SELECT
+   CASE WHEN closed THEN 'closed_by_disposition'
+     WHEN failing OR kind IS NULL THEN 'open'
+     WHEN origin='human' AND verdict='met' THEN 'replaced_by_human_judgment'
+     WHEN m.meets AND (origin='deterministic' OR review='accepted') THEN 'resolved_by_evidence'
+     ELSE 'open' END,
+   CASE WHEN failing THEN 'not_met'
+     WHEN kind IS NULL THEN 'not_observed'
+     WHEN origin='human' AND verdict='undetermined' THEN 'person_undetermined'
+     WHEN m.meets AND origin='model_proposal' AND review IS DISTINCT FROM 'accepted' THEN 'proposed_met'
+     ELSE 'not_observed' END
+ FROM m
+$body$;
+
+-- The derived status of exceptions of one Task (every exception when `ids`
+-- is NULL), set-based (`zobba_domain::exception::exception_status` derives
+-- the same and is compared on every listed exception):
+-- 1. closed_by_disposition while the newest exception disposition (by seq)
+--    is a closure and no later occurrence is unseen (one whose criterion
+--    version and evidence differ from every occurrence before the closure);
+-- 2. open while any current observation is not_met (latest observed
+--    not_met);
+-- 3. replaced_by_human_judgment when the latest observation (by time, then
+--    ID) is a person's `met`;
+-- 4. resolved_by_evidence when it is a completed met, deterministic or an
+--    accepted model proposal, newer than the newest occurrence, reading other
+--    evidence, from a revision caused by changed inputs or a revised basis,
+--    or a later read of the same criterion version;
+-- 5. open otherwise. Latest observed is `proposed_met` when an unreviewed
+--    model proposal would resolve it once accepted, `person_undetermined`
+--    when the latest observation is a person's undetermined, `not_observed`
+--    for anything else (undetermined, failed, not applicable, absent, none).
+CREATE FUNCTION public.assessment_exception_statuses(org text, client text, engagement text, task text, ids text[])
+RETURNS TABLE(id text, subject text, criterion_root text, status text, latest_observed text)
+LANGUAGE sql STABLE SECURITY INVOKER SET search_path=pg_catalog,public AS $body$
+ WITH x AS MATERIALIZED (SELECT x.id, x.subject, x.criterion_root FROM public.assessment_exceptions x
+     WHERE (x.organisation_id,x.client_id,x.engagement_id,x.task_id)=(org,client,engagement,task)
+       AND (ids IS NULL OR x.id IN (SELECT pg_catalog.unnest(ids)))),
+  ob AS MATERIALIZED (SELECT * FROM public.assessment_exception_observations(org,client,engagement,task,ids)),
+  failing AS (SELECT DISTINCT o.exception_id FROM ob o WHERE o.verdict='not_met'),
+  latest AS (SELECT DISTINCT ON (o.exception_id) o.exception_id, o.kind, o.at_us, o.verdict, o.execution, o.origin, o.review, o.causes, o.criterion_id, o.inputs
+    FROM ob o ORDER BY o.exception_id, o.at_us DESC, o.id COLLATE "C" DESC),
+  occ AS (SELECT DISTINCT ON (y.exception_id) y.exception_id, y.source_us, y.criterion_id, y.evidence
+    FROM public.assessment_exception_occurrences y JOIN x ON (y.organisation_id,y.client_id,y.engagement_id,y.task_id,y.exception_id)=(org,client,engagement,task,x.id)
+    ORDER BY y.exception_id, y.seq DESC),
+  dec AS (SELECT DISTINCT ON (d.exception_id) d.exception_id, d.kind, d.seq
+    FROM public.assessment_exception_dispositions d JOIN x ON (d.organisation_id,d.client_id,d.engagement_id,d.task_id,d.exception_id)=(org,client,engagement,task,x.id)
+    ORDER BY d.exception_id, d.seq DESC),
+  standing AS (SELECT c.exception_id FROM dec c WHERE c.kind='closed'
+    AND NOT EXISTS(SELECT 1 FROM public.assessment_exception_occurrences y
+      WHERE (y.organisation_id,y.client_id,y.engagement_id,y.exception_id)=(org,client,engagement,c.exception_id) AND y.seq > c.seq
+        AND NOT EXISTS(SELECT 1 FROM public.assessment_exception_occurrences z
+          WHERE (z.organisation_id,z.client_id,z.engagement_id,z.exception_id)=(org,client,engagement,c.exception_id) AND z.seq < c.seq
+            AND z.criterion_id=y.criterion_id AND z.evidence=y.evidence))),
+  judged AS (
+   SELECT x.id, x.subject, x.criterion_root, s.exception_id IS NOT NULL AS closed, f.exception_id IS NOT NULL AS failing,
+     l.kind, l.at_us, l.verdict, l.execution, l.origin, l.review, l.causes, l.criterion_id, public.assessment_evidence(l.inputs) AS evidence,
+     c.source_us, c.criterion_id AS occurrence_criterion, c.evidence AS occurrence_evidence
+   FROM x LEFT JOIN standing s ON s.exception_id=x.id LEFT JOIN failing f ON f.exception_id=x.id
+   LEFT JOIN latest l ON l.exception_id=x.id LEFT JOIN occ c ON c.exception_id=x.id)
+ SELECT j.id, j.subject, j.criterion_root, d.status, d.latest_observed
+ FROM judged j CROSS JOIN LATERAL public.assessment_exception_decide(j.closed, j.failing, j.kind, j.at_us, j.verdict, j.execution, j.origin, j.review,
+   j.causes, j.criterion_id, j.evidence, j.source_us, j.occurrence_criterion, j.occurrence_evidence) d
+$body$;
+
+-- The derived status of one exception and what its latest observation
+-- shows (the set-based rule above, for one exception).
 CREATE FUNCTION public.assessment_exception_status(org text, client text, engagement text, exception text)
 RETURNS TABLE(status text, latest_observed text)
-LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path=pg_catalog,public AS $body$
-DECLARE l_kind text; l_at bigint; l_verdict text; l_execution text; l_origin text; l_causes text[]; l_criterion text; l_evidence text[];
- o_at bigint; o_criterion text; o_evidence text[]; d_kind text; d_at bigint;
-BEGIN
- SELECT o.kind, o.at_us, o.verdict, o.execution, o.origin, o.causes, o.criterion_id, o.evidence
-   INTO l_kind, l_at, l_verdict, l_execution, l_origin, l_causes, l_criterion, l_evidence
-   FROM public.assessment_exception_observations(org,client,engagement,exception) o ORDER BY o.at_us DESC, o.id COLLATE "C" DESC LIMIT 1;
- SELECT x.source_us, x.criterion_id, x.evidence INTO o_at, o_criterion, o_evidence
-   FROM public.assessment_exception_occurrences x WHERE (x.organisation_id,x.client_id,x.engagement_id,x.exception_id)=(org,client,engagement,exception)
-   ORDER BY x.source_us DESC, x.source_id COLLATE "C" DESC LIMIT 1;
- SELECT d.kind, d.created_us INTO d_kind, d_at
-   FROM public.assessment_exception_dispositions d WHERE (d.organisation_id,d.client_id,d.engagement_id,d.exception_id)=(org,client,engagement,exception)
-   ORDER BY d.created_us DESC, d.id COLLATE "C" DESC LIMIT 1;
- latest_observed := CASE WHEN l_verdict IS NOT DISTINCT FROM 'not_met' THEN 'not_met' ELSE 'not_observed' END;
- IF d_kind IS NOT DISTINCT FROM 'closed' AND o_at <= d_at THEN
-  status := 'closed_by_disposition';
- ELSIF l_kind IS NULL THEN
-  status := 'open';
- ELSIF l_origin IS NOT DISTINCT FROM 'human' AND l_verdict IS DISTINCT FROM 'not_met' THEN
-  status := 'replaced_by_human_judgment';
- ELSIF l_verdict IS NOT DISTINCT FROM 'met' AND l_execution IS NOT DISTINCT FROM 'completed' AND l_origin IS DISTINCT FROM 'human'
-   AND l_at > o_at AND l_evidence IS DISTINCT FROM o_evidence
-   AND ((l_kind='chain' AND l_causes && ARRAY['inputs_changed','basis_revised']::text[])
-     OR (l_kind='opportunity' AND l_criterion IS NOT DISTINCT FROM o_criterion)) THEN
-  status := 'resolved_by_evidence';
- ELSE
-  status := 'open';
- END IF;
- RETURN NEXT;
-END $body$;
+LANGUAGE sql STABLE SECURITY INVOKER SET search_path=pg_catalog,public AS $body$
+ SELECT s.status, s.latest_observed FROM public.assessment_exceptions x
+ CROSS JOIN LATERAL public.assessment_exception_statuses(org,client,engagement,x.task_id,ARRAY[x.id]) s
+ WHERE (x.organisation_id,x.client_id,x.engagement_id,x.id)=(org,client,engagement,exception)
+$body$;
 
 -- The effective outcome of every opportunity of one population: a judgment
 -- opportunity resolves to its chain head under the head's newest
@@ -360,12 +481,12 @@ LANGUAGE sql STABLE SECURITY INVOKER SET search_path=pg_catalog,public AS $body$
  WHERE (o.organisation_id,o.client_id,o.engagement_id,o.population_id)=(org,client,engagement,population)
 $body$;
 
-
 -- ------------------------------------------------------------ backfill
 -- Every not_met result recorded before Story 24.3b becomes an occurrence of
--- its exception, exactly as the writer trigger below records new ones. The
--- migration owner reads the published records with their forced RLS lifted
--- for this transaction only (restored below); nothing published changes.
+-- its exception, exactly as the writer trigger below records new ones, in
+-- (time, source ID) order. The migration owner reads the published records
+-- with their forced RLS lifted for this transaction only (restored below);
+-- nothing published changes.
 ALTER TABLE public.assessment_criteria NO FORCE ROW LEVEL SECURITY;
 ALTER TABLE public.assessment_evaluations NO FORCE ROW LEVEL SECURITY;
 ALTER TABLE public.assessment_evaluation_revisions NO FORCE ROW LEVEL SECURITY;
@@ -386,10 +507,12 @@ LANGUAGE sql STABLE SECURITY INVOKER SET search_path=pg_catalog,public AS $body$
     public.assessment_evidence(r.document->'inputs'), r.subject, r.created_us
   FROM public.assessment_evaluation_revisions r WHERE r.verdict='not_met'
   UNION ALL
+  -- A rule opportunity only: a judgment's opportunity names a recorded
+  -- judgment, which is its own occurrence.
   SELECT o.organisation_id, o.client_id, o.engagement_id, o.task_id, o.actor_id, 'opportunity', o.population_id||'#'||o.criterion_id||'#'||o.member_ordinal,
     o.population_id, o.member_ordinal, o.criterion_id, p.basis_id, o.origin, public.assessment_evidence(o.inputs), o.subject, o.created_us
   FROM public.assessment_opportunities o JOIN public.assessment_populations p ON (p.organisation_id,p.client_id,p.engagement_id,p.id)=(o.organisation_id,o.client_id,o.engagement_id,o.population_id)
-  WHERE o.verdict='not_met'
+  WHERE o.verdict='not_met' AND o.evaluation_id IS NULL
   UNION ALL
   SELECT d.organisation_id, d.client_id, d.engagement_id, d.task_id, d.actor_id, 'disposition', d.id, NULL, NULL, h.criterion_id, h.basis_id, 'human',
     public.assessment_evidence(h.document->'inputs'), c.subject, d.created_us
@@ -406,11 +529,12 @@ INSERT INTO public.assessment_exceptions(organisation_id,client_id,engagement_id
    'criterion_not_met',b.root,b.subject,b.source_kind,b.source_id,b.source_us
  FROM public.zobba_not_met_results() b
  ORDER BY b.organisation_id,b.client_id,b.engagement_id,b.task_id,b.root,b.subject COLLATE "C",b.source_us,b.source_id COLLATE "C";
-INSERT INTO public.assessment_exception_occurrences(organisation_id,client_id,engagement_id,task_id,actor_id,exception_id,source_kind,source_id,population_id,member_ordinal,criterion_id,basis_id,origin,evidence,source_us,created_us)
- SELECT b.organisation_id,b.client_id,b.engagement_id,b.task_id,b.actor_id,
-   public.assessment_exception_key(b.organisation_id,b.client_id,b.engagement_id,b.task_id,b.root,b.subject),
-   b.source_kind,b.source_id,b.population_id,b.member_ordinal,b.criterion_id,b.basis_id,b.origin,b.evidence,b.source_us,b.source_us
- FROM public.zobba_not_met_results() b;
+INSERT INTO public.assessment_exception_occurrences(organisation_id,client_id,engagement_id,task_id,actor_id,exception_id,source_kind,source_id,population_id,member_ordinal,criterion_id,basis_id,origin,evidence,source_us,seq,created_us)
+ SELECT b.organisation_id,b.client_id,b.engagement_id,b.task_id,b.actor_id,b.exception_id,
+   b.source_kind,b.source_id,b.population_id,b.member_ordinal,b.criterion_id,b.basis_id,b.origin,b.evidence,b.source_us,
+   row_number() OVER (PARTITION BY b.organisation_id,b.client_id,b.engagement_id,b.exception_id ORDER BY b.source_us, b.source_id COLLATE "C")::integer,
+   b.source_us
+ FROM (SELECT r.*, public.assessment_exception_key(r.organisation_id,r.client_id,r.engagement_id,r.task_id,r.root,r.subject) AS exception_id FROM public.zobba_not_met_results() r) b;
 DROP FUNCTION public.zobba_not_met_results();
 -- END BACKFILL
 ALTER TABLE public.assessment_criteria FORCE ROW LEVEL SECURITY;
@@ -425,10 +549,15 @@ ALTER TABLE public.assessment_dispositions FORCE ROW LEVEL SECURITY;
 -- Every not_met result adds its occurrence (and, the first time, its
 -- exception) in the very statement that records it. Set-based over the
 -- statement's new rows: an opportunity batch of a thousand rows is one
--- insert of exceptions and one of occurrences.
+-- insert of exceptions and one of occurrences. The Task's exception lock
+-- (taken by closures too) orders it after every closure that committed
+-- first and before every closure that commits later; `seq` records that
+-- order. A Task holds at most 20,000 exceptions: a result that would add
+-- the 20,001st is refused whole, so it is never recorded without its
+-- exception.
 CREATE FUNCTION public.exception_record() RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,public AS $body$
-DECLARE staged jsonb;
+DECLARE staged jsonb; added_exceptions bigint;
 BEGIN
  IF TG_TABLE_NAME='assessment_evaluations' THEN
   SELECT jsonb_agg(jsonb_build_object('organisation_id',a.organisation_id,'client_id',a.client_id,'engagement_id',a.engagement_id,'task_id',a.task_id,'actor_id',a.actor_id,
@@ -441,12 +570,14 @@ BEGIN
     'evidence',to_jsonb(public.assessment_evidence(a.document->'inputs')),'subject',a.subject,'source_us',a.created_us))
    INTO staged FROM added a WHERE a.verdict='not_met';
  ELSIF TG_TABLE_NAME='assessment_opportunities' THEN
+  -- Rule opportunities only: a judgment's opportunity names a recorded
+  -- judgment, which is its own occurrence.
   SELECT jsonb_agg(jsonb_build_object('organisation_id',a.organisation_id,'client_id',a.client_id,'engagement_id',a.engagement_id,'task_id',a.task_id,'actor_id',a.actor_id,
     'source_kind','opportunity','source_id',a.population_id||'#'||a.criterion_id||'#'||a.member_ordinal,'population_id',a.population_id,'member_ordinal',a.member_ordinal,
     'criterion_id',a.criterion_id,'basis_id',p.basis_id,'origin',a.origin,
     'evidence',to_jsonb(public.assessment_evidence(a.inputs)),'subject',a.subject,'source_us',a.created_us))
    INTO staged FROM added a JOIN public.assessment_populations p ON (p.organisation_id,p.client_id,p.engagement_id,p.id)=(a.organisation_id,a.client_id,a.engagement_id,a.population_id)
-   WHERE a.verdict='not_met';
+   WHERE a.verdict='not_met' AND a.evaluation_id IS NULL;
  ELSE
   SELECT jsonb_agg(jsonb_build_object('organisation_id',a.organisation_id,'client_id',a.client_id,'engagement_id',a.engagement_id,'task_id',a.task_id,'actor_id',a.actor_id,
     'source_kind','disposition','source_id',a.id,'population_id',NULL,'member_ordinal',NULL,'criterion_id',h.criterion_id,'basis_id',h.basis_id,'origin','human',
@@ -460,24 +591,45 @@ BEGIN
  IF staged IS NULL THEN
   RETURN NULL;
  END IF;
- WITH s AS (SELECT r.*, public.assessment_criterion_root(r.organisation_id,r.client_id,r.engagement_id,r.criterion_id) AS root
-   FROM jsonb_to_recordset(staged) AS r(organisation_id text, client_id text, engagement_id text, task_id text, actor_id text, source_kind text, source_id text,
-     population_id text, member_ordinal integer, criterion_id text, basis_id text, origin text, evidence text[], subject text, source_us bigint))
+ -- The Task's exception lock, in a fixed order.
+ PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('exceptions:'||t.organisation_id||'/'||t.client_id||'/'||t.engagement_id||'/'||t.task_id, 2403))
+  FROM (SELECT DISTINCT r.organisation_id, r.client_id, r.engagement_id, r.task_id FROM jsonb_to_recordset(staged) AS r(organisation_id text, client_id text, engagement_id text, task_id text)) t
+  ORDER BY t.organisation_id COLLATE "C", t.client_id COLLATE "C", t.engagement_id COLLATE "C", t.task_id COLLATE "C";
+ -- Each row with its criterion lineage root and exception ID.
+ WITH r AS (SELECT * FROM jsonb_to_recordset(staged) AS r(organisation_id text, client_id text, engagement_id text, task_id text, actor_id text, source_kind text, source_id text,
+     population_id text, member_ordinal integer, criterion_id text, basis_id text, origin text, evidence text[], subject text, source_us bigint)),
+  t AS (SELECT DISTINCT r.organisation_id, r.client_id, r.engagement_id, r.task_id FROM r),
+  k AS (SELECT t.organisation_id, t.client_id, t.engagement_id, t.task_id, c.criterion_id, c.root FROM t
+    CROSS JOIN LATERAL public.assessment_task_criterion_roots(t.organisation_id,t.client_id,t.engagement_id,t.task_id) c)
+ SELECT jsonb_agg(to_jsonb(r) || jsonb_build_object('root',k.root,'exception_id',
+     CASE WHEN k.root IS NULL THEN NULL ELSE public.assessment_exception_key(r.organisation_id,r.client_id,r.engagement_id,r.task_id,k.root,r.subject) END))
+  INTO staged
+  FROM r LEFT JOIN k ON (k.organisation_id,k.client_id,k.engagement_id,k.task_id,k.criterion_id)=(r.organisation_id,r.client_id,r.engagement_id,r.task_id,r.criterion_id);
+ IF jsonb_path_exists(staged, '$[*] ? (@.root == null)') THEN
+  RAISE EXCEPTION 'a not_met result names a criterion of its own Task' USING ERRCODE='23514';
+ END IF;
+ WITH s AS (SELECT * FROM jsonb_to_recordset(staged) AS r(organisation_id text, client_id text, engagement_id text, task_id text, actor_id text, source_kind text, source_id text,
+     population_id text, member_ordinal integer, criterion_id text, basis_id text, origin text, evidence text[], subject text, source_us bigint, root text, exception_id text))
  INSERT INTO public.assessment_exceptions(organisation_id,client_id,engagement_id,task_id,actor_id,id,kind,criterion_root,subject,first_source_kind,first_source_id)
   SELECT DISTINCT ON (s.organisation_id,s.client_id,s.engagement_id,s.task_id,s.root,s.subject COLLATE "C")
-    s.organisation_id,s.client_id,s.engagement_id,s.task_id,s.actor_id,
-    public.assessment_exception_key(s.organisation_id,s.client_id,s.engagement_id,s.task_id,s.root,s.subject),
+    s.organisation_id,s.client_id,s.engagement_id,s.task_id,s.actor_id,s.exception_id,
     'criterion_not_met',s.root,s.subject,s.source_kind,s.source_id
   FROM s
   ORDER BY s.organisation_id,s.client_id,s.engagement_id,s.task_id,s.root,s.subject COLLATE "C",s.source_us,s.source_id COLLATE "C"
   ON CONFLICT DO NOTHING;
- WITH s AS (SELECT r.*, public.assessment_criterion_root(r.organisation_id,r.client_id,r.engagement_id,r.criterion_id) AS root
-   FROM jsonb_to_recordset(staged) AS r(organisation_id text, client_id text, engagement_id text, task_id text, actor_id text, source_kind text, source_id text,
-     population_id text, member_ordinal integer, criterion_id text, basis_id text, origin text, evidence text[], subject text, source_us bigint))
- INSERT INTO public.assessment_exception_occurrences(organisation_id,client_id,engagement_id,task_id,actor_id,exception_id,source_kind,source_id,population_id,member_ordinal,criterion_id,basis_id,origin,evidence,source_us)
-  SELECT s.organisation_id,s.client_id,s.engagement_id,s.task_id,s.actor_id,
-    public.assessment_exception_key(s.organisation_id,s.client_id,s.engagement_id,s.task_id,s.root,s.subject),
-    s.source_kind,s.source_id,s.population_id,s.member_ordinal,s.criterion_id,s.basis_id,s.origin,s.evidence,s.source_us
+ GET DIAGNOSTICS added_exceptions = ROW_COUNT;
+ IF added_exceptions > 0 AND EXISTS(SELECT 1 FROM (SELECT DISTINCT r.organisation_id, r.client_id, r.engagement_id, r.task_id FROM jsonb_to_recordset(staged) AS r(organisation_id text, client_id text, engagement_id text, task_id text)) t
+    WHERE (SELECT count(*) FROM public.assessment_exceptions x WHERE (x.organisation_id,x.client_id,x.engagement_id,x.task_id)=(t.organisation_id,t.client_id,t.engagement_id,t.task_id)) > 20000) THEN
+  RAISE EXCEPTION 'a Task holds at most 20000 exceptions' USING ERRCODE='23514';
+ END IF;
+ WITH s AS (SELECT * FROM jsonb_to_recordset(staged) AS r(organisation_id text, client_id text, engagement_id text, task_id text, actor_id text, source_kind text, source_id text,
+     population_id text, member_ordinal integer, criterion_id text, basis_id text, origin text, evidence text[], subject text, source_us bigint, root text, exception_id text))
+ INSERT INTO public.assessment_exception_occurrences(organisation_id,client_id,engagement_id,task_id,actor_id,exception_id,source_kind,source_id,population_id,member_ordinal,criterion_id,basis_id,origin,evidence,source_us,seq)
+  SELECT s.organisation_id,s.client_id,s.engagement_id,s.task_id,s.actor_id,s.exception_id,
+    s.source_kind,s.source_id,s.population_id,s.member_ordinal,s.criterion_id,s.basis_id,s.origin,s.evidence,s.source_us,
+    (greatest(coalesce((SELECT max(y.seq) FROM public.assessment_exception_occurrences y WHERE (y.organisation_id,y.client_id,y.engagement_id,y.exception_id)=(s.organisation_id,s.client_id,s.engagement_id,s.exception_id)),0),
+      coalesce((SELECT max(d.seq) FROM public.assessment_exception_dispositions d WHERE (d.organisation_id,d.client_id,d.engagement_id,d.exception_id)=(s.organisation_id,s.client_id,s.engagement_id,s.exception_id)),0))
+     + row_number() OVER (PARTITION BY s.organisation_id,s.client_id,s.engagement_id,s.exception_id ORDER BY s.source_us, s.source_id COLLATE "C"))::integer
   FROM s;
  RETURN NULL;
 END $body$;
@@ -494,33 +646,47 @@ END $writer$;
 -- Exceptions and occurrences are checked once per statement over its new
 -- rows: each is exactly what trusted code derives from a not_met source
 -- record of its own Task (the writer above is the only path that writes
--- them; a direct insert that differs in any column is refused).
+-- them; a direct insert that differs in any column is refused), and an
+-- occurrence is ordered after every earlier record of its exception.
 CREATE FUNCTION public.exception_batch() RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,public AS $body$
 BEGIN
  IF TG_TABLE_NAME='assessment_exceptions' THEN
-  IF EXISTS(SELECT 1 FROM added a
+  IF EXISTS(WITH t AS (SELECT DISTINCT a.organisation_id, a.client_id, a.engagement_id, a.task_id FROM added a),
+    k AS MATERIALIZED (SELECT t.organisation_id, t.client_id, t.engagement_id, t.task_id, c.criterion_id, c.root FROM t
+      CROSS JOIN LATERAL public.assessment_task_criterion_roots(t.organisation_id,t.client_id,t.engagement_id,t.task_id) c)
+   SELECT 1 FROM added a
+     LEFT JOIN k ON (k.organisation_id,k.client_id,k.engagement_id,k.task_id,k.criterion_id)=(a.organisation_id,a.client_id,a.engagement_id,a.task_id,a.criterion_root)
      WHERE a.id IS DISTINCT FROM public.assessment_exception_key(a.organisation_id,a.client_id,a.engagement_id,a.task_id,a.criterion_root,a.subject)
-       OR public.assessment_criterion_root(a.organisation_id,a.client_id,a.engagement_id,a.criterion_root) IS DISTINCT FROM a.criterion_root
-       OR NOT EXISTS(SELECT 1 FROM public.assessment_criteria c WHERE (c.organisation_id,c.client_id,c.engagement_id,c.id)=(a.organisation_id,a.client_id,a.engagement_id,a.criterion_root) AND c.task_id=a.task_id)) THEN
+       OR k.root IS DISTINCT FROM a.criterion_root) THEN
    RAISE EXCEPTION 'an exception is named by its Task, criterion lineage root and subject' USING ERRCODE='23514';
   END IF;
-  IF EXISTS(SELECT 1 FROM added a WHERE NOT (
+  IF EXISTS(WITH t AS (SELECT DISTINCT a.organisation_id, a.client_id, a.engagement_id, a.task_id FROM added a),
+    k AS MATERIALIZED (SELECT t.organisation_id, t.client_id, t.engagement_id, t.task_id, c.criterion_id, c.root FROM t
+      CROSS JOIN LATERAL public.assessment_task_criterion_roots(t.organisation_id,t.client_id,t.engagement_id,t.task_id) c)
+   SELECT 1 FROM added a WHERE NOT (
        (a.first_source_kind='evaluation' AND EXISTS(SELECT 1 FROM public.assessment_evaluations e WHERE (e.organisation_id,e.client_id,e.engagement_id,e.id)=(a.organisation_id,a.client_id,a.engagement_id,a.first_source_id)
-          AND e.task_id=a.task_id AND e.subject=a.subject AND e.verdict='not_met' AND public.assessment_criterion_root(a.organisation_id,a.client_id,a.engagement_id,e.criterion_id)=a.criterion_root))
+          AND e.task_id=a.task_id AND e.subject=a.subject AND e.verdict='not_met' AND EXISTS(SELECT 1 FROM k WHERE (k.organisation_id,k.client_id,k.engagement_id,k.task_id,k.criterion_id,k.root)=(a.organisation_id,a.client_id,a.engagement_id,a.task_id,e.criterion_id,a.criterion_root))))
     OR (a.first_source_kind='revision' AND EXISTS(SELECT 1 FROM public.assessment_evaluation_revisions r WHERE (r.organisation_id,r.client_id,r.engagement_id,r.id)=(a.organisation_id,a.client_id,a.engagement_id,a.first_source_id)
-          AND r.task_id=a.task_id AND r.subject=a.subject AND r.verdict='not_met' AND public.assessment_criterion_root(a.organisation_id,a.client_id,a.engagement_id,r.criterion_id)=a.criterion_root))
+          AND r.task_id=a.task_id AND r.subject=a.subject AND r.verdict='not_met' AND EXISTS(SELECT 1 FROM k WHERE (k.organisation_id,k.client_id,k.engagement_id,k.task_id,k.criterion_id,k.root)=(a.organisation_id,a.client_id,a.engagement_id,a.task_id,r.criterion_id,a.criterion_root))))
     OR (a.first_source_kind='opportunity' AND EXISTS(SELECT 1 FROM public.assessment_opportunities o WHERE (o.organisation_id,o.client_id,o.engagement_id)=(a.organisation_id,a.client_id,a.engagement_id)
-          AND o.population_id||'#'||o.criterion_id||'#'||o.member_ordinal=a.first_source_id
-          AND o.task_id=a.task_id AND o.subject=a.subject AND o.verdict='not_met' AND public.assessment_criterion_root(a.organisation_id,a.client_id,a.engagement_id,o.criterion_id)=a.criterion_root))
+          AND o.population_id||'#'||o.criterion_id||'#'||o.member_ordinal=a.first_source_id AND o.evaluation_id IS NULL
+          AND o.task_id=a.task_id AND o.subject=a.subject AND o.verdict='not_met' AND EXISTS(SELECT 1 FROM k WHERE (k.organisation_id,k.client_id,k.engagement_id,k.task_id,k.criterion_id,k.root)=(a.organisation_id,a.client_id,a.engagement_id,a.task_id,o.criterion_id,a.criterion_root))))
     OR (a.first_source_kind='disposition' AND EXISTS(SELECT 1 FROM public.assessment_dispositions d JOIN public.assessment_evaluations c ON (c.organisation_id,c.client_id,c.engagement_id,c.id)=(d.organisation_id,d.client_id,d.engagement_id,d.chain_id)
           WHERE (d.organisation_id,d.client_id,d.engagement_id,d.id)=(a.organisation_id,a.client_id,a.engagement_id,a.first_source_id)
-          AND d.task_id=a.task_id AND c.subject=a.subject AND d.kind='replaced' AND d.verdict='not_met' AND public.assessment_criterion_root(a.organisation_id,a.client_id,a.engagement_id,c.criterion_id)=a.criterion_root)))) THEN
+          AND d.task_id=a.task_id AND c.subject=a.subject AND d.kind='replaced' AND d.verdict='not_met' AND EXISTS(SELECT 1 FROM k WHERE (k.organisation_id,k.client_id,k.engagement_id,k.task_id,k.criterion_id,k.root)=(a.organisation_id,a.client_id,a.engagement_id,a.task_id,c.criterion_id,a.criterion_root)))))) THEN
    RAISE EXCEPTION 'an exception begins with a not_met result of its lineage and subject' USING ERRCODE='23514';
   END IF;
  ELSE
+  -- Every occurrence writer holds its Task's exception lock (shared with
+  -- the disposition guard), so the order check below reads settled places.
+  PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('exceptions:'||t.organisation_id||'/'||t.client_id||'/'||t.engagement_id||'/'||t.task_id, 2403))
+   FROM (SELECT DISTINCT a.organisation_id, a.client_id, a.engagement_id, a.task_id FROM added a ORDER BY 1,2,3,4) t;
   -- The expected occurrence of each new row, derived from its source.
-  IF EXISTS(SELECT 1 FROM added a
+  IF EXISTS(WITH t AS (SELECT DISTINCT a.organisation_id, a.client_id, a.engagement_id, a.task_id FROM added a),
+    k AS MATERIALIZED (SELECT t.organisation_id, t.client_id, t.engagement_id, t.task_id, c.criterion_id, c.root FROM t
+      CROSS JOIN LATERAL public.assessment_task_criterion_roots(t.organisation_id,t.client_id,t.engagement_id,t.task_id) c)
+   SELECT 1 FROM added a
      LEFT JOIN public.assessment_exceptions x ON (x.organisation_id,x.client_id,x.engagement_id,x.id)=(a.organisation_id,a.client_id,a.engagement_id,a.exception_id)
      LEFT JOIN LATERAL (
        SELECT e.task_id, e.actor_id, e.subject, NULL::text AS population_id, NULL::integer AS member_ordinal, e.criterion_id, e.basis_id, e.origin,
@@ -533,7 +699,7 @@ BEGIN
        SELECT o.task_id, o.actor_id, o.subject, o.population_id, o.member_ordinal, o.criterion_id, p.basis_id, o.origin, public.assessment_evidence(o.inputs), o.created_us
        FROM public.assessment_opportunities o JOIN public.assessment_populations p ON (p.organisation_id,p.client_id,p.engagement_id,p.id)=(o.organisation_id,o.client_id,o.engagement_id,o.population_id)
        WHERE a.source_kind='opportunity' AND (o.organisation_id,o.client_id,o.engagement_id,o.population_id,o.criterion_id,o.member_ordinal)=(a.organisation_id,a.client_id,a.engagement_id,a.population_id,a.criterion_id,a.member_ordinal)
-         AND o.population_id||'#'||o.criterion_id||'#'||o.member_ordinal=a.source_id AND o.verdict='not_met'
+         AND o.population_id||'#'||o.criterion_id||'#'||o.member_ordinal=a.source_id AND o.verdict='not_met' AND o.evaluation_id IS NULL
        UNION ALL
        SELECT d.task_id, d.actor_id, c.subject, NULL, NULL, h.criterion_id, h.basis_id, 'human', public.assessment_evidence(h.document->'inputs'), d.created_us
        FROM public.assessment_dispositions d
@@ -542,13 +708,22 @@ BEGIN
          UNION ALL SELECT v.criterion_id, v.basis_id, v.document FROM public.assessment_evaluation_revisions v WHERE (v.organisation_id,v.client_id,v.engagement_id,v.id)=(d.organisation_id,d.client_id,d.engagement_id,d.revision_id)) h ON true
        WHERE a.source_kind='disposition' AND (d.organisation_id,d.client_id,d.engagement_id,d.id)=(a.organisation_id,a.client_id,a.engagement_id,a.source_id) AND d.kind='replaced' AND d.verdict='not_met'
      ) s ON true
+     LEFT JOIN k ON (k.organisation_id,k.client_id,k.engagement_id,k.task_id,k.criterion_id)=(a.organisation_id,a.client_id,a.engagement_id,a.task_id,s.criterion_id)
      WHERE s.task_id IS NULL OR x.id IS NULL
        OR (a.task_id,a.actor_id) IS DISTINCT FROM (s.task_id,s.actor_id) OR x.task_id IS DISTINCT FROM a.task_id
        OR x.subject IS DISTINCT FROM s.subject
-       OR x.criterion_root IS DISTINCT FROM public.assessment_criterion_root(a.organisation_id,a.client_id,a.engagement_id,s.criterion_id)
+       OR x.criterion_root IS DISTINCT FROM k.root
        OR (a.population_id,a.member_ordinal,a.criterion_id,a.basis_id,a.origin,a.source_us) IS DISTINCT FROM (s.population_id,s.member_ordinal,s.criterion_id,s.basis_id,s.origin,s.source_us)
        OR a.evidence IS DISTINCT FROM s.evidence) THEN
    RAISE EXCEPTION 'an occurrence is exactly the not_met result it names, in its exception' USING ERRCODE='23514';
+  END IF;
+  -- Ordered after every earlier record of its exception: no disposition
+  -- and no other occurrence holds a later or equal place.
+  IF EXISTS(SELECT 1 FROM added a WHERE
+       EXISTS(SELECT 1 FROM public.assessment_exception_dispositions d WHERE (d.organisation_id,d.client_id,d.engagement_id,d.exception_id)=(a.organisation_id,a.client_id,a.engagement_id,a.exception_id) AND d.seq >= a.seq)
+    OR EXISTS(SELECT 1 FROM public.assessment_exception_occurrences y WHERE (y.organisation_id,y.client_id,y.engagement_id,y.exception_id)=(a.organisation_id,a.client_id,a.engagement_id,a.exception_id) AND y.seq >= a.seq
+         AND NOT EXISTS(SELECT 1 FROM added b WHERE (b.organisation_id,b.client_id,b.engagement_id,b.exception_id,b.source_kind,b.source_id)=(y.organisation_id,y.client_id,y.engagement_id,y.exception_id,y.source_kind,y.source_id)))) THEN
+   RAISE EXCEPTION 'an occurrence is ordered after every earlier record of its exception' USING ERRCODE='23514';
   END IF;
  END IF;
  RETURN NULL;
@@ -565,7 +740,9 @@ END $batch$;
 -- (a worker connection holds none), with a current Auditor or Audit manager
 -- role and assignment on the engagement, who is an Audit manager or the
 -- Task's accountable person. A closure names verified evidence and only an
--- exception that is not closed; a reopening only one that is.
+-- exception that is not closed; a reopening only one that is. It takes the
+-- Task's exception lock (shared with every occurrence writer), reads the
+-- status after it and takes the next place in the exception's order.
 CREATE FUNCTION public.exception_guard() RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,public AS $body$
 DECLARE current_status text;
@@ -579,7 +756,7 @@ BEGIN
        AND 'audit_manager'=ANY(m.roles) AND (m.expires_at IS NULL OR m.expires_at > floor(extract(epoch FROM clock_timestamp()))::bigint))) THEN
   RAISE EXCEPTION 'an exception disposition is saved by an audit manager or the Task''s accountable person' USING ERRCODE='23514';
  END IF;
- PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('exception:'||NEW.organisation_id||'/'||NEW.client_id||'/'||NEW.engagement_id||'/'||NEW.exception_id, 0));
+ PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('exceptions:'||NEW.organisation_id||'/'||NEW.client_id||'/'||NEW.engagement_id||'/'||NEW.task_id, 2403));
  IF NOT EXISTS(SELECT 1 FROM public.assessment_exceptions x WHERE (x.organisation_id,x.client_id,x.engagement_id,x.id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.exception_id) AND x.task_id=NEW.task_id) THEN
   RAISE EXCEPTION 'an exception disposition names an exception of its own Task' USING ERRCODE='23514';
  END IF;
@@ -599,6 +776,9 @@ BEGIN
       AND EXISTS(SELECT 1 FROM public.evidence_originals o WHERE (o.organisation_id,o.client_id,o.engagement_id,o.id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,r->>'original_id') AND o.digest=r->>'original_sha256')), true)) THEN
   RAISE EXCEPTION 'an exception disposition reference is a verified quote of a registered original' USING ERRCODE='23514';
  END IF;
+ NEW.seq := 1 + greatest(
+   coalesce((SELECT max(y.seq) FROM public.assessment_exception_occurrences y WHERE (y.organisation_id,y.client_id,y.engagement_id,y.exception_id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.exception_id)),0),
+   coalesce((SELECT max(d.seq) FROM public.assessment_exception_dispositions d WHERE (d.organisation_id,d.client_id,d.engagement_id,d.exception_id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.exception_id)),0));
  RETURN NEW;
 END $body$;
 CREATE TRIGGER exception_guard BEFORE INSERT ON public.assessment_exception_dispositions FOR EACH ROW EXECUTE FUNCTION public.exception_guard();
@@ -606,17 +786,20 @@ CREATE TRIGGER exception_guard BEFORE INSERT ON public.assessment_exception_disp
 -- An effective summary agrees with what trusted code recorded: it belongs
 -- to its answer invocation of this Task under that turn's binding, reads a
 -- population of its basis (and a sample of it), supersedes the newest
--- effective summary of that population and sample, and every count is the
+-- effective summary of that population and sample, and every count, the
+-- coverage limitations, the conclusion and the effective limitations are the
 -- exact SQL recount over the stored members, `assessment_effective_outcomes`
--- and `assessment_exception_status`. The conclusion and the limitations are
--- the ones those counts allow.
+-- (read once) and `assessment_exception_statuses` (the exceptions of its own
+-- subjects under its basis's criterion lineages).
 CREATE FUNCTION public.effective_guard() RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,public AS $body$
-DECLARE population public.assessment_populations%ROWTYPE; recount record; partitioned record; counted record;
+DECLARE population public.assessment_populations%ROWTYPE; recount record; counted record;
  inner_summary jsonb := NEW.document->'effective'->'summary'; outer_summary jsonb := NEW.document->'effective';
- entry jsonb; extra jsonb; position_in_basis integer; expected text; unresolved integer; subjects integer; criteria integer;
+ entry jsonb; extra jsonb; criterion_entry record; expected text; effective_expected text; unresolved integer; subjects integer; criteria integer;
+ failing bigint; unresolved_count bigint; meets bigint; not_applicable bigint; failing_opportunities numeric;
  unreviewed bigint := 0; pending bigint := 0; undisposed bigint := 0; superseded bigint := 0; human bigint := 0;
  newest text; stated jsonb; derived jsonb; scope_unknown bigint; unkeyed bigint;
+ per_criterion jsonb; by_reason jsonb; domain text[]; ids text[];
 BEGIN
  IF NOT EXISTS(SELECT 1 FROM public.model_invocations i WHERE (i.organisation_id,i.client_id,i.engagement_id,i.id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.invocation_id)
    AND i.task_id=NEW.task_id AND i.cycle_id=NEW.cycle_id AND i.actor_id=NEW.actor_id
@@ -672,12 +855,15 @@ BEGIN
  IF NEW.sample_id IS NOT NULL AND NEW.selected IS DISTINCT FROM (SELECT count(*) FROM public.assessment_sample_members x WHERE (x.organisation_id,x.client_id,x.engagement_id,x.sample_id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.sample_id))::integer THEN
   RAISE EXCEPTION 'an effective summary count is not the stored count: selected' USING ERRCODE='23514';
  END IF;
- SELECT count(*) INTO subjects FROM public.assessment_population_members m
+ -- The summary's own subjects: the population's in-scope subjects, or the
+ -- sample's selected ones among them.
+ domain := ARRAY(SELECT m.subject FROM public.assessment_population_members m
   WHERE (m.organisation_id,m.client_id,m.engagement_id,m.population_id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.population_id)
-    AND m.disposition='in_scope'
-    AND (NEW.sample_id IS NULL OR m.subject IN (SELECT x.subject FROM public.assessment_sample_members x WHERE (x.organisation_id,x.client_id,x.engagement_id,x.sample_id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.sample_id)));
+    AND m.disposition='in_scope' AND m.subject IS NOT NULL
+    AND (NEW.sample_id IS NULL OR m.subject IN (SELECT x.subject FROM public.assessment_sample_members x WHERE (x.organisation_id,x.client_id,x.engagement_id,x.sample_id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.sample_id))));
+ subjects := cardinality(domain);
  SELECT count(*) INTO criteria FROM public.assessment_basis_criteria k WHERE (k.organisation_id,k.client_id,k.engagement_id,k.basis_id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.basis_id);
- IF jsonb_array_length(inner_summary->'criteria') IS DISTINCT FROM criteria THEN
+ IF jsonb_typeof(inner_summary->'criteria') IS DISTINCT FROM 'array' OR jsonb_array_length(inner_summary->'criteria') IS DISTINCT FROM criteria THEN
   RAISE EXCEPTION 'an effective summary counts every criterion of its basis' USING ERRCODE='23514';
  END IF;
  IF EXISTS(SELECT 1 FROM public.assessment_basis_criteria k
@@ -686,82 +872,105 @@ BEGIN
           IS DISTINCT FROM population.in_scope::bigint) THEN
   RAISE EXCEPTION 'an effective summary reads every opportunity of every criterion of its basis' USING ERRCODE='23514';
  END IF;
- -- Per criterion, in basis order, recounted over the effective outcomes.
- FOR position_in_basis, entry, extra IN SELECT k.ordinal, inner_summary->'criteria'->k.ordinal, outer_summary->'criteria'->k.ordinal FROM public.assessment_basis_criteria k
-    WHERE (k.organisation_id,k.client_id,k.engagement_id,k.basis_id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.basis_id) ORDER BY k.ordinal LOOP
-  SELECT k.criterion_id AS criterion_id,
-    count(o.*) FILTER (WHERE o.applicability='applicable') AS applicable,
-    count(o.*) FILTER (WHERE o.applicability='not_applicable') AS not_applicable,
-    count(o.*) FILTER (WHERE o.applicability='applicable' AND o.verdict='met') AS met,
-    count(o.*) FILTER (WHERE o.applicability='applicable' AND o.verdict='not_met') AS not_met,
-    count(o.*) FILTER (WHERE o.applicability='applicable' AND o.execution='completed' AND o.verdict='undetermined') AS undetermined,
-    count(o.*) FILTER (WHERE o.applicability='applicable' AND o.execution='failed') AS execution_failed,
-    count(o.*) FILTER (WHERE o.applicability='applicable' AND o.execution='completed' AND o.verdict IS NULL) AS not_evaluated,
-    count(o.*) FILTER (WHERE o.applicability='applicable' AND o.verdict='met' AND o.origin='model_proposal') AS met_unreviewed,
-    count(o.*) FILTER (WHERE o.review='replaced') AS human_replaced,
-    count(o.*) FILTER (WHERE o.review='pending_reconsideration') AS pending,
-    count(o.*) FILTER (WHERE o.origin='model_proposal' AND o.review='unreviewed') AS undisposed,
-    count(o.*) FILTER (WHERE o.superseded) AS superseded,
-    coalesce((SELECT jsonb_object_agg(r.reason, r.n) FROM (SELECT coalesce(o2.reason,'stated_in_words') AS reason, count(*) AS n
-       FROM public.assessment_effective_outcomes(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.population_id) o2
-       WHERE o2.criterion_id=k.criterion_id
-         AND (NEW.sample_id IS NULL OR o2.subject IN (SELECT x.subject FROM public.assessment_sample_members x WHERE (x.organisation_id,x.client_id,x.engagement_id,x.sample_id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.sample_id)))
-         AND o2.applicability='applicable' AND o2.execution='completed' AND o2.verdict='undetermined' GROUP BY 1) r), '{}'::jsonb) AS by_reason
-   INTO recount
-   FROM public.assessment_basis_criteria k
-   LEFT JOIN public.assessment_effective_outcomes(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.population_id) o ON o.criterion_id=k.criterion_id
-     AND (NEW.sample_id IS NULL OR o.subject IN (SELECT x.subject FROM public.assessment_sample_members x WHERE (x.organisation_id,x.client_id,x.engagement_id,x.sample_id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.sample_id)))
-   WHERE (k.organisation_id,k.client_id,k.engagement_id,k.basis_id,k.ordinal)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.basis_id,position_in_basis)
-   GROUP BY k.criterion_id;
-  IF entry->>'criterion_id' IS DISTINCT FROM recount.criterion_id OR extra->>'criterion_id' IS DISTINCT FROM recount.criterion_id
-     OR jsonb_typeof(entry->'applicable') IS DISTINCT FROM 'number' OR (entry->>'applicable')::numeric IS DISTINCT FROM recount.applicable
-     OR jsonb_typeof(entry->'not_applicable') IS DISTINCT FROM 'number' OR (entry->>'not_applicable')::numeric IS DISTINCT FROM recount.not_applicable
-     OR jsonb_typeof(entry->'applicability_unknown') IS DISTINCT FROM 'number' OR (entry->>'applicability_unknown')::numeric IS DISTINCT FROM subjects - recount.applicable - recount.not_applicable
-     OR jsonb_typeof(entry->'met') IS DISTINCT FROM 'number' OR (entry->>'met')::numeric IS DISTINCT FROM recount.met
-     OR jsonb_typeof(entry->'not_met') IS DISTINCT FROM 'number' OR (entry->>'not_met')::numeric IS DISTINCT FROM recount.not_met
-     OR jsonb_typeof(entry->'undetermined') IS DISTINCT FROM 'number' OR (entry->>'undetermined')::numeric IS DISTINCT FROM recount.undetermined
-     OR jsonb_typeof(entry->'execution_failed') IS DISTINCT FROM 'number' OR (entry->>'execution_failed')::numeric IS DISTINCT FROM recount.execution_failed
-     OR jsonb_typeof(entry->'not_evaluated') IS DISTINCT FROM 'number' OR (entry->>'not_evaluated')::numeric IS DISTINCT FROM recount.not_evaluated
-     OR jsonb_typeof(entry->'met_unreviewed') IS DISTINCT FROM 'number' OR (entry->>'met_unreviewed')::numeric IS DISTINCT FROM recount.met_unreviewed
-     OR entry->'undetermined_by_reason' IS DISTINCT FROM recount.by_reason
-     OR jsonb_typeof(extra->'human_replaced') IS DISTINCT FROM 'number' OR (extra->>'human_replaced')::numeric IS DISTINCT FROM recount.human_replaced
-     OR jsonb_typeof(extra->'pending_reconsideration') IS DISTINCT FROM 'number' OR (extra->>'pending_reconsideration')::numeric IS DISTINCT FROM recount.pending
-     OR jsonb_typeof(extra->'undisposed') IS DISTINCT FROM 'number' OR (extra->>'undisposed')::numeric IS DISTINCT FROM recount.undisposed
-     OR jsonb_typeof(extra->'superseded') IS DISTINCT FROM 'number' OR (extra->>'superseded')::numeric IS DISTINCT FROM recount.superseded THEN
-   RAISE EXCEPTION 'an effective summary count is not the stored count: criterion %', recount.criterion_id USING ERRCODE='23514';
-  END IF;
-  unreviewed := unreviewed + recount.met_unreviewed;
-  human := human + recount.human_replaced;
-  pending := pending + recount.pending;
-  undisposed := undisposed + recount.undisposed;
-  superseded := superseded + recount.superseded;
- END LOOP;
- IF (NEW.human_replaced, NEW.pending_reconsideration, NEW.undisposed, NEW.superseded) IS DISTINCT FROM (human::integer, pending::integer, undisposed::integer, superseded::integer) THEN
-  RAISE EXCEPTION 'an effective summary count is not the stored count: reviews' USING ERRCODE='23514';
- END IF;
- -- The subject partition over the effective outcomes (as 24.2).
- SELECT count(*) FILTER (WHERE f) AS failing,
-   count(*) FILTER (WHERE NOT f AND u) + (subjects - count(*)) AS unresolved,
-   count(*) FILTER (WHERE NOT f AND NOT u AND m) AS meets,
-   count(*) FILTER (WHERE NOT f AND NOT u AND NOT m) AS not_applicable,
-   coalesce(sum(n_not_met),0) AS failing_opportunities
-  INTO partitioned FROM (
-   SELECT o.member_ordinal,
+ -- The effective outcomes of the summary's subjects, read once: per
+ -- criterion, undetermined reasons per criterion, and the subject partition.
+ WITH o AS MATERIALIZED (SELECT * FROM public.assessment_effective_outcomes(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.population_id) o
+     WHERE NEW.sample_id IS NULL OR o.subject IN (SELECT pg_catalog.unnest(domain))),
+  c AS (SELECT o.criterion_id,
+    count(*) FILTER (WHERE o.applicability='applicable') AS applicable,
+    count(*) FILTER (WHERE o.applicability='not_applicable') AS not_applicable,
+    count(*) FILTER (WHERE o.applicability='applicable' AND o.verdict='met') AS met,
+    count(*) FILTER (WHERE o.applicability='applicable' AND o.verdict='not_met') AS not_met,
+    count(*) FILTER (WHERE o.applicability='applicable' AND o.execution='completed' AND o.verdict='undetermined') AS undetermined,
+    count(*) FILTER (WHERE o.applicability='applicable' AND o.execution='failed') AS execution_failed,
+    count(*) FILTER (WHERE o.applicability='applicable' AND o.execution='completed' AND o.verdict IS NULL) AS not_evaluated,
+    count(*) FILTER (WHERE o.applicability='applicable' AND o.verdict='met' AND o.origin='model_proposal') AS met_unreviewed,
+    count(*) FILTER (WHERE o.review='replaced') AS human_replaced,
+    count(*) FILTER (WHERE o.review='pending_reconsideration') AS pending,
+    count(*) FILTER (WHERE o.origin='model_proposal' AND o.review='unreviewed') AS undisposed,
+    count(*) FILTER (WHERE o.superseded) AS superseded
+   FROM o GROUP BY o.criterion_id),
+  r AS (SELECT q.criterion_id, jsonb_object_agg(q.reason, q.n) AS reasons FROM (SELECT o.criterion_id, coalesce(o.reason,'stated_in_words') AS reason, count(*) AS n FROM o
+    WHERE o.applicability='applicable' AND o.execution='completed' AND o.verdict='undetermined' GROUP BY 1,2) q GROUP BY q.criterion_id),
+  s AS (SELECT o.member_ordinal,
      bool_or(o.verdict IS NOT DISTINCT FROM 'not_met') AS f,
      bool_or(o.execution='failed' OR o.applicability='unknown' OR (o.applicability='applicable' AND o.verdict IS DISTINCT FROM 'met' AND o.verdict IS DISTINCT FROM 'not_met'))
        OR count(*) < criteria AS u,
      bool_or(o.verdict IS NOT DISTINCT FROM 'met') AS m,
      count(*) FILTER (WHERE o.verdict='not_met') AS n_not_met
-   FROM public.assessment_effective_outcomes(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.population_id) o
-   WHERE (NEW.sample_id IS NULL OR o.subject IN (SELECT x.subject FROM public.assessment_sample_members x WHERE (x.organisation_id,x.client_id,x.engagement_id,x.sample_id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.sample_id)))
-   GROUP BY o.member_ordinal) s;
- IF partitioned.failing IS DISTINCT FROM NEW.failing_subjects::bigint THEN RAISE EXCEPTION 'an effective summary count is not the stored count: failing_subjects' USING ERRCODE='23514'; END IF;
- IF partitioned.unresolved IS DISTINCT FROM NEW.unresolved_subjects::bigint THEN RAISE EXCEPTION 'an effective summary count is not the stored count: unresolved_subjects' USING ERRCODE='23514'; END IF;
- IF partitioned.meets IS DISTINCT FROM NEW.meets_every_applicable::bigint THEN RAISE EXCEPTION 'an effective summary count is not the stored count: meets_every_applicable' USING ERRCODE='23514'; END IF;
- IF partitioned.not_applicable IS DISTINCT FROM NEW.not_applicable_to_any::bigint THEN RAISE EXCEPTION 'an effective summary count is not the stored count: not_applicable_to_any' USING ERRCODE='23514'; END IF;
- IF partitioned.failing_opportunities IS DISTINCT FROM NEW.failing_opportunities::numeric THEN RAISE EXCEPTION 'an effective summary count is not the stored count: failing_opportunities' USING ERRCODE='23514'; END IF;
+   FROM o GROUP BY o.member_ordinal)
+ SELECT (SELECT coalesce(jsonb_object_agg(c.criterion_id, to_jsonb(c)), '{}'::jsonb) FROM c),
+   (SELECT coalesce(jsonb_object_agg(r.criterion_id, r.reasons), '{}'::jsonb) FROM r),
+   (SELECT count(*) FILTER (WHERE f) FROM s), (SELECT count(*) FILTER (WHERE NOT f AND u) + (subjects - count(*)) FROM s),
+   (SELECT count(*) FILTER (WHERE NOT f AND NOT u AND m) FROM s), (SELECT count(*) FILTER (WHERE NOT f AND NOT u AND NOT m) FROM s),
+   (SELECT coalesce(sum(n_not_met),0) FROM s)
+  INTO per_criterion, by_reason, failing, unresolved_count, meets, not_applicable, failing_opportunities;
+ -- Per criterion, in basis order.
+ derived := '[]'::jsonb;
+ FOR criterion_entry IN SELECT k.ordinal, k.criterion_id, c.kind, inner_summary->'criteria'->k.ordinal AS entry, outer_summary->'criteria'->k.ordinal AS extra,
+     coalesce(per_criterion->k.criterion_id, '{}'::jsonb) AS n, coalesce(by_reason->k.criterion_id, '{}'::jsonb) AS reasons
+    FROM public.assessment_basis_criteria k JOIN public.assessment_criteria c ON (c.organisation_id,c.client_id,c.engagement_id,c.id)=(k.organisation_id,k.client_id,k.engagement_id,k.criterion_id)
+    WHERE (k.organisation_id,k.client_id,k.engagement_id,k.basis_id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.basis_id) ORDER BY k.ordinal LOOP
+  entry := criterion_entry.entry; extra := criterion_entry.extra;
+  IF entry->>'criterion_id' IS DISTINCT FROM criterion_entry.criterion_id OR extra->>'criterion_id' IS DISTINCT FROM criterion_entry.criterion_id
+     OR jsonb_typeof(entry->'applicable') IS DISTINCT FROM 'number' OR (entry->>'applicable')::numeric IS DISTINCT FROM coalesce((criterion_entry.n->>'applicable')::numeric,0)
+     OR jsonb_typeof(entry->'not_applicable') IS DISTINCT FROM 'number' OR (entry->>'not_applicable')::numeric IS DISTINCT FROM coalesce((criterion_entry.n->>'not_applicable')::numeric,0)
+     OR jsonb_typeof(entry->'applicability_unknown') IS DISTINCT FROM 'number' OR (entry->>'applicability_unknown')::numeric IS DISTINCT FROM subjects - coalesce((criterion_entry.n->>'applicable')::numeric,0) - coalesce((criterion_entry.n->>'not_applicable')::numeric,0)
+     OR jsonb_typeof(entry->'met') IS DISTINCT FROM 'number' OR (entry->>'met')::numeric IS DISTINCT FROM coalesce((criterion_entry.n->>'met')::numeric,0)
+     OR jsonb_typeof(entry->'not_met') IS DISTINCT FROM 'number' OR (entry->>'not_met')::numeric IS DISTINCT FROM coalesce((criterion_entry.n->>'not_met')::numeric,0)
+     OR jsonb_typeof(entry->'undetermined') IS DISTINCT FROM 'number' OR (entry->>'undetermined')::numeric IS DISTINCT FROM coalesce((criterion_entry.n->>'undetermined')::numeric,0)
+     OR jsonb_typeof(entry->'execution_failed') IS DISTINCT FROM 'number' OR (entry->>'execution_failed')::numeric IS DISTINCT FROM coalesce((criterion_entry.n->>'execution_failed')::numeric,0)
+     OR jsonb_typeof(entry->'not_evaluated') IS DISTINCT FROM 'number' OR (entry->>'not_evaluated')::numeric IS DISTINCT FROM coalesce((criterion_entry.n->>'not_evaluated')::numeric,0)
+     OR jsonb_typeof(entry->'met_unreviewed') IS DISTINCT FROM 'number' OR (entry->>'met_unreviewed')::numeric IS DISTINCT FROM coalesce((criterion_entry.n->>'met_unreviewed')::numeric,0)
+     OR entry->'undetermined_by_reason' IS DISTINCT FROM criterion_entry.reasons
+     OR jsonb_typeof(extra->'human_replaced') IS DISTINCT FROM 'number' OR (extra->>'human_replaced')::numeric IS DISTINCT FROM coalesce((criterion_entry.n->>'human_replaced')::numeric,0)
+     OR jsonb_typeof(extra->'pending_reconsideration') IS DISTINCT FROM 'number' OR (extra->>'pending_reconsideration')::numeric IS DISTINCT FROM coalesce((criterion_entry.n->>'pending')::numeric,0)
+     OR jsonb_typeof(extra->'undisposed') IS DISTINCT FROM 'number' OR (extra->>'undisposed')::numeric IS DISTINCT FROM coalesce((criterion_entry.n->>'undisposed')::numeric,0)
+     OR jsonb_typeof(extra->'superseded') IS DISTINCT FROM 'number' OR (extra->>'superseded')::numeric IS DISTINCT FROM coalesce((criterion_entry.n->>'superseded')::numeric,0) THEN
+   RAISE EXCEPTION 'an effective summary count is not the stored count: criterion %', criterion_entry.criterion_id USING ERRCODE='23514';
+  END IF;
+  -- The 24.2 coverage limitations of this criterion, in their order (every
+  -- subject has an opportunity of it, checked above, so none is missing).
+  IF criterion_entry.kind='judgment' AND coalesce((criterion_entry.n->>'not_evaluated')::bigint,0) > 0 THEN
+   derived := derived || jsonb_build_array(jsonb_build_object('code','judgment_not_recorded','criterion_id',criterion_entry.criterion_id,'count',(criterion_entry.n->>'not_evaluated')::bigint));
+  END IF;
+  IF coalesce((criterion_entry.n->>'met_unreviewed')::bigint,0) > 0 THEN
+   derived := derived || jsonb_build_array(jsonb_build_object('code','unreviewed_model_judgments','criterion_id',criterion_entry.criterion_id,'count',(criterion_entry.n->>'met_unreviewed')::bigint));
+  END IF;
+  unreviewed := unreviewed + coalesce((criterion_entry.n->>'met_unreviewed')::bigint,0);
+  human := human + coalesce((criterion_entry.n->>'human_replaced')::bigint,0);
+  pending := pending + coalesce((criterion_entry.n->>'pending')::bigint,0);
+  undisposed := undisposed + coalesce((criterion_entry.n->>'undisposed')::bigint,0);
+  superseded := superseded + coalesce((criterion_entry.n->>'superseded')::bigint,0);
+ END LOOP;
+ IF (NEW.human_replaced, NEW.pending_reconsideration, NEW.undisposed, NEW.superseded) IS DISTINCT FROM (human::integer, pending::integer, undisposed::integer, superseded::integer) THEN
+  RAISE EXCEPTION 'an effective summary count is not the stored count: reviews' USING ERRCODE='23514';
+ END IF;
+ IF failing IS DISTINCT FROM NEW.failing_subjects::bigint THEN RAISE EXCEPTION 'an effective summary count is not the stored count: failing_subjects' USING ERRCODE='23514'; END IF;
+ IF unresolved_count IS DISTINCT FROM NEW.unresolved_subjects::bigint THEN RAISE EXCEPTION 'an effective summary count is not the stored count: unresolved_subjects' USING ERRCODE='23514'; END IF;
+ IF meets IS DISTINCT FROM NEW.meets_every_applicable::bigint THEN RAISE EXCEPTION 'an effective summary count is not the stored count: meets_every_applicable' USING ERRCODE='23514'; END IF;
+ IF not_applicable IS DISTINCT FROM NEW.not_applicable_to_any::bigint THEN RAISE EXCEPTION 'an effective summary count is not the stored count: not_applicable_to_any' USING ERRCODE='23514'; END IF;
+ IF failing_opportunities IS DISTINCT FROM NEW.failing_opportunities::numeric THEN RAISE EXCEPTION 'an effective summary count is not the stored count: failing_opportunities' USING ERRCODE='23514'; END IF;
+ -- The rest of the 24.2 coverage limitations, in their order.
+ IF NEW.sample_id IS NOT NULL THEN derived := derived || jsonb_build_array(jsonb_build_object('code','sample_selected_only','criterion_id',NULL,'count',NEW.selected)); END IF;
+ IF scope_unknown > 0 AND NEW.sample_id IS NULL THEN derived := derived || jsonb_build_array(jsonb_build_object('code','scope_unknown','criterion_id',NULL,'count',scope_unknown)); END IF;
+ IF unkeyed > 0 AND NEW.sample_id IS NULL THEN derived := derived || jsonb_build_array(jsonb_build_object('code','unkeyed_rows','criterion_id',NULL,'count',unkeyed)); END IF;
+ IF coalesce(jsonb_typeof(population.document->'period_column'),'null') = 'null' THEN
+  derived := derived || jsonb_build_array(jsonb_build_object('code','period_not_checked','criterion_id',NULL,'count',NULL));
+ END IF;
+ IF coalesce((population.document->>'naive_date_times')::bigint,0) > 0 THEN
+  derived := derived || jsonb_build_array(jsonb_build_object('code','naive_date_times','criterion_id',NULL,'count',(population.document->>'naive_date_times')::bigint));
+ END IF;
+ IF jsonb_typeof(inner_summary->'limitations') IS DISTINCT FROM 'array' THEN
+  RAISE EXCEPTION 'an effective summary states exactly the coverage limitations its counts give' USING ERRCODE='23514';
+ END IF;
+ SELECT coalesce(jsonb_agg(jsonb_build_object('code',e->'code','criterion_id',e->'criterion_id','count',e->'count') ORDER BY n), '[]'::jsonb)
+  INTO stated FROM jsonb_array_elements(inner_summary->'limitations') WITH ORDINALITY t(e,n);
+ IF stated IS DISTINCT FROM derived THEN
+  RAISE EXCEPTION 'an effective summary states exactly the coverage limitations its counts give' USING ERRCODE='23514';
+ END IF;
 
- -- The closed conclusion its counts allow (the 24.2 rule): a met that is an
+ -- The closed 24.2 conclusion its counts allow: a met that is an
  -- unreviewed model proposal never proves that no exception exists.
  unresolved := NEW.unresolved_subjects + CASE WHEN NEW.sample_id IS NULL THEN scope_unknown + unkeyed ELSE 0 END;
  expected := CASE
@@ -770,20 +979,18 @@ BEGIN
   WHEN NEW.completeness = 'complete' AND unresolved = 0 AND NEW.meets_every_applicable = 0 THEN 'no_eligible_items'
   WHEN NEW.completeness = 'complete' AND NEW.sample_id IS NULL AND unresolved = 0 AND unreviewed = 0 THEN 'no_exception_found'
   ELSE 'inconclusive' END;
- IF NEW.conclusion IS DISTINCT FROM expected THEN
+ IF inner_summary->>'conclusion' IS DISTINCT FROM expected THEN
   RAISE EXCEPTION 'an effective summary concludes only what its counts allow: %', expected USING ERRCODE='23514';
  END IF;
- IF jsonb_typeof(inner_summary->'limitations') IS DISTINCT FROM 'array'
-    OR jsonb_path_exists(inner_summary->'limitations', '$[*] ? (!(@.code == "not_evaluated" || @.code == "judgment_not_recorded" || @.code == "unreviewed_model_judgments" || @.code == "sample_selected_only" || @.code == "scope_unknown" || @.code == "unkeyed_rows" || @.code == "period_not_checked" || @.code == "naive_date_times"))') THEN
-  RAISE EXCEPTION 'an effective summary''s coverage limitations are closed codes' USING ERRCODE='23514';
- END IF;
- -- The exceptions of the basis's criterion lineages, by derived status.
- WITH roots AS (SELECT DISTINCT public.assessment_criterion_root(k.organisation_id,k.client_id,k.engagement_id,k.criterion_id) AS root
-     FROM public.assessment_basis_criteria k WHERE (k.organisation_id,k.client_id,k.engagement_id,k.basis_id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.basis_id)),
-   x AS (SELECT x.id, x.subject, x.criterion_root, s.status, s.latest_observed FROM public.assessment_exceptions x
-     CROSS JOIN LATERAL public.assessment_exception_status(x.organisation_id,x.client_id,x.engagement_id,x.id) s
-     WHERE (x.organisation_id,x.client_id,x.engagement_id,x.task_id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.task_id)
-       AND x.criterion_root IN (SELECT root FROM roots))
+ -- The exceptions of its own subjects under its basis's criterion lineages,
+ -- by derived status.
+ ids := ARRAY(SELECT x.id FROM public.assessment_exceptions x
+   WHERE (x.organisation_id,x.client_id,x.engagement_id,x.task_id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.task_id)
+     AND x.subject IN (SELECT pg_catalog.unnest(domain))
+     AND x.criterion_root IN (SELECT r.root FROM public.assessment_basis_criteria k
+       JOIN public.assessment_task_criterion_roots(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.task_id) r ON r.criterion_id=k.criterion_id
+       WHERE (k.organisation_id,k.client_id,k.engagement_id,k.basis_id)=(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.basis_id)));
+ WITH x AS MATERIALIZED (SELECT * FROM public.assessment_exception_statuses(NEW.organisation_id,NEW.client_id,NEW.engagement_id,NEW.task_id,ids))
  SELECT count(*) AS total,
    count(*) FILTER (WHERE x.status='open') AS open,
    count(*) FILTER (WHERE x.status='resolved_by_evidence') AS resolved,
@@ -795,13 +1002,22 @@ BEGIN
      FROM (SELECT * FROM x ORDER BY x.subject COLLATE "C", x.criterion_root COLLATE "C", x.id COLLATE "C" LIMIT 50) l) AS listed
   INTO counted FROM x;
  IF (NEW.exceptions_total, NEW.exceptions_open, NEW.exceptions_resolved, NEW.exceptions_replaced, NEW.exceptions_closed, NEW.exception_subjects)
-    IS DISTINCT FROM (counted.total::integer, counted.open::integer, counted.resolved::integer, counted.replaced::integer, counted.closed::integer, counted.subjects::integer) THEN
+    IS DISTINCT FROM (counted.total::integer, counted.open::integer, counted.resolved::integer, counted.replaced::integer, counted.closed::integer, counted.subjects::integer)
+    OR jsonb_typeof(outer_summary->'exceptions'->'total') IS DISTINCT FROM 'number' OR jsonb_typeof(outer_summary->'exceptions'->'open') IS DISTINCT FROM 'number'
+    OR jsonb_typeof(outer_summary->'exceptions'->'resolved_by_evidence') IS DISTINCT FROM 'number' OR jsonb_typeof(outer_summary->'exceptions'->'replaced_by_human_judgment') IS DISTINCT FROM 'number'
+    OR jsonb_typeof(outer_summary->'exceptions'->'closed_by_disposition') IS DISTINCT FROM 'number' OR jsonb_typeof(outer_summary->'exceptions'->'subjects') IS DISTINCT FROM 'number' THEN
   RAISE EXCEPTION 'an effective summary count is not the stored count: exceptions' USING ERRCODE='23514';
  END IF;
  SELECT coalesce(jsonb_agg(jsonb_build_object('id',e->'id','subject',e->'subject','criterion_root',e->'criterion_root','status',e->'status','latest_observed',e->'latest_observed') ORDER BY n), '[]'::jsonb)
   INTO stated FROM jsonb_array_elements(outer_summary->'listed') WITH ORDINALITY t(e,n);
  IF stated IS DISTINCT FROM counted.listed THEN
   RAISE EXCEPTION 'an effective summary lists the first 50 exceptions with their derived status' USING ERRCODE='23514';
+ END IF;
+ -- The effective conclusion: the 24.2 conclusion, but never that no
+ -- exception was found while one of its subjects' exceptions is open.
+ effective_expected := CASE WHEN expected = 'no_exception_found' AND counted.open > 0 THEN 'inconclusive' ELSE expected END;
+ IF NEW.conclusion IS DISTINCT FROM effective_expected THEN
+  RAISE EXCEPTION 'an effective summary concludes only what its counts allow: %', effective_expected USING ERRCODE='23514';
  END IF;
  -- The closed limitations its counts give, in their order.
  derived := '[]'::jsonb;
@@ -810,6 +1026,7 @@ BEGIN
  IF pending > 0 THEN derived := derived || jsonb_build_array(jsonb_build_object('code','pending_reconsideration','count',pending)); END IF;
  IF undisposed > 0 THEN derived := derived || jsonb_build_array(jsonb_build_object('code','unreviewed_model_proposals','count',undisposed)); END IF;
  IF superseded > 0 THEN derived := derived || jsonb_build_array(jsonb_build_object('code','superseded_inputs_not_reevaluated','count',superseded)); END IF;
+ IF counted.open > 0 THEN derived := derived || jsonb_build_array(jsonb_build_object('code','open_exceptions','count',counted.open)); END IF;
  IF NEW.sample_id IS NOT NULL THEN derived := derived || jsonb_build_array(jsonb_build_object('code','sample_only','count',NEW.selected)); END IF;
  SELECT coalesce(jsonb_agg(jsonb_build_object('code',e->'code','count',e->'count') ORDER BY n), '[]'::jsonb)
   INTO stated FROM jsonb_array_elements(outer_summary->'limitations') WITH ORDINALITY t(e,n);
@@ -852,9 +1069,11 @@ BEGIN
   EXECUTE format('REVOKE ALL ON public.%I FROM PUBLIC',relation);
  END LOOP;
 END $immutable$;
-REVOKE ALL ON FUNCTION public.exception_record(),public.exception_batch(),public.exception_guard(),public.effective_guard(),public.exception_immutable(),public.exception_retained() FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.assessment_criterion_root(text,text,text,text),public.assessment_population_lineage(text,text,text,text),public.assessment_exception_key(text,text,text,text,text,text),
- public.assessment_evidence(jsonb),public.assessment_exception_observations(text,text,text,text),public.assessment_exception_status(text,text,text,text),public.assessment_effective_outcomes(text,text,text,text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.exception_record(),public.exception_batch(),public.exception_guard(),public.effective_guard(),public.exception_immutable(),public.exception_retained(),public.population_succession() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.assessment_criterion_root(text,text,text,text),public.assessment_task_criterion_roots(text,text,text,text),public.assessment_task_population_roots(text,text,text,text),
+ public.assessment_exception_key(text,text,text,text,text,text),public.assessment_evidence(jsonb),public.assessment_exception_observations(text,text,text,text,text[]),
+ public.assessment_exception_decide(boolean,boolean,text,bigint,text,text,text,text,text[],text,text[],bigint,text,text[]),
+ public.assessment_exception_statuses(text,text,text,text,text[]),public.assessment_exception_status(text,text,text,text),public.assessment_effective_outcomes(text,text,text,text) FROM PUBLIC;
 ALTER TABLE public.zobba_bootstrap DROP CONSTRAINT zobba_bootstrap_schema_version_check;
 ALTER TABLE public.zobba_bootstrap ADD CHECK(schema_version=21) NOT VALID;
 UPDATE public.zobba_bootstrap SET schema_version=21;

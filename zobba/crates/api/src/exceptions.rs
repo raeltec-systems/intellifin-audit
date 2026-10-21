@@ -37,15 +37,15 @@ use zobba_application::{
 use zobba_domain::{
     citation::{CitationSource, Locator},
     exception::{
-        ExceptionDispositionKind, ExceptionDispositionRequest, NOT_REMEDIATION, OCCURRENCE_PAGE,
-        status_words, valid_exception_id,
+        ExceptionDispositionKind, ExceptionDispositionRequest, NOT_REMEDIATION, status_words,
+        valid_exception_id,
     },
     identity::valid_scope_id,
 };
 use zobba_infrastructure::{
     assessment::{
         AssessmentRepository,
-        exception::{ExceptionDetail, ExceptionsView},
+        exception::{ExceptionDetail, ExceptionsReadError, ExceptionsView},
     },
     citation::{CitationRepository, ViewerOriginal},
     evidence::{EvidenceRepository, s3::S3EvidenceObjects},
@@ -141,8 +141,10 @@ pub struct ExceptionResponse {
     /// `open`, `resolved_by_evidence`, `replaced_by_human_judgment` or
     /// `closed_by_disposition`.
     pub status: String,
-    /// `not_met` or `not_observed`: whether the latest observation of its
-    /// lineage and subject still shows it failing.
+    /// `not_met` while any current observation of its lineage and subject
+    /// fails; otherwise `proposed_met` (an unreviewed model proposal would
+    /// resolve it once accepted), `person_undetermined` (a person replaced
+    /// the failing judgment with undetermined) or `not_observed`.
     pub latest_observed: String,
     /// What the status means, in words. An open exception the latest
     /// revision did not observe says that this is not evidence of
@@ -151,6 +153,9 @@ pub struct ExceptionResponse {
     /// The exact number of its occurrences.
     #[schema(pattern = "^[0-9]+$")]
     pub occurrences: String,
+    /// The exact number of its dispositions; at most 16 may be saved.
+    #[schema(pattern = "^[0-9]+$")]
+    pub dispositions: String,
     /// The record its first occurrence names.
     pub first_source_kind: String,
     pub first_source_id: String,
@@ -214,8 +219,8 @@ pub struct ListedExceptionResponse {
 
 /// An effective summary version: the 24.2 partition over current
 /// revisions and dispositions (its denominators are the 24.2 ones), with
-/// the exceptions of its basis's criterion lineages by derived status. The
-/// database recounted every number.
+/// the exceptions of its own subjects under its basis's criterion lineages
+/// by derived status. The database recounted every number.
 #[derive(Serialize, ToSchema)]
 pub struct EffectiveSummaryResponse {
     pub id: String,
@@ -225,6 +230,10 @@ pub struct EffectiveSummaryResponse {
     pub aggregation: String,
     /// Counts are lower bounds when false; the total is then not known.
     pub exact: bool,
+    /// The effective conclusion: the summary's own conclusion, except that
+    /// it is `inconclusive` instead of `no_exception_found` while an
+    /// exception of its subjects is open.
+    pub conclusion: String,
     pub summary: crate::coverage::CoverageSummaryResponse,
     #[schema(max_items = 16)]
     pub criteria: Vec<EffectiveCriterionResponse>,
@@ -233,19 +242,24 @@ pub struct EffectiveSummaryResponse {
     /// order; `exceptions.total` is exact.
     #[schema(max_items = 50)]
     pub listed: Vec<ListedExceptionResponse>,
-    #[schema(max_items = 6)]
+    #[schema(max_items = 7)]
     pub effective_limitations: Vec<EffectiveLimitationResponse>,
     #[schema(required = true, pattern = "^[0-9]+$")]
     pub recorded_us: Option<String>,
 }
 
-/// Every exception of a Task (the first 200 listed), exact counts, whether
-/// the viewer may close or reopen one, and the newest effective summaries.
+/// One page of a Task's exceptions (50, C-ordered by subject, criterion
+/// lineage and ID), the exact counts by status over all of them, whether the
+/// viewer may close or reopen one, and the newest effective summaries.
 #[derive(Serialize, ToSchema)]
 pub struct ExceptionsResponse {
-    #[schema(max_items = 200)]
+    #[schema(max_items = 50)]
     pub exceptions: Vec<ExceptionResponse>,
+    /// Exact counts over every exception of the Task, never over the page.
     pub counts: ExceptionCountsResponse,
+    /// The `cursor` of the next page, when more exceptions follow.
+    #[schema(required = true, pattern = "^exc-[0-9a-f]{40}$")]
+    pub next_cursor: Option<String>,
     /// The viewer is an Audit manager or the Task's accountable person.
     pub may_close: bool,
     /// The sentence an open exception the latest revision did not observe
@@ -276,6 +290,9 @@ pub struct OccurrenceResponse {
     pub evidence: Vec<String>,
     #[schema(pattern = "^[0-9]+$")]
     pub source_us: String,
+    /// Its place in the exception's order (commit order, never clock time).
+    #[schema(pattern = "^[0-9]+$")]
+    pub seq: String,
 }
 
 /// One exception, one page of its occurrences (oldest first) and every
@@ -328,6 +345,7 @@ fn exception_response(view: &ExceptionView, originals: &Originals) -> ExceptionR
         latest_observed: view.latest_observed.as_str().into(),
         status_words: status_words(view.status, view.latest_observed),
         occurrences: view.occurrences.to_string(),
+        dispositions: view.dispositions.to_string(),
         first_source_kind: view.record.first_source_kind.as_str().into(),
         first_source_id: view.record.first_source_id.clone(),
         recorded_us: view.record.recorded_us.map(|u| u.to_string()),
@@ -373,6 +391,7 @@ pub(crate) fn effective_response(r: &EffectiveSummaryRecord) -> EffectiveSummary
         supersedes: r.supersedes.clone(),
         aggregation: zobba_domain::exception::EFFECTIVE_AGGREGATION.into(),
         exact,
+        conclusion: e.conclusion.as_str().into(),
         summary: crate::coverage::summary(&inner),
         criteria: e
             .criteria
@@ -420,38 +439,19 @@ fn reference_ids<'a>(records: impl Iterator<Item = &'a ExceptionDispositionRecor
 }
 
 /// The list response for a viewer. Counts are over every exception of the
-/// Task, never over the listed ones.
+/// Task (one aggregate), never over the listed page.
 pub(crate) fn exceptions_response(
     view: &ExceptionsView,
     originals: &Originals,
 ) -> ExceptionsResponse {
-    let mut counts = zobba_domain::exception::ExceptionCounts {
-        total: view.total,
-        ..Default::default()
-    };
-    // The listed exceptions carry their status; when every exception is
-    // listed the counts by status are theirs.
-    if view.exceptions.len() as u64 == view.total {
-        let entries: Vec<zobba_domain::exception::ExceptionEntry> = view
-            .exceptions
-            .iter()
-            .map(|v| zobba_domain::exception::ExceptionEntry {
-                id: v.record.id.clone(),
-                subject: v.record.subject.clone(),
-                criterion_root: v.record.criterion_root.clone(),
-                status: v.status,
-                latest_observed: v.latest_observed,
-            })
-            .collect();
-        counts = zobba_domain::exception::ExceptionCounts::of(&entries);
-    }
     ExceptionsResponse {
         exceptions: view
             .exceptions
             .iter()
             .map(|e| exception_response(e, originals))
             .collect(),
-        counts: counts_response(&counts),
+        counts: counts_response(&view.counts),
+        next_cursor: view.next.clone(),
         may_close: view.may_close,
         not_remediation: NOT_REMEDIATION.into(),
         effective_summaries: view.summaries.iter().map(effective_response).collect(),
@@ -459,14 +459,42 @@ pub(crate) fn exceptions_response(
     }
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ListQuery {
+    organisation_id: String,
+    client_id: String,
+    cursor: Option<String>,
+}
+
+fn not_found() -> Response {
+    (
+        StatusCode::NOT_FOUND,
+        Json(crate::auth::ErrorResponse {
+            error: "exception_not_found",
+        }),
+    )
+        .into_response()
+}
+fn bad_cursor() -> Response {
+    (
+        StatusCode::BAD_REQUEST,
+        Json(crate::auth::ErrorResponse {
+            error: "exception_cursor_invalid",
+        }),
+    )
+        .into_response()
+}
+
 #[utoipa::path(get,path="/engagements/{engagement_id}/tasks/{task_id}/assessment/exceptions",operation_id="list_exceptions",security(("server_session"=[])),
-    params(("X-Expected-Session"=Option<String>,Header,description="Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie",min_length=1,max_length=128),("engagement_id"=String,Path),("task_id"=String,Path),("organisation_id"=String,Query),("client_id"=String,Query)),
-    responses((status=200,description="Every exception of the Task with its derived status, exact counts by status, and the newest effective summaries",body=ExceptionsResponse),(status=400,body=crate::auth::ErrorResponse),(status=401,body=crate::auth::ErrorResponse),(status=403,body=crate::auth::ErrorResponse),(status=412,description="Session changed",body=crate::auth::ErrorResponse),(status=429,body=crate::auth::ErrorResponse),(status=503,body=crate::auth::ErrorResponse)))]
+    params(("X-Expected-Session"=Option<String>,Header,description="Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie",min_length=1,max_length=128),("engagement_id"=String,Path),("task_id"=String,Path),("organisation_id"=String,Query),("client_id"=String,Query),
+        ("cursor"=Option<String>,Query,description="next_cursor of the previous page",pattern="^exc-[0-9a-f]{40}$")),
+    responses((status=200,description="One page (50) of the Task's exceptions with their derived status, exact counts by status over all of them, and the newest effective summaries",body=ExceptionsResponse),(status=400,description="exception_cursor_invalid for a cursor that names no exception of this Task",body=crate::auth::ErrorResponse),(status=401,body=crate::auth::ErrorResponse),(status=403,body=crate::auth::ErrorResponse),(status=412,description="Session changed",body=crate::auth::ErrorResponse),(status=429,body=crate::auth::ErrorResponse),(status=503,body=crate::auth::ErrorResponse)))]
 pub(crate) async fn list(
     State(state): State<ExceptionState>,
     headers: HeaderMap,
     path: Result<Path<(String, String)>, axum::extract::rejection::PathRejection>,
-    query: Result<Query<TaskScopeQuery>, QueryRejection>,
+    query: Result<Query<ListQuery>, QueryRejection>,
 ) -> Response {
     let current = match state.identity.current_read(&headers).await {
         Ok(current) => current,
@@ -475,20 +503,38 @@ pub(crate) async fn list(
     let (Ok(Path((engagement_id, task_id))), Ok(Query(query))) = (path, query) else {
         return failure(TaskError::Invalid);
     };
-    let scope = match query.scope(engagement_id) {
+    let scope = match (TaskScopeQuery {
+        organisation_id: query.organisation_id,
+        client_id: query.client_id,
+    })
+    .scope(engagement_id)
+    {
         Ok(scope) => scope,
         Err(error) => return failure(error),
     };
     if !valid_scope_id(&task_id) {
         return failure(TaskError::Denied);
     }
+    if query
+        .cursor
+        .as_deref()
+        .is_some_and(|c| !valid_exception_id(c))
+    {
+        return bad_cursor();
+    }
     let view = match state
         .assessments
-        .exceptions_view(&current.identity.id, &scope, &task_id)
+        .exceptions_view(
+            &current.identity.id,
+            &scope,
+            &task_id,
+            query.cursor.as_deref(),
+        )
         .await
     {
         Ok(view) => view,
-        Err(error) => return failure(error),
+        Err(ExceptionsReadError::Cursor) => return bad_cursor(),
+        Err(ExceptionsReadError::Task(error)) => return failure(error),
     };
     let ids = reference_ids(
         view.exceptions
@@ -533,6 +579,7 @@ pub(crate) fn detail_response(
                 origin: o.origin.as_str().into(),
                 evidence: o.evidence.clone(),
                 source_us: o.source_us.to_string(),
+                seq: o.seq.to_string(),
             })
             .collect(),
         dispositions: detail
@@ -546,8 +593,8 @@ pub(crate) fn detail_response(
 
 #[utoipa::path(get,path="/engagements/{engagement_id}/tasks/{task_id}/assessment/exceptions/{exception_id}",operation_id="get_exception",security(("server_session"=[])),
     params(("X-Expected-Session"=Option<String>,Header,description="Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie",min_length=1,max_length=128),("engagement_id"=String,Path),("task_id"=String,Path),("exception_id"=String,Path),("organisation_id"=String,Query),("client_id"=String,Query),
-        ("cursor"=Option<String>,Query,description="next_cursor of the previous page",pattern="^[0-9]{1,7}$")),
-    responses((status=200,description="One exception, one page of its occurrences (oldest first, 50 a page) and every disposition; occurrences are never changed",body=ExceptionDetailResponse),(status=400,body=crate::auth::ErrorResponse),(status=401,body=crate::auth::ErrorResponse),(status=403,body=crate::auth::ErrorResponse),(status=412,description="Session changed",body=crate::auth::ErrorResponse),(status=429,body=crate::auth::ErrorResponse),(status=503,body=crate::auth::ErrorResponse)))]
+        ("cursor"=Option<String>,Query,description="next_cursor of the previous page (the last listed occurrence's place)",pattern="^[0-9]{1,7}$")),
+    responses((status=200,description="One exception, one page of its occurrences (in their order, 50 a page) and every disposition; occurrences are never changed",body=ExceptionDetailResponse),(status=400,body=crate::auth::ErrorResponse),(status=401,body=crate::auth::ErrorResponse),(status=403,body=crate::auth::ErrorResponse),(status=404,description="exception_not_found: no such exception of this Task",body=crate::auth::ErrorResponse),(status=412,description="Session changed",body=crate::auth::ErrorResponse),(status=429,body=crate::auth::ErrorResponse),(status=503,body=crate::auth::ErrorResponse)))]
 pub(crate) async fn detail(
     State(state): State<ExceptionState>,
     headers: HeaderMap,
@@ -578,7 +625,6 @@ pub(crate) async fn detail(
         Some(text) => match (text.len() <= 7 && text.bytes().all(|b| b.is_ascii_digit()))
             .then(|| text.parse::<u32>().ok())
             .flatten()
-            .filter(|n| (*n as usize).is_multiple_of(OCCURRENCE_PAGE))
         {
             Some(after) => after,
             None => return failure(TaskError::Invalid),
@@ -590,7 +636,7 @@ pub(crate) async fn detail(
         .await
     {
         Ok(Some(detail)) => detail,
-        Ok(None) => return failure(TaskError::Denied),
+        Ok(None) => return not_found(),
         Err(error) => return failure(error),
     };
     let ids = reference_ids(detail.dispositions.iter().map(|(d, _)| d));

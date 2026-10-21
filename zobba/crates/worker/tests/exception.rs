@@ -532,6 +532,32 @@ impl Browser {
             serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null),
         )
     }
+    /// A read in another engagement's scope.
+    async fn read_in(
+        &self,
+        engagement: &str,
+        organisation: &str,
+        client: &str,
+        route: &str,
+    ) -> (u16, serde_json::Value) {
+        let response = self
+            .client
+            .get(format!(
+                "{}/engagements/{engagement}/{route}?organisation_id={organisation}&client_id={client}",
+                self.address
+            ))
+            .header("Cookie", format!("__Host-zobba-session={}", self.token))
+            .header("X-Expected-Session", &self.csrf)
+            .send()
+            .await
+            .unwrap();
+        let status = response.status().as_u16();
+        let bytes = response.bytes().await.unwrap();
+        (
+            status,
+            serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null),
+        )
+    }
     async fn read(&self, route: &str, session: &str) -> (u16, serde_json::Value) {
         let response = self
             .client
@@ -760,6 +786,7 @@ async fn every_not_met_result_is_an_exception_whose_status_is_derived_and_recoun
     let mut admin = PgConnection::connect(&configuration.admin).await.unwrap();
     configuration.guard_connection(&mut admin).await;
     let lookup = sqlx::PgPool::connect(&configuration.admin).await.unwrap();
+    let lookup_pool = lookup.clone();
     let database = RuntimeDatabase::connect(&configuration.runtime)
         .await
         .unwrap();
@@ -946,11 +973,26 @@ async fn every_not_met_result_is_an_exception_whose_status_is_derived_and_recoun
                     })))
                 }
                 // Turn 6 (after a person's dispositions and a request for
-                // reconsideration): the effective summary again.
+                // reconsideration): INV-0051's currency (evidence its closure
+                // never saw) and its judgment again (not met); INV-0054's
+                // judgment again on the same evidence (not met); a new
+                // version of the population with the judgment criterion over
+                // it (its opportunities name recorded judgments, so no fresh
+                // occurrence); and the effective summary again.
                 5 => {
-                    let (b, _, _) = ids().await;
+                    let (b, _, segregation) = ids().await;
                     let p = population().await;
+                    let mut v2 = invoices("invoices-v2", &b);
+                    v2["supersedes"] = serde_json::json!(p);
                     text_reply(&answer(serde_json::json!({
+                        "record_facts": [fact(&b, "INV-0051", "currency", "identifier", "USD", "", "identifier_exact",
+                            vec![("cell:Sheet1!C7", "USD"), ("cell:Sheet1!A7", "INV-0051")])],
+                        "judgments": [
+                            judgment(&segregation, &b, "INV-0051", "not_met", &["invoice", "currency"]),
+                            judgment(&segregation, &b, "INV-0054", "not_met", &["invoice"]),
+                        ],
+                        "propose_population": [v2],
+                        "evaluate_population": [{"criterion": segregation, "population": "invoices-v2"}],
                         "summarise_effective": [{"basis": b, "population": p, "sample": ""}],
                     })))
                 }
@@ -1021,8 +1063,9 @@ async fn every_not_met_result_is_an_exception_whose_status_is_derived_and_recoun
 
     // Every not_met result is an occurrence of its exception, written by the
     // database in the statement that recorded the result: five judgments and
-    // their population opportunities, and one rule opportunity. Met results
-    // and later revisions that meet add none.
+    // one rule opportunity. A judgment's population opportunity names the
+    // recorded judgment (its own occurrence) and adds none; met results and
+    // later revisions that meet add none.
     let found = exceptions(&mut admin).await;
     let keyed: Vec<(String, String)> = statuses(&mut admin)
         .await
@@ -1057,10 +1100,7 @@ async fn every_not_met_result_is_an_exception_whose_status_is_derived_and_recoun
         (
             "INV-0042",
             "segregation",
-            vec![
-                ("evaluation", "model_proposal"),
-                ("opportunity", "model_proposal"),
-            ],
+            vec![("evaluation", "model_proposal")],
         ),
         (
             "INV-0054",
@@ -1070,10 +1110,7 @@ async fn every_not_met_result_is_an_exception_whose_status_is_derived_and_recoun
         (
             "INV-0051",
             "segregation",
-            vec![
-                ("evaluation", "model_proposal"),
-                ("opportunity", "model_proposal"),
-            ],
+            vec![("evaluation", "model_proposal")],
         ),
     ] {
         let rows = occurrences(&mut admin, &id_of(subject, key)).await;
@@ -1085,28 +1122,19 @@ async fn every_not_met_result_is_an_exception_whose_status_is_derived_and_recoun
             .fetch_one(&mut admin)
             .await
             .unwrap();
-    assert_eq!(total, 11, "every not_met result, and nothing else");
-    // Statuses are derived: late evidence resolves two exceptions; the rest
-    // stay open.
+    assert_eq!(total, 6, "every not_met result, and nothing else");
+    // Statuses are derived: late evidence makes the model propose met for
+    // two exceptions, which stay open until a person accepts the proposal
+    // (owner decision 2026-10-21); the rest stay open.
     assert_eq!(
         statuses(&mut admin).await,
         vec![
             row4("000123", "segregation", "open", "not_met"),
-            row4(
-                "INV-0042",
-                "segregation",
-                "resolved_by_evidence",
-                "not_observed"
-            ),
+            row4("INV-0042", "segregation", "open", "proposed_met"),
             row4("INV-0051", "segregation", "open", "not_met"),
             row4("INV-0054", "history", "open", "not_met"),
             row4("INV-0054", "segregation", "open", "not_met"),
-            row4(
-                "INV-0055",
-                "segregation",
-                "resolved_by_evidence",
-                "not_observed"
-            ),
+            row4("INV-0055", "segregation", "open", "proposed_met"),
         ]
     );
     // The first effective summary, recounted by the database.
@@ -1117,7 +1145,7 @@ async fn every_not_met_result_is_an_exception_whose_status_is_derived_and_recoun
         (conclusion.as_str(), counts.as_slice(), supersedes),
         (
             "exceptions_found_inconclusive",
-            &[3, 2, 4, 0, 4, 0, 0, 5, 0, 6, 4, 2, 0, 0, 5, 9][..],
+            &[3, 2, 4, 0, 4, 0, 0, 5, 0, 6, 6, 0, 0, 0, 5, 9][..],
             &None
         )
     );
@@ -1126,6 +1154,7 @@ async fn every_not_met_result_is_an_exception_whose_status_is_derived_and_recoun
         vec![
             ("unresolved_subjects".to_string(), Some(4)),
             ("unreviewed_model_proposals".to_string(), Some(5)),
+            ("open_exceptions".to_string(), Some(6)),
         ]
     );
     assert_eq!(document["effective"]["listed"].as_array().unwrap().len(), 6);
@@ -1182,6 +1211,98 @@ async fn every_not_met_result_is_an_exception_whose_status_is_derived_and_recoun
         )
         .await;
     assert_eq!(status, 200, "{saved}");
+    let head_of = |subject: &'static str| {
+        let lookup = lookup_pool.clone();
+        async move {
+            sqlx::query_scalar::<_, String>("SELECT coalesce((SELECT r.id FROM public.assessment_evaluation_revisions r WHERE r.chain_id=e.id ORDER BY r.revision DESC LIMIT 1), e.id) FROM public.assessment_evaluations e WHERE e.subject=$1")
+                .bind(subject)
+                .fetch_one(&lookup)
+                .await
+                .unwrap()
+        }
+    };
+    // A person accepts the model's met on INV-0042: the accepted proposal
+    // from new evidence now resolves its exception (owner decision
+    // 2026-10-21). INV-0055's proposal stays unreviewed.
+    let (status, saved) = accountable
+        .dispose(
+            task,
+            &head_of("INV-0042").await,
+            &disposition(
+                "accept-0042",
+                "accepted",
+                None,
+                None,
+                "The approver J. Smith is in the evidence.",
+                serde_json::json!([]),
+            ),
+        )
+        .await;
+    assert_eq!(status, 200, "{saved}");
+    assert_eq!(
+        statuses(&mut admin).await[1],
+        row4(
+            "INV-0042",
+            "segregation",
+            "resolved_by_evidence",
+            "not_observed"
+        )
+    );
+    assert_eq!(
+        statuses(&mut admin).await[5],
+        row4("INV-0055", "segregation", "open", "proposed_met")
+    );
+    // A person's undetermined is not evidence of remediation (owner
+    // decision 2026-10-21); a person's not_met is an occurrence (human).
+    let head_0055 = head_of("INV-0055").await;
+    let (status, saved) = accountable
+        .dispose(
+            task,
+            &head_0055,
+            &disposition(
+                "undetermined-0055",
+                "replaced",
+                Some("undetermined"),
+                None,
+                "The organisation chart cannot be read.",
+                serde_json::json!([]),
+            ),
+        )
+        .await;
+    assert_eq!(status, 200, "{saved}");
+    assert_eq!(
+        statuses(&mut admin).await[5],
+        row4("INV-0055", "segregation", "open", "person_undetermined")
+    );
+    let seg_0055 = id_of("INV-0055", "segregation");
+    assert_eq!(occurrences(&mut admin, &seg_0055).await.len(), 1);
+    let (status, saved) = accountable
+        .dispose(
+            task,
+            &head_0055,
+            &disposition(
+                "not-met-0055",
+                "replaced",
+                Some("not_met"),
+                None,
+                "A. Jones requested the payment too.",
+                policy_reference(),
+            ),
+        )
+        .await;
+    assert_eq!(status, 200, "{saved}");
+    assert_eq!(
+        occurrences(&mut admin, &seg_0055).await,
+        vec![
+            ("evaluation".to_string(), "model_proposal".to_string()),
+            ("disposition".into(), "human".into()),
+        ],
+        "a person's replaced not_met is an occurrence of its own"
+    );
+    assert_eq!(
+        statuses(&mut admin).await[5],
+        row4("INV-0055", "segregation", "open", "not_met")
+    );
 
     let seg_0051 = id_of("INV-0051", "segregation");
     let before: String = sqlx::query_scalar("SELECT string_agg(source_id||origin||source_us, ',' ORDER BY source_id) FROM public.assessment_exception_occurrences")
@@ -1304,14 +1425,49 @@ async fn every_not_met_result_is_an_exception_whose_status_is_derived_and_recoun
         )
         .await;
     assert_eq!(status, 200);
-    // A replay is answered only to a person who may still dispose.
+    // An Audit manager closes INV-0054's segregation exception.
+    let seg_0054 = id_of("INV-0054", "segregation");
+    let (status, closed_0054) = manager
+        .post(
+            &route(&seg_0054),
+            &exception_disposition("close-0054", "closed", policy_reference()),
+        )
+        .await;
+    assert_eq!(status, 200, "{closed_0054}");
+    // A replay is answered only to a person who may still dispose: a revoked
+    // assignment (the admission fence) and a lost Audit manager role (the
+    // closing authority) each refuse it with their own code, and return no
+    // original.
     sqlx::query("UPDATE public.engagement_assignments SET active=false WHERE actor_id='actor-a' AND organisation_id='org-a'")
         .execute(&mut admin)
         .await
         .unwrap();
-    let (status, _) = accountable.post(&route(&seg_0051), &close).await;
-    assert_eq!(status, 403, "a revoked assignment is answered nothing");
+    let (status, refusal) = accountable.post(&route(&seg_0051), &close).await;
+    assert_eq!(
+        (status, refusal["error"].as_str(), refusal.get("id")),
+        (403, Some("access_denied"), None),
+        "a revoked assignment is answered nothing: {refusal}"
+    );
     sqlx::query("UPDATE public.engagement_assignments SET active=true WHERE actor_id='actor-a' AND organisation_id='org-a'")
+        .execute(&mut admin)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE public.organisation_memberships SET roles=ARRAY['auditor','admin'] WHERE actor_id='actor-manager' AND organisation_id='org-a'")
+        .execute(&mut admin)
+        .await
+        .unwrap();
+    let (status, refusal) = manager
+        .post(
+            &route(&seg_0051),
+            &exception_disposition("reopen-0051", "reopened", serde_json::json!([])),
+        )
+        .await;
+    assert_eq!(
+        (status, refusal["error"].as_str(), refusal.get("id")),
+        (403, Some("exception_close_forbidden"), None),
+        "a replay after the Audit manager role was lost: {refusal}"
+    );
+    sqlx::query("UPDATE public.organisation_memberships SET roles=ARRAY['audit_manager','admin'] WHERE actor_id='actor-manager' AND organisation_id='org-a'")
         .execute(&mut admin)
         .await
         .unwrap();
@@ -1347,12 +1503,13 @@ async fn every_not_met_result_is_an_exception_whose_status_is_derived_and_recoun
         (
             Some("6"),
             Some("2"),
+            Some("1"),
+            Some("1"),
             Some("2"),
-            Some("1"),
-            Some("1"),
             Some("5")
         )
     );
+    assert_eq!(list["next_cursor"], serde_json::Value::Null);
     let listed: Vec<(String, String)> = list["exceptions"]
         .as_array()
         .unwrap()
@@ -1375,8 +1532,81 @@ async fn every_not_met_result_is_an_exception_whose_status_is_derived_and_recoun
             ("INV-0051".into(), "closed_by_disposition".into()),
             ("INV-0054".into(), listed[3].1.clone()),
             ("INV-0054".into(), listed[4].1.clone()),
-            ("INV-0055".into(), "resolved_by_evidence".into()),
+            ("INV-0055".into(), "open".into()),
         ]
+    );
+    // Keyset paging: after the third exception, the rest in the same order;
+    // a cursor naming no exception of this Task, or not an exception ID, is
+    // refused (never a silent first page).
+    let third = list["exceptions"][2]["id"].as_str().unwrap().to_string();
+    let (status, rest) = accountable
+        .read(
+            &format!("tasks/{task}/assessment/exceptions?cursor={third}"),
+            &accountable.csrf,
+        )
+        .await;
+    assert_eq!(status, 200, "{rest}");
+    let rest_ids: Vec<&str> = rest["exceptions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["id"].as_str().unwrap())
+        .collect();
+    let all_ids: Vec<&str> = list["exceptions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(rest_ids, all_ids[3..].to_vec());
+    assert_eq!(
+        rest["counts"], list["counts"],
+        "the counts are never the page's"
+    );
+    for cursor in [format!("exc-{}", "0".repeat(40)), "page-2".to_string()] {
+        let (status, refusal) = accountable
+            .read(
+                &format!("tasks/{task}/assessment/exceptions?cursor={cursor}"),
+                &accountable.csrf,
+            )
+            .await;
+        assert_eq!(
+            (status, refusal["error"].as_str()),
+            (400, Some("exception_cursor_invalid")),
+            "{cursor}"
+        );
+    }
+    // Viewer scoping: Admin alone and another engagement's person read
+    // nothing; an unknown exception is not found.
+    let (status, _) = administrator
+        .read(
+            &format!("tasks/{task}/assessment/exceptions"),
+            &administrator.csrf,
+        )
+        .await;
+    assert_eq!(status, 403, "Admin alone reads no exception");
+    let outsider = browser(&identities, &address, "auditor-b", "actor-b").await;
+    let (status, _) = outsider
+        .read_in(
+            "engagement-b",
+            "org-b",
+            "client-b",
+            &format!("tasks/{task}/assessment/exceptions"),
+        )
+        .await;
+    assert_eq!(
+        status, 403,
+        "another engagement reads no exception of this Task"
+    );
+    let (status, refusal) = accountable
+        .read(
+            &format!("tasks/{task}/assessment/exceptions/exc-{}", "0".repeat(40)),
+            &accountable.csrf,
+        )
+        .await;
+    assert_eq!(
+        (status, refusal["error"].as_str()),
+        (404, Some("exception_not_found"))
     );
     assert_eq!(
         list["not_remediation"],
@@ -1393,7 +1623,7 @@ async fn every_not_met_result_is_an_exception_whose_status_is_derived_and_recoun
         )
         .await;
     assert_eq!(status, 200, "{detail}");
-    assert_eq!(detail["occurrences"].as_array().unwrap().len(), 2);
+    assert_eq!(detail["occurrences"].as_array().unwrap().len(), 1);
     let kinds: Vec<&str> = detail["dispositions"]
         .as_array()
         .unwrap()
@@ -1433,13 +1663,71 @@ async fn every_not_met_result_is_an_exception_whose_status_is_derived_and_recoun
         2,
         "the unchanged third request recorded nothing"
     );
+    // INV-0051's new judgment read evidence its closure never saw: the
+    // closed exception reopens. INV-0054's reconsidered judgment read the
+    // same evidence as before its closure: the closure stands (its history
+    // still shows the occurrence). A new population version with the
+    // judgment criterion over it adds no occurrence: its opportunities name
+    // recorded judgments. INV-0042 stays resolved and 000123 replaced.
+    assert_eq!(
+        statuses(&mut admin).await,
+        vec![
+            row4(
+                "000123",
+                "segregation",
+                "replaced_by_human_judgment",
+                "not_observed"
+            ),
+            row4(
+                "INV-0042",
+                "segregation",
+                "resolved_by_evidence",
+                "not_observed"
+            ),
+            row4("INV-0051", "segregation", "open", "not_met"),
+            row4("INV-0054", "history", "open", "not_observed"),
+            row4(
+                "INV-0054",
+                "segregation",
+                "closed_by_disposition",
+                "not_met"
+            ),
+            row4("INV-0055", "segregation", "open", "not_met"),
+        ]
+    );
+    let revision = vec![
+        ("evaluation".to_string(), "model_proposal".to_string()),
+        ("revision".into(), "model_proposal".into()),
+    ];
+    assert_eq!(occurrences(&mut admin, &seg_0051).await, revision);
+    assert_eq!(
+        occurrences(&mut admin, &id_of("INV-0054", "segregation")).await,
+        revision
+    );
+    let judged_v2: i64 = sqlx::query_scalar("SELECT count(*) FROM public.assessment_opportunities o JOIN public.assessment_populations p ON p.id=o.population_id WHERE p.document->>'key'='invoices-v2' AND o.evaluation_id IS NOT NULL")
+        .fetch_one(&mut admin)
+        .await
+        .unwrap();
+    assert!(
+        judged_v2 > 0,
+        "the judgment criterion was read over the new version"
+    );
+    let occurrence_total: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM public.assessment_exception_occurrences")
+            .fetch_one(&mut admin)
+            .await
+            .unwrap();
+    assert_eq!(
+        occurrence_total, 9,
+        "the two revisions are the only new occurrences"
+    );
     let (_, conclusion, counts, supersedes, document) = &effective[1];
-    // A closure never drops a failing count: INV-0051 still fails.
+    // A closure never drops a failing count: INV-0054 still fails.
     assert_eq!(
         (conclusion.as_str(), counts.as_slice(), supersedes),
         (
             "exceptions_found_inconclusive",
-            &[2, 3, 4, 0, 3, 1, 1, 3, 0, 6, 2, 2, 1, 1, 5, 9][..],
+            &[3, 2, 4, 0, 4, 2, 0, 2, 0, 6, 3, 1, 1, 1, 5, 9][..],
             &Some(first_id.clone())
         )
     );
@@ -1447,8 +1735,8 @@ async fn every_not_met_result_is_an_exception_whose_status_is_derived_and_recoun
         limitation_codes(document),
         vec![
             ("unresolved_subjects".to_string(), Some(4)),
-            ("pending_reconsideration".to_string(), Some(1)),
-            ("unreviewed_model_proposals".to_string(), Some(3)),
+            ("unreviewed_model_proposals".to_string(), Some(2)),
+            ("open_exceptions".to_string(), Some(3)),
         ]
     );
     let bodies = provider.bodies.lock().unwrap().clone();
@@ -1470,7 +1758,7 @@ async fn every_not_met_result_is_an_exception_whose_status_is_derived_and_recoun
     );
     assert_eq!(
         list["effective_summaries"][1]["summary"]["failing_subjects"],
-        "2"
+        "3"
     );
     exceptions_fixture(&list);
     server.abort();
@@ -1482,12 +1770,17 @@ async fn every_not_met_result_is_an_exception_whose_status_is_derived_and_recoun
         &mut owner,
         &pool,
         &receipt.task_id,
-        &seg_0051,
+        &id_of("INV-0054", "segregation"),
         &id_of("INV-0042", "segregation"),
         &id_of("INV-0054", "history"),
-        &secret_hash(&accountable.token),
+        &Sessions {
+            accountable: secret_hash(&accountable.token),
+            manager: secret_hash(&manager.token),
+            other: secret_hash(&other.token),
+        },
     )
     .await;
+    decide_parity(&mut admin).await;
     zobba_infrastructure::analysis::docker::remove_all_test_resources().await;
 }
 
@@ -1709,7 +2002,33 @@ fn person(session: &str) -> String {
 }
 
 const EXCEPTION_COLUMNS: &str = "organisation_id,client_id,engagement_id,task_id,actor_id,id,kind,criterion_root,subject,first_source_kind,first_source_id";
-const OCCURRENCE_COLUMNS: &str = "organisation_id,client_id,engagement_id,task_id,actor_id,exception_id,source_kind,source_id,population_id,member_ordinal,criterion_id,basis_id,origin,evidence,source_us";
+const OCCURRENCE_COLUMNS: &str = "organisation_id,client_id,engagement_id,task_id,actor_id,exception_id,source_kind,source_id,population_id,member_ordinal,criterion_id,basis_id,origin,evidence,source_us,seq";
+
+/// The live sessions of the proof's people (session hashes).
+struct Sessions {
+    accountable: String,
+    manager: String,
+    other: String,
+}
+fn person_as(actor: &str, session: &str) -> String {
+    person(session).replace("'actor-a'", &format!("'{actor}'"))
+}
+/// An occurrence copied from `kept_occurrence` with some columns replaced.
+fn occurrence_copy(overrides: &[(&str, &str)]) -> String {
+    let values: Vec<String> = OCCURRENCE_COLUMNS
+        .split(',')
+        .map(|c| {
+            overrides
+                .iter()
+                .find(|(name, _)| *name == c)
+                .map_or(format!("o.{c}"), |(_, v)| (*v).to_string())
+        })
+        .collect();
+    format!(
+        "INSERT INTO public.assessment_exception_occurrences({OCCURRENCE_COLUMNS}) SELECT {} FROM kept_occurrence o",
+        values.join(",")
+    )
+}
 
 /// Exception records are immutable even for the owner and under the
 /// fixture reset (which may only delete); the database refuses an exception
@@ -1727,8 +2046,9 @@ async fn database_guards_refuse_altered_exception_records(
     closed: &str,
     resolved: &str,
     open: &str,
-    session: &str,
+    sessions: &Sessions,
 ) {
+    let session = sessions.accountable.as_str();
     let tables = [
         "assessment_exceptions",
         "assessment_exception_occurrences",
@@ -1836,12 +2156,8 @@ async fn database_guards_refuse_altered_exception_records(
         "an exception begins with a not_met result of its lineage and subject",
         "an exception no not_met result names",
     );
-    // A forged occurrence: each differs in one column from its source.
-    let occurrence = |set: &str| {
-        format!(
-            "INSERT INTO public.assessment_exception_occurrences({OCCURRENCE_COLUMNS}) SELECT o.organisation_id,o.client_id,o.engagement_id,o.task_id,o.actor_id,o.exception_id,o.source_kind,o.source_id,o.population_id,o.member_ordinal,o.criterion_id,o.basis_id,{set},o.source_us FROM kept_occurrence o"
-        )
-    };
+    // A forged occurrence: each differs in one column from its source, or
+    // names a met result; the unchanged copy is accepted.
     let delete_occurrences = [
         RESET.to_string(),
         format!(
@@ -1851,22 +2167,96 @@ async fn database_guards_refuse_altered_exception_records(
             "DELETE FROM public.assessment_exception_occurrences WHERE exception_id='{resolved}'"
         ),
     ];
-    accepted_in(
-        admin,
-        &delete_occurrences,
-        &occurrence("o.origin,o.evidence"),
-    )
-    .await;
-    for set in [
-        "'deterministic',o.evidence",
-        "o.origin,ARRAY['forged']::text[]",
-    ] {
+    accepted_in(admin, &delete_occurrences, &occurrence_copy(&[])).await;
+    let other_criterion = format!(
+        "(SELECT y.criterion_id FROM public.assessment_exception_occurrences y WHERE y.exception_id='{open}' LIMIT 1)"
+    );
+    let open_id = format!("'{open}'");
+    let met = "(SELECT r.id FROM public.assessment_evaluation_revisions r WHERE r.verdict='met' ORDER BY r.id LIMIT 1)".to_string();
+    // A judgment's population opportunity names a recorded judgment, whose
+    // own record is the occurrence: it is never one itself.
+    let judged = |column: &str| {
+        format!(
+            "(SELECT j.{column} FROM public.assessment_opportunities j WHERE j.subject='INV-0042' AND j.evaluation_id IS NOT NULL ORDER BY j.population_id, j.criterion_id LIMIT 1)"
+        )
+    };
+    let (j_population, j_ordinal, j_criterion) = (
+        judged("population_id"),
+        judged("member_ordinal"),
+        judged("criterion_id"),
+    );
+    let j_source = judged("population_id||'#'||j.criterion_id||'#'||j.member_ordinal");
+    let forgeries: Vec<(&str, Vec<(&str, &str)>)> = vec![
+        ("origin", vec![("origin", "'deterministic'")]),
+        ("evidence", vec![("evidence", "ARRAY['forged']::text[]")]),
+        ("actor", vec![("actor_id", "'actor-manager'")]),
+        (
+            "exception",
+            vec![("exception_id", &open_id), ("seq", "999")],
+        ),
+        ("source kind", vec![("source_kind", "'revision'")]),
+        (
+            "source id",
+            vec![(
+                "source_id",
+                "'eval-0000000000000000000000000000000000000000'",
+            )],
+        ),
+        (
+            "a met source",
+            vec![("source_kind", "'revision'"), ("source_id", &met)],
+        ),
+        ("criterion", vec![("criterion_id", &other_criterion)]),
+        (
+            "basis",
+            vec![(
+                "basis_id",
+                "'basis-0000000000000000000000000000000000000000'",
+            )],
+        ),
+        (
+            "a judgment's opportunity",
+            vec![
+                ("source_kind", "'opportunity'"),
+                ("source_id", &j_source),
+                ("population_id", &j_population),
+                ("member_ordinal", &j_ordinal),
+                ("criterion_id", &j_criterion),
+            ],
+        ),
+        ("time", vec![("source_us", "o.source_us+1")]),
+    ];
+    for (name, overrides) in &forgeries {
         assert_refused(
-            &refused_in(admin, &delete_occurrences, &occurrence(set)).await,
+            &refused_in(admin, &delete_occurrences, &occurrence_copy(overrides)).await,
             "an occurrence is exactly the not_met result it names, in its exception",
-            set,
+            name,
         );
     }
+    // Ordered after every earlier record: the closed exception's newest
+    // occurrence, put back before its dispositions, is refused; put back in
+    // its own place it is accepted.
+    let move_newest = [
+        RESET.to_string(),
+        format!(
+            "CREATE TEMP TABLE kept_occurrence ON COMMIT DROP AS SELECT * FROM public.assessment_exception_occurrences WHERE exception_id='{closed}' ORDER BY seq DESC LIMIT 1"
+        ),
+        "DELETE FROM public.assessment_exception_occurrences y USING kept_occurrence k WHERE (y.exception_id,y.seq)=(k.exception_id,k.seq)".to_string(),
+    ];
+    accepted_in(admin, &move_newest, &occurrence_copy(&[])).await;
+    let before_dispositions = format!(
+        "(SELECT min(d.seq) FROM public.assessment_exception_dispositions d WHERE d.exception_id='{closed}')"
+    );
+    assert_refused(
+        &refused_in(
+            admin,
+            &move_newest,
+            &occurrence_copy(&[("seq", &before_dispositions)]),
+        )
+        .await,
+        "an occurrence is ordered after every earlier record of its exception",
+        "an occurrence before a disposition",
+    );
     // The runtime, as the accountable person in their own session, may not
     // insert a forged exception either.
     let mut conn = pool.acquire().await.unwrap();
@@ -1891,7 +2281,7 @@ async fn database_guards_refuse_altered_exception_records(
     // exception is refused; the person's own valid reopening is accepted.
     let disposition = |kind: &str, key: &str| {
         format!(
-            "INSERT INTO public.assessment_exception_dispositions(organisation_id,client_id,engagement_id,task_id,actor_id,id,key,exception_id,kind,rationale,document,digest) SELECT d.organisation_id,d.client_id,d.engagement_id,d.task_id,d.actor_id,'xdisp-{}','{key}',d.exception_id,'{kind}',d.rationale,jsonb_set(jsonb_set(jsonb_set(d.document,'{{id}}',to_jsonb('xdisp-{}'::text)),'{{key}}',to_jsonb('{key}'::text)),'{{kind}}',to_jsonb('{kind}'::text)),d.digest FROM public.assessment_exception_dispositions d WHERE d.exception_id='{closed}' AND d.key='close-0051'",
+            "INSERT INTO public.assessment_exception_dispositions(organisation_id,client_id,engagement_id,task_id,actor_id,id,key,exception_id,kind,rationale,document,digest) SELECT d.organisation_id,d.client_id,d.engagement_id,d.task_id,'actor-a','xdisp-{}','{key}',d.exception_id,'{kind}',d.rationale,jsonb_set(jsonb_set(jsonb_set(jsonb_set(d.document,'{{id}}',to_jsonb('xdisp-{}'::text)),'{{key}}',to_jsonb('{key}'::text)),'{{kind}}',to_jsonb('{kind}'::text)),'{{actor_id}}',to_jsonb('actor-a'::text)),d.digest FROM (SELECT * FROM public.assessment_exception_dispositions z WHERE z.exception_id='{closed}' AND z.kind='closed' ORDER BY z.seq LIMIT 1) d",
             "9".repeat(40),
             "9".repeat(40)
         )
@@ -1923,74 +2313,130 @@ async fn database_guards_refuse_altered_exception_records(
         &disposition("reopened", "person-reopen"),
     )
     .await;
-    // Two people closing one exception at once: the second waits on the
-    // exception's lock and, once the first commits, is refused (the status
-    // is read after the lock, never before).
-    let close_open = |key: &str, n: char| {
+    // The guard's own branches, each reached directly in a person's own
+    // session (the application refuses each first).
+    let any = |actor: &str,
+               kind: &str,
+               key: &str,
+               exception: &str,
+               references: Option<&str>,
+               n: u32| {
+        let id = format!("xdisp-{n:040x}");
+        let references = references.map_or("d.document->'references'".to_string(), str::to_string);
         format!(
-            "INSERT INTO public.assessment_exception_dispositions(organisation_id,client_id,engagement_id,task_id,actor_id,id,key,exception_id,kind,rationale,document,digest) SELECT d.organisation_id,d.client_id,d.engagement_id,d.task_id,d.actor_id,'xdisp-{0}','{key}','{open}','closed',d.rationale,jsonb_set(jsonb_set(jsonb_set(d.document,'{{id}}',to_jsonb('xdisp-{0}'::text)),'{{key}}',to_jsonb('{key}'::text)),'{{exception_id}}',to_jsonb('{open}'::text)),d.digest FROM public.assessment_exception_dispositions d WHERE d.exception_id='{closed}' AND d.key='close-0051'",
-            n.to_string().repeat(40)
+            "INSERT INTO public.assessment_exception_dispositions(organisation_id,client_id,engagement_id,task_id,actor_id,id,key,exception_id,kind,rationale,document,digest) SELECT d.organisation_id,d.client_id,d.engagement_id,d.task_id,'{actor}','{id}','{key}','{exception}','{kind}',d.rationale,jsonb_set(jsonb_set(jsonb_set(jsonb_set(jsonb_set(jsonb_set(d.document,'{{id}}',to_jsonb('{id}'::text)),'{{key}}',to_jsonb('{key}'::text)),'{{kind}}',to_jsonb('{kind}'::text)),'{{exception_id}}',to_jsonb('{exception}'::text)),'{{actor_id}}',to_jsonb('{actor}'::text)),'{{references}}',{references}),d.digest FROM (SELECT * FROM public.assessment_exception_dispositions z WHERE z.exception_id='{closed}' AND z.kind='closed' ORDER BY z.seq LIMIT 1) d"
         )
     };
-    let mut first = pool.begin().await.unwrap();
-    sqlx::query(&person(session))
-        .execute(&mut *first)
-        .await
-        .unwrap();
-    sqlx::query(&close_open("race-1", '6'))
-        .execute(&mut *first)
-        .await
-        .unwrap();
-    let second_pool = pool.clone();
-    let second_statement = close_open("race-2", '7');
-    let setup = person(session);
-    let second = tokio::spawn(async move {
-        let mut tx = second_pool.begin().await.unwrap();
-        sqlx::query(&setup).execute(&mut *tx).await.unwrap();
-        let result = sqlx::query(&second_statement)
+    let manager_session = person_as("actor-manager", &sessions.manager);
+    let other_session = person_as("actor-c", &sessions.other);
+    // Positive controls: the manager and the accountable person may close an
+    // open exception.
+    accepted_in(
+        &mut conn,
+        std::slice::from_ref(&manager_session),
+        &any("actor-manager", "closed", "m1", open, None, 1),
+    )
+    .await;
+    accepted_in(
+        &mut conn,
+        &[person(session)],
+        &any("actor-a", "closed", "m2", open, None, 2),
+    )
+    .await;
+    let cases: Vec<(&str, Vec<String>, String, &str)> = vec![
+        (
+            "an assigned Auditor who is neither the accountable person nor an Audit manager",
+            vec![other_session.clone()],
+            any("actor-c", "closed", "m3", open, None, 3),
+            "an exception disposition is saved by an audit manager or the Task's accountable person",
+        ),
+        (
+            "an Audit manager whose membership expired",
+            vec![
+                "UPDATE public.organisation_memberships SET expires_at=1 WHERE actor_id='actor-manager' AND organisation_id='org-a'".to_string(),
+                manager_session.clone(),
+            ],
+            any("actor-manager", "closed", "m4", open, None, 4),
+            "an exception disposition is saved by",
+        ),
+        (
+            "an exception of no Task",
+            vec![person(session)],
+            any("actor-a", "closed", "m5", &format!("exc-{}", "0".repeat(40)), None, 5),
+            "an exception disposition names an exception of its own Task",
+        ),
+        (
+            "a reopening of an open exception",
+            vec![person(session)],
+            any("actor-a", "reopened", "m6", open, None, 6),
+            "only a closed exception is reopened",
+        ),
+        (
+            "a reference with another original's digest",
+            vec![person(session)],
+            any("actor-a", "closed", "m7", open, Some(&format!("jsonb_set(d.document->'references','{{0,original_sha256}}',to_jsonb('{}'::text))", "0".repeat(64))), 7),
+            "an exception disposition reference is a verified quote of a registered original",
+        ),
+        (
+            "a closure with no reference",
+            vec![person(session)],
+            any("actor-a", "closed", "m8", open, Some("'[]'::jsonb"), 8),
+            "violates check constraint",
+        ),
+    ];
+    for (name, setup, statement, expected) in &cases {
+        // The membership change needs the administrator connection.
+        let message = if setup.iter().any(|s| s.starts_with("UPDATE")) {
+            refused_in(admin, setup, statement).await
+        } else {
+            refused_in(&mut conn, setup, statement).await
+        };
+        assert_refused(&message, expected, name);
+    }
+    // At most 16 dispositions: the 17th is refused.
+    {
+        let mut tx = conn.begin().await.unwrap();
+        sqlx::query(&person(session))
             .execute(&mut *tx)
             .await
-            .map(|_| ())
-            .map_err(|e| e.to_string());
-        tx.rollback().await.unwrap();
-        result
-    });
-    let deadline = Instant::now() + Duration::from_secs(30);
-    loop {
-        let waiting: i64 = sqlx::query_scalar("SELECT count(*) FROM pg_catalog.pg_stat_activity WHERE wait_event_type='Lock' AND wait_event='advisory'")
-            .fetch_one(&mut *admin)
-            .await
             .unwrap();
-        if waiting > 0 {
-            break;
+        let held: i64 = sqlx::query_scalar(&format!(
+            "SELECT count(*) FROM public.assessment_exception_dispositions WHERE exception_id='{closed}'"
+        ))
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap();
+        let mut kind = "reopened";
+        for n in held..16 {
+            sqlx::query(&any(
+                "actor-a",
+                kind,
+                &format!("cap-{n}"),
+                closed,
+                None,
+                100 + n as u32,
+            ))
+            .execute(&mut *tx)
+            .await
+            .unwrap_or_else(|e| panic!("disposition {n}: {e}"));
+            kind = if kind == "reopened" {
+                "closed"
+            } else {
+                "reopened"
+            };
         }
-        assert!(
-            Instant::now() < deadline,
-            "the second close did not wait on the exception's lock"
+        let message = sqlx::query(&any("actor-a", kind, "cap-17", closed, None, 200))
+            .execute(&mut *tx)
+            .await
+            .expect_err("a 17th disposition was saved")
+            .to_string();
+        assert_refused(
+            &message,
+            "an exception holds at most 16 dispositions",
+            "17th",
         );
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        tx.rollback().await.unwrap();
     }
-    first.commit().await.unwrap();
-    let refused_second = second
-        .await
-        .unwrap()
-        .expect_err("the second close was saved");
-    assert_refused(
-        &refused_second,
-        "an exception that is closed is not closed again",
-        "concurrent close",
-    );
-    // Without any scope the runtime sees and writes nothing.
-    let unscoped = sqlx::query(&disposition("reopened", "unscoped"))
-        .execute(&mut *conn)
-        .await
-        .map(|r| r.rows_affected());
-    assert!(
-        matches!(unscoped, Ok(0) | Err(_)),
-        "an unscoped runtime connection reads no disposition to copy and writes none: {unscoped:?}"
-    );
-    drop(conn);
-
     // A forged effective summary: the stored newest one under a new ID and
     // invocation ordinal, with one exception moved from open to resolved.
     let newest: (String, String) = sqlx::query_as("SELECT id, invocation_id FROM public.assessment_effective_summaries WHERE task_id=$1 ORDER BY created_us DESC LIMIT 1")
@@ -2022,44 +2468,317 @@ async fn database_guards_refuse_altered_exception_records(
     let base_doc = format!(
         "jsonb_set(jsonb_set(jsonb_set(s.document,'{{id}}',to_jsonb({id}::text)),'{{ordinal}}','1'),'{{supersedes}}',to_jsonb(s.id))"
     );
-    let moved = format!(
-        "jsonb_set(jsonb_set({base_doc},'{{effective,exceptions,open}}',to_jsonb(s.exceptions_open-1)),'{{effective,exceptions,resolved_by_evidence}}',to_jsonb(s.exceptions_resolved+1))"
-    );
-    let sets: [(&str, &str); 5] = [
-        ("id", &id),
-        ("ordinal", "1"),
-        ("supersedes", "s.id"),
-        ("exceptions_open", "s.exceptions_open-1"),
-        ("exceptions_resolved", "s.exceptions_resolved+1"),
+    let base: Vec<(&str, String)> = vec![
+        ("id", id.clone()),
+        ("ordinal", "1".into()),
+        ("supersedes", "s.id".into()),
     ];
-    // The forged ordinal is free only on a new invocation; reuse the stored
-    // invocation with ordinal 1 (its answer's second request recorded
-    // nothing).
     let _ = &newest.1;
-    assert_refused(
-        &refused(admin, &forged(&sets, &moved)).await,
-        "an effective summary count is not the stored count: exceptions",
-        "an exception moved between statuses",
+    let with = |extra: &[(&str, &str)]| -> Vec<(String, String)> {
+        // A case's own columns come first: the first named value wins.
+        extra
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .chain(base.iter().map(|(k, v)| (k.to_string(), v.clone())))
+            .collect()
+    };
+    let statement = |sets: &[(String, String)], document: &str| {
+        let pairs: Vec<(&str, &str)> = sets.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+        forged(&pairs, document)
+    };
+    // The stored newest summary under a new ID and the free ordinal of its
+    // invocation is accepted: every refusal below is its own field's.
+    accepted_in(admin, &[], &statement(&with(&[]), &base_doc)).await;
+    // (name, columns, document edits, expected refusal)
+    type Case<'a> = (
+        &'a str,
+        Vec<(&'a str, &'a str)>,
+        Vec<(&'a str, &'a str)>,
+        &'a str,
     );
-    let failing = format!(
-        "jsonb_set(jsonb_set({base_doc},'{{effective,summary,failing}}',to_jsonb(s.failing_subjects-1)),'{{effective,summary,meets_every_applicable}}',to_jsonb(s.meets_every_applicable+1))"
-    );
-    let failing_sets: [(&str, &str); 5] = [
-        ("id", &id),
-        ("ordinal", "1"),
-        ("supersedes", "s.id"),
-        ("failing_subjects", "s.failing_subjects-1"),
-        ("meets_every_applicable", "s.meets_every_applicable+1"),
+    let cases: Vec<Case> = vec![
+        (
+            "an exception moved between statuses",
+            vec![
+                ("exceptions_open", "s.exceptions_open-1"),
+                ("exceptions_resolved", "s.exceptions_resolved+1"),
+            ],
+            vec![
+                ("effective,exceptions,open", "to_jsonb(s.exceptions_open-1)"),
+                (
+                    "effective,exceptions,resolved_by_evidence",
+                    "to_jsonb(s.exceptions_resolved+1)",
+                ),
+            ],
+            "an effective summary count is not the stored count: exceptions",
+        ),
+        (
+            "one exception subject fewer",
+            vec![("exception_subjects", "s.exception_subjects-1")],
+            vec![(
+                "effective,exceptions,subjects",
+                "to_jsonb(s.exception_subjects-1)",
+            )],
+            "an effective summary count is not the stored count: exceptions",
+        ),
+        (
+            "one more closed exception",
+            vec![
+                ("exceptions_total", "s.exceptions_total+1"),
+                ("exceptions_closed", "s.exceptions_closed+1"),
+            ],
+            vec![
+                (
+                    "effective,exceptions,total",
+                    "to_jsonb(s.exceptions_total+1)",
+                ),
+                (
+                    "effective,exceptions,closed_by_disposition",
+                    "to_jsonb(s.exceptions_closed+1)",
+                ),
+            ],
+            "an effective summary count is not the stored count: exceptions",
+        ),
+        (
+            "a failing subject dropped",
+            vec![
+                ("failing_subjects", "s.failing_subjects-1"),
+                ("meets_every_applicable", "s.meets_every_applicable+1"),
+            ],
+            vec![
+                (
+                    "effective,summary,failing",
+                    "to_jsonb(s.failing_subjects-1)",
+                ),
+                (
+                    "effective,summary,meets_every_applicable",
+                    "to_jsonb(s.meets_every_applicable+1)",
+                ),
+            ],
+            "an effective summary count is not the stored count: failing_subjects",
+        ),
+        (
+            "an unresolved subject called not applicable",
+            vec![
+                ("unresolved_subjects", "s.unresolved_subjects-1"),
+                ("not_applicable_to_any", "s.not_applicable_to_any+1"),
+            ],
+            vec![
+                (
+                    "effective,summary,unresolved",
+                    "to_jsonb(s.unresolved_subjects-1)",
+                ),
+                (
+                    "effective,summary,not_applicable_to_any",
+                    "to_jsonb(s.not_applicable_to_any+1)",
+                ),
+            ],
+            "an effective summary count is not the stored count: unresolved_subjects",
+        ),
+        (
+            "one failing opportunity more",
+            vec![("failing_opportunities", "s.failing_opportunities+1")],
+            vec![(
+                "effective,summary,failing_opportunities",
+                "to_jsonb(s.failing_opportunities+1)",
+            )],
+            "an effective summary count is not the stored count: failing_opportunities",
+        ),
+        (
+            "one human replacement more",
+            vec![("human_replaced", "s.human_replaced+1")],
+            vec![],
+            "an effective summary count is not the stored count: reviews",
+        ),
+        (
+            "one pending reconsideration more",
+            vec![("pending_reconsideration", "s.pending_reconsideration+1")],
+            vec![],
+            "an effective summary count is not the stored count: reviews",
+        ),
+        (
+            "one undisposed proposal fewer",
+            vec![("undisposed", "s.undisposed-1")],
+            vec![],
+            "an effective summary count is not the stored count: reviews",
+        ),
+        (
+            "one superseded result more",
+            vec![("superseded", "s.superseded+1")],
+            vec![],
+            "an effective summary count is not the stored count: reviews",
+        ),
+        (
+            "a different conclusion",
+            vec![("conclusion", "'exceptions_found'")],
+            vec![
+                ("effective,conclusion", "'\"exceptions_found\"'"),
+                ("effective,summary,conclusion", "'\"exceptions_found\"'"),
+            ],
+            "an effective summary concludes only what its counts allow",
+        ),
+        (
+            "a listed status changed",
+            vec![],
+            vec![("effective,listed,0,status", "'\"closed_by_disposition\"'")],
+            "an effective summary lists the first 50 exceptions with their derived status",
+        ),
+        (
+            "a later supersedes",
+            vec![("supersedes", "NULL")],
+            vec![("supersedes", "'null'")],
+            "an effective summary supersedes the newest effective summary of its population and sample",
+        ),
     ];
+    for (name, columns, edits, expected) in &cases {
+        let mut document = base_doc.clone();
+        for (path, value) in edits {
+            document = format!("jsonb_set({document},'{{{path}}}',{value})");
+        }
+        let message = refused(admin, &statement(&with(columns), &document)).await;
+        assert_refused(&message, expected, name);
+    }
+    // A limitation dropped from the effective list.
+    let message = refused(
+        admin,
+        &statement(
+            &with(&[]),
+            &format!("({base_doc} #- '{{effective,limitations,0}}')"),
+        ),
+    )
+    .await;
     assert_refused(
-        &refused(admin, &forged(&failing_sets, &failing)).await,
-        "an effective summary count is not the stored count: failing_subjects",
-        "a closed exception dropped from the failing count",
+        &message,
+        "an effective summary states exactly the limitations its counts give",
+        "a dropped limitation",
     );
+    // A removed key is refused (NULL-safe: a missing number never passes).
+    for path in [
+        "effective,exceptions,open",
+        "effective,exceptions,subjects",
+        "effective,summary,failing",
+        "effective,summary,unresolved",
+        "effective,conclusion",
+        "effective,listed",
+        "effective,limitations",
+    ] {
+        let message = refused(
+            admin,
+            &statement(&with(&[]), &format!("({base_doc} #- '{{{path}}}')")),
+        )
+        .await;
+        assert!(
+            message.contains("violates check constraint")
+                || message.contains("an effective summary"),
+            "{path}: {message}"
+        );
+    }
+
+    // Two people closing one exception at once: the second waits on the
+    // exception's lock and, once the first commits, is refused (the status
+    // is read after the lock, never before).
+    let close_open = |key: &str, n: char| {
+        format!(
+            "INSERT INTO public.assessment_exception_dispositions(organisation_id,client_id,engagement_id,task_id,actor_id,id,key,exception_id,kind,rationale,document,digest) SELECT d.organisation_id,d.client_id,d.engagement_id,d.task_id,'actor-a','xdisp-{0}','{key}','{open}','closed',d.rationale,jsonb_set(jsonb_set(jsonb_set(jsonb_set(d.document,'{{id}}',to_jsonb('xdisp-{0}'::text)),'{{key}}',to_jsonb('{key}'::text)),'{{exception_id}}',to_jsonb('{open}'::text)),'{{actor_id}}',to_jsonb('actor-a'::text)),d.digest FROM (SELECT * FROM public.assessment_exception_dispositions z WHERE z.exception_id='{closed}' AND z.kind='closed' ORDER BY z.seq LIMIT 1) d",
+            n.to_string().repeat(40)
+        )
+    };
+    let mut first = pool.begin().await.unwrap();
+    sqlx::query(&person(session))
+        .execute(&mut *first)
+        .await
+        .unwrap();
+    sqlx::query(&close_open("race-1", '6'))
+        .execute(&mut *first)
+        .await
+        .unwrap();
+    let second_pool = pool.clone();
+    let second_statement = close_open("race-2", '7');
+    let setup = person(session);
+    let (pid_tx, pid_rx) = tokio::sync::oneshot::channel::<i32>();
+    let second = tokio::spawn(async move {
+        let mut tx = second_pool.begin().await.unwrap();
+        sqlx::query(&setup).execute(&mut *tx).await.unwrap();
+        let pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
+            .fetch_one(&mut *tx)
+            .await
+            .unwrap();
+        pid_tx.send(pid).unwrap();
+        let result = sqlx::query(&second_statement)
+            .execute(&mut *tx)
+            .await
+            .map(|_| ())
+            .map_err(|e| e.to_string());
+        tx.rollback().await.unwrap();
+        result
+    });
+    let second_pid = pid_rx.await.unwrap();
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        // This very connection waits on an advisory lock (never another
+        // test's waiter).
+        let waiting: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM pg_catalog.pg_stat_activity WHERE pid=$1 AND wait_event_type='Lock' AND wait_event='advisory')")
+            .bind(second_pid)
+            .fetch_one(&mut *admin)
+            .await
+            .unwrap();
+        if waiting {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the second close did not wait on the exception's lock"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    first.commit().await.unwrap();
+    let refused_second = second
+        .await
+        .unwrap()
+        .expect_err("the second close was saved");
+    assert_refused(
+        &refused_second,
+        "an exception that is closed is not closed again",
+        "concurrent close",
+    );
+    // Without any scope the runtime writes nothing, even a complete row: the
+    // guard (no assignment in no scope) or the row-level policy refuses it.
+    let row = sqlx::query_as::<_, (String, String, String, String, String, String)>(&format!(
+        "SELECT task_id, rationale, document::text, digest, actor_id, exception_id FROM public.assessment_exception_dispositions WHERE exception_id='{closed}' AND kind='closed' ORDER BY seq LIMIT 1"
+    ))
+    .fetch_one(&mut *admin)
+    .await
+    .unwrap();
+    let mut tx = conn.begin().await.unwrap();
+    sqlx::query(&format!("SELECT set_config('zobba.actor_id','actor-a',true),set_config('zobba.session_hash','{session}',true)"))
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    let unscoped = sqlx::query("INSERT INTO public.assessment_exception_dispositions(organisation_id,client_id,engagement_id,task_id,actor_id,id,key,exception_id,kind,rationale,document,digest) VALUES('org-a','client-a','engagement-a',$1,'actor-a',$2,'unscoped',$3,'reopened',$4,jsonb_set(jsonb_set(jsonb_set(jsonb_set($5::jsonb,'{id}',to_jsonb($2::text)),'{key}','\"unscoped\"'),'{kind}','\"reopened\"'),'{references}','[]'),$6)")
+        .bind(&row.0)
+        .bind(format!("xdisp-{}", "5".repeat(40)))
+        .bind(&row.5)
+        .bind(&row.1)
+        .bind(&row.2)
+        .bind(&row.3)
+        .execute(&mut *tx)
+        .await
+        .expect_err("an unscoped runtime connection saved a disposition")
+        .to_string();
+    tx.rollback().await.unwrap();
+    assert!(
+        unscoped.contains("row-level security")
+            || unscoped
+                .contains("an exception disposition is saved by a currently assigned auditor"),
+        "{unscoped}"
+    );
+    drop(conn);
 
     // The backfill: with every exception record removed under the reset,
     // the migration's own backfill block reproduces each occurrence exactly.
-    let snapshot = "SELECT string_agg(concat_ws('|',exception_id,source_kind,source_id,population_id,member_ordinal,criterion_id,basis_id,origin,array_to_string(evidence,';'),source_us,actor_id), E'\\n' ORDER BY exception_id, source_kind, source_id) FROM public.assessment_exception_occurrences";
+    // Live places interleave dispositions; the backfill (no dispositions)
+    // keeps the same order.
+    let snapshot = "SELECT string_agg(concat_ws('|',exception_id,source_kind,source_id,population_id,member_ordinal,criterion_id,basis_id,origin,array_to_string(evidence,';'),source_us,actor_id,place), E'\\n' ORDER BY exception_id, source_kind, source_id) FROM (SELECT y.*, rank() OVER (PARTITION BY exception_id ORDER BY seq) AS place FROM public.assessment_exception_occurrences y) y";
     let exceptions_snapshot = "SELECT string_agg(concat_ws('|',id,task_id,criterion_root,subject,first_source_kind,first_source_id), E'\\n' ORDER BY id) FROM public.assessment_exceptions";
     let stored: (Option<String>, Option<String>) = (
         sqlx::query_scalar(snapshot)
@@ -2123,4 +2842,143 @@ async fn database_guards_refuse_altered_exception_records(
         rebuilt, stored,
         "the backfill reproduces every exception and occurrence"
     );
+}
+
+/// The database's status decision agrees with trusted Rust code's over a
+/// table of single-observation cases: every observation kind, verdict,
+/// execution, origin and review state, with and without the revision cause,
+/// newer or older than the failing occurrence, over the same or different
+/// evidence, closed or not.
+async fn decide_parity(admin: &mut PgConnection) {
+    use zobba_domain::{
+        assessment::{Execution, Verdict},
+        exception::{
+            ExceptionDispositionKind, ExceptionFacts, LatestObserved, Observation, ObservationKind,
+            Occurrence, exception_status,
+        },
+        revision::{EffectiveOrigin, ReviewState, RevisionCause},
+    };
+    let occurrence = Occurrence {
+        seq: 1,
+        at_us: 100,
+        criterion_id: "crit-a".into(),
+        evidence: vec!["a".into()],
+    };
+    let mut cases: Vec<(bool, Option<Observation>)> = vec![(false, None), (true, None)];
+    for kind in ObservationKind::ALL {
+        for verdict in [
+            None,
+            Some(Verdict::Met),
+            Some(Verdict::NotMet),
+            Some(Verdict::Undetermined),
+        ] {
+            for execution in [Some(Execution::Completed), Some(Execution::Failed)] {
+                for origin in EffectiveOrigin::ALL {
+                    for review in ReviewState::ALL {
+                        for causes in [
+                            vec![],
+                            vec![RevisionCause::InputsChanged],
+                            vec![RevisionCause::ReconsiderationRequested],
+                        ] {
+                            for newer in [true, false] {
+                                for same_evidence in [true, false] {
+                                    for criterion in ["crit-a", "crit-b"] {
+                                        for closed in [false, true] {
+                                            cases.push((
+                                                closed,
+                                                Some(Observation {
+                                                    kind: *kind,
+                                                    id: "obs".into(),
+                                                    at_us: if newer { 200 } else { 50 },
+                                                    verdict,
+                                                    execution,
+                                                    origin: Some(*origin),
+                                                    review: *review,
+                                                    causes: causes.clone(),
+                                                    criterion_id: Some(criterion.into()),
+                                                    evidence: if same_evidence {
+                                                        vec!["a".into()]
+                                                    } else {
+                                                        vec!["b".into()]
+                                                    },
+                                                }),
+                                            ));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let expected: Vec<(String, String)> = cases
+        .iter()
+        .map(|(closed, observation)| {
+            let (status, latest) = exception_status(&ExceptionFacts {
+                occurrences: vec![occurrence.clone()],
+                decision: closed.then_some((ExceptionDispositionKind::Closed, 2)),
+                observations: observation.iter().cloned().collect(),
+            });
+            (status.as_str().to_string(), latest.as_str().to_string())
+        })
+        .collect();
+    let column = |f: &dyn Fn(&Observation) -> Option<String>| -> Vec<Option<String>> {
+        cases.iter().map(|(_, o)| o.as_ref().and_then(f)).collect()
+    };
+    let closed: Vec<bool> = cases.iter().map(|(c, _)| *c).collect();
+    let failing: Vec<bool> = cases
+        .iter()
+        .map(|(_, o)| {
+            o.as_ref()
+                .is_some_and(|o| o.verdict == Some(Verdict::NotMet))
+        })
+        .collect();
+    let kind = column(&|o| Some(o.kind.as_str().into()));
+    let at: Vec<Option<i64>> = cases
+        .iter()
+        .map(|(_, o)| o.as_ref().map(|o| o.at_us))
+        .collect();
+    let verdict = column(&|o| o.verdict.map(|v| v.as_str().into()));
+    let execution = column(&|o| o.execution.map(|v| v.as_str().into()));
+    let origin = column(&|o| o.origin.map(|v| v.as_str().into()));
+    let review = column(&|o| Some(o.review.as_str().into()));
+    let causes = column(&|o| {
+        Some(
+            o.causes
+                .iter()
+                .map(|c| c.as_str())
+                .collect::<Vec<_>>()
+                .join(","),
+        )
+    });
+    let criterion = column(&|o| o.criterion_id.clone());
+    let evidence = column(&|o| Some(o.evidence.join(",")));
+    let got: Vec<(String, String)> = sqlx::query_as("SELECT d.status, d.latest_observed FROM unnest($1::boolean[],$2::boolean[],$3::text[],$4::bigint[],$5::text[],$6::text[],$7::text[],$8::text[],$9::text[],$10::text[],$11::text[]) WITH ORDINALITY AS c(closed,failing,kind,at_us,verdict,execution,origin,review,causes,criterion,evidence,n)
+        CROSS JOIN LATERAL public.assessment_exception_decide(c.closed, c.failing, c.kind, c.at_us, c.verdict, c.execution, c.origin, c.review,
+          CASE WHEN c.causes IS NULL OR c.causes='' THEN ARRAY[]::text[] ELSE string_to_array(c.causes, ',') END, c.criterion,
+          CASE WHEN c.evidence IS NULL OR c.evidence='' THEN ARRAY[]::text[] ELSE string_to_array(c.evidence, ',') END,
+          100, 'crit-a', ARRAY['a']::text[]) d ORDER BY c.n")
+        .bind(&closed).bind(&failing).bind(&kind).bind(&at).bind(&verdict).bind(&execution)
+        .bind(&origin).bind(&review).bind(&causes).bind(&criterion).bind(&evidence)
+        .fetch_all(&mut *admin)
+        .await
+        .unwrap();
+    assert_eq!(got.len(), expected.len());
+    let disagreements: Vec<_> = cases
+        .iter()
+        .zip(expected.iter().zip(got.iter()))
+        .filter(|(_, (e, g))| e != g)
+        .take(5)
+        .collect();
+    assert!(
+        disagreements.is_empty(),
+        "Rust and SQL disagree: {disagreements:?}"
+    );
+    let seen: std::collections::BTreeSet<&str> = expected.iter().map(|(s, _)| s.as_str()).collect();
+    assert_eq!(seen.len(), 4, "every status is reached: {seen:?}");
+    let observed: std::collections::BTreeSet<&str> =
+        expected.iter().map(|(_, l)| l.as_str()).collect();
+    assert_eq!(observed.len(), LatestObserved::ALL.len(), "{observed:?}");
 }

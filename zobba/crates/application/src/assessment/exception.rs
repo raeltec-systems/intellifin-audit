@@ -68,6 +68,8 @@ pub struct OccurrenceRecord {
     pub origin: EffectiveOrigin,
     pub evidence: Vec<String>,
     pub source_us: i64,
+    /// Its place in the exception's order (commit order).
+    pub seq: u32,
     pub actor_id: String,
 }
 
@@ -117,6 +119,8 @@ pub struct ExceptionView {
     pub latest_observed: LatestObserved,
     /// Exact number of its occurrences.
     pub occurrences: u64,
+    /// Exact number of its dispositions (at most 16 may be saved).
+    pub dispositions: u64,
     /// Its newest disposition and the person's public label.
     pub disposition: Option<(ExceptionDispositionRecord, String)>,
 }
@@ -247,6 +251,11 @@ pub struct ExceptionSnapshot {
     /// Per basis version: exact counts of the exceptions of its criterion
     /// lineages by derived status (open, resolved, replaced, closed).
     pub bases: BTreeMap<String, [u64; 4]>,
+    /// Exact counts over every exception of the Task, when there is one.
+    pub task: Option<zobba_domain::exception::ExceptionCounts>,
+    /// The exception counts could not be read now (capacity or a statement
+    /// timeout): the outline says so; the turn is not failed.
+    pub unavailable: bool,
 }
 
 /// Durable exception and effective-summary records under the exact claim
@@ -314,7 +323,7 @@ pub fn effective_line(record: &EffectiveSummaryRecord) -> String {
     };
     let x = &e.exceptions;
     format!(
-        "Effective summary {} of population {}{}: conclusion {}; subjects failing {} · meeting every applicable criterion {} · unresolved {} · not applicable to any {}; failing opportunities {} (not records); exceptions {} ({} open · {} resolved by evidence · {} replaced by human judgment · {} closed by disposition) over {} distinct subjects{}{}",
+        "Effective summary {} of population {}{}: conclusion {}{}; subjects failing {} · meeting every applicable criterion {} · unresolved {} · not applicable to any {}; failing opportunities {} (not records); exceptions of these subjects {} ({} open · {} resolved by evidence · {} replaced by human judgment · {} closed by disposition) over {} distinct subjects{}{}",
         record.id,
         record.population_id,
         record
@@ -322,7 +331,15 @@ pub fn effective_line(record: &EffectiveSummaryRecord) -> String {
             .as_deref()
             .map(|s| format!(" over the selected items of sample {s}"))
             .unwrap_or_default(),
-        m.conclusion.as_str(),
+        e.conclusion.as_str(),
+        if e.conclusion == m.conclusion {
+            String::new()
+        } else {
+            format!(
+                " (the counts alone give {}, but an exception of these subjects is open)",
+                m.conclusion.as_str()
+            )
+        },
         n(p.failing),
         n(p.meets_every_applicable),
         n(p.unresolved),
@@ -357,15 +374,29 @@ pub fn effective_line(record: &EffectiveSummaryRecord) -> String {
 /// The outline lines: exact exception counts per basis version and the
 /// newest effective summaries.
 pub fn exception_lines(snapshot: &ExceptionSnapshot) -> Vec<String> {
-    let mut lines: Vec<String> = snapshot
+    let mut lines: Vec<String> = Vec::new();
+    if snapshot.unavailable {
+        lines.push("- exception counts could not be read now; they are not shown this turn (this says nothing about the exceptions)".into());
+    }
+    if let Some(c) = &snapshot.task {
+        lines.push(format!(
+            "- exceptions of this Task: {} ({} open · {} resolved by evidence · {} replaced by human judgment · {} closed by disposition) over {} distinct subjects",
+            c.total,
+            c.open,
+            c.resolved_by_evidence,
+            c.replaced_by_human_judgment,
+            c.closed_by_disposition,
+            c.subjects
+        ));
+    }
+    lines.extend(snapshot
         .bases
         .iter()
         .map(|(basis_id, [open, resolved, replaced, closed])| {
             format!(
                 "- exceptions under basis {basis_id}: {open} open · {resolved} resolved by evidence · {replaced} replaced by human judgment · {closed} closed by disposition"
             )
-        })
-        .collect();
+        }));
     for s in snapshot.summaries.iter().take(MAX_OUTLINE_EFFECTIVE) {
         lines.push(format!("- {}", bounded(&effective_line(s), 1200)));
     }

@@ -3116,7 +3116,10 @@ async fn stale_after_withdrawal(f: &Fixture, h: &Harness, hang: &Arc<AtomicBool>
         bind: base.bind,
         delay: base.delay,
     };
-    assert_eq!(owned(f, &blocked, &resumed).await, CycleEnd::Unavailable);
+    assert_eq!(
+        owned(f, &blocked, &resumed).await,
+        CycleEnd::Unavailable(zobba_application::work::Halt::Request)
+    );
     assert_eq!(unverified.sends.load(Ordering::SeqCst), 0, "nothing sent");
     assert!(unverified.requests.lock().unwrap().is_empty());
     assert_eq!(

@@ -37,12 +37,12 @@ use zobba_domain::{
     assessment::{Execution, Verdict},
     coverage::MAX_POPULATION_ROWS,
     exception::{
-        EFFECTIVE_AGGREGATION, ExceptionDispositionKind, ExceptionEntry, ExceptionFacts,
-        ExceptionStatus, OCCURRENCE_PAGE, Observation, ObservationKind, Occurrence,
-        OccurrenceSource, exception_status, valid_exception_id,
+        EFFECTIVE_AGGREGATION, ExceptionCounts, ExceptionDispositionKind, ExceptionEntry,
+        ExceptionFacts, ExceptionStatus, LatestObserved, OCCURRENCE_PAGE, Observation,
+        ObservationKind, Occurrence, OccurrenceSource, exception_status, valid_exception_id,
     },
     identity::{Scope, valid_scope_id},
-    revision::{EffectiveOrigin, RevisionCause},
+    revision::{EffectiveOrigin, ReviewState, RevisionCause},
     task::ClaimBasis,
 };
 
@@ -91,6 +91,7 @@ fn observation_of(value: &Value) -> Option<Observation> {
             Some(v) => Some(EffectiveOrigin::parse(&v)?),
             None => None,
         },
+        review: ReviewState::parse(text(value, "review")??.as_str())?,
         causes: strings(value.get("causes")?)?
             .iter()
             .map(|c| RevisionCause::parse(c))
@@ -99,87 +100,198 @@ fn observation_of(value: &Value) -> Option<Observation> {
         evidence: strings(value.get("evidence")?)?,
     })
 }
+fn occurrence_fact_of(value: &Value) -> Option<Occurrence> {
+    Some(Occurrence {
+        seq: value.get("seq")?.as_i64()?,
+        at_us: value.get("at_us")?.as_i64()?,
+        criterion_id: text(value, "criterion_id")??,
+        evidence: strings(value.get("evidence")?)?,
+    })
+}
 
-/// The exceptions of one Task (all, or under these criterion lineages),
-/// each with its observations, latest occurrence and latest disposition in
-/// one statement, and its status derived in Rust.
-const ENTRIES: &str = "SELECT x.id, x.subject, x.criterion_root,
-  (SELECT coalesce(jsonb_agg(jsonb_build_object('kind',o.kind,'id',o.id,'at_us',o.at_us,'verdict',o.verdict,'execution',o.execution,'origin',o.origin,'causes',to_jsonb(o.causes),'criterion_id',o.criterion_id,'evidence',to_jsonb(o.evidence))),'[]'::jsonb)
-     FROM public.assessment_exception_observations(x.organisation_id,x.client_id,x.engagement_id,x.id) o) AS observations,
-  occ.source_us, occ.criterion_id AS occurrence_criterion, occ.evidence AS occurrence_evidence,
-  d.kind AS decision, d.created_us AS decided_us
- FROM public.assessment_exceptions x
- CROSS JOIN LATERAL (SELECT y.source_us, y.criterion_id, y.evidence FROM public.assessment_exception_occurrences y
-   WHERE (y.organisation_id,y.client_id,y.engagement_id,y.exception_id)=(x.organisation_id,x.client_id,x.engagement_id,x.id)
-   ORDER BY y.source_us DESC, y.source_id COLLATE \"C\" DESC LIMIT 1) occ
- LEFT JOIN LATERAL (SELECT z.kind, z.created_us FROM public.assessment_exception_dispositions z
-   WHERE (z.organisation_id,z.client_id,z.engagement_id,z.exception_id)=(x.organisation_id,x.client_id,x.engagement_id,x.id)
-   ORDER BY z.created_us DESC, z.id COLLATE \"C\" DESC LIMIT 1) d ON true
- WHERE x.task_id=$1 AND ($2::text[] IS NULL OR x.criterion_root = ANY($2))
- ORDER BY x.subject COLLATE \"C\", x.criterion_root COLLATE \"C\", x.id COLLATE \"C\"";
+/// The exception page facts of chosen exceptions, in one statement: the
+/// database's derived status, every current observation, every occurrence
+/// and the newest disposition. Trusted Rust code derives each status again
+/// from the same facts and refuses a disagreement.
+const FACTS: &str = "WITH s AS MATERIALIZED (SELECT * FROM public.assessment_exception_statuses($1,$2,$3,$4,$5)),
+  o AS MATERIALIZED (SELECT * FROM public.assessment_exception_observations($1,$2,$3,$4,$5))
+ SELECT s.id, s.subject, s.criterion_root, s.status, s.latest_observed,
+  (SELECT coalesce(jsonb_agg(jsonb_build_object('kind',o.kind,'id',o.id,'at_us',o.at_us,'verdict',o.verdict,'execution',o.execution,'origin',o.origin,'review',o.review,'causes',to_jsonb(o.causes),'criterion_id',o.criterion_id,'evidence',to_jsonb(public.assessment_evidence(o.inputs)))),'[]'::jsonb)
+     FROM o WHERE o.exception_id=s.id) AS observations,
+  (SELECT coalesce(jsonb_agg(jsonb_build_object('seq',y.seq,'at_us',y.source_us,'criterion_id',y.criterion_id,'evidence',to_jsonb(y.evidence))),'[]'::jsonb)
+     FROM public.assessment_exception_occurrences y WHERE y.task_id=$4 AND y.exception_id=s.id) AS occurrences,
+  d.kind AS decision, d.seq AS decided_seq
+ FROM s LEFT JOIN LATERAL (SELECT z.kind, z.seq FROM public.assessment_exception_dispositions z
+   WHERE z.task_id=$4 AND z.exception_id=s.id ORDER BY z.seq DESC LIMIT 1) d ON true
+ ORDER BY s.subject COLLATE \"C\", s.criterion_root COLLATE \"C\", s.id COLLATE \"C\"";
 
-/// Exceptions a Task may hold: one per criterion lineage and subject.
-const MAX_EXCEPTIONS: i64 = 16 * MAX_POPULATION_ROWS as i64;
+/// Exceptions a Task holds at most (the writer refuses the next one).
+pub const MAX_TASK_EXCEPTIONS: usize = 20_000;
+/// Exceptions one page lists (the counts are over all of them).
+pub const EXCEPTION_PAGE: usize = 50;
 
-fn entry_of(row: &PgRow) -> Result<(ExceptionEntry, ExceptionFacts), ReadingError> {
+fn entry_of(row: &PgRow) -> Result<ExceptionEntry, ReadingError> {
     let get =
         |name: &str| -> Result<String, ReadingError> { row.try_get(name).map_err(unavailable) };
-    let observations: Value = row.try_get("observations").map_err(unavailable)?;
-    let observations = observations
-        .as_array()
-        .ok_or(ReadingError::Unavailable)?
-        .iter()
-        .map(observation_of)
-        .collect::<Option<Vec<_>>>()
-        .ok_or(ReadingError::Unavailable)?;
+    fn parse<T>(value: Value, f: fn(&Value) -> Option<T>) -> Result<Vec<T>, ReadingError> {
+        value
+            .as_array()
+            .ok_or(ReadingError::Unavailable)?
+            .iter()
+            .map(f)
+            .collect::<Option<Vec<_>>>()
+            .ok_or(ReadingError::Unavailable)
+    }
+    let observations: Vec<Observation> = parse(
+        row.try_get("observations").map_err(unavailable)?,
+        observation_of,
+    )?;
+    let occurrences: Vec<Occurrence> = parse(
+        row.try_get("occurrences").map_err(unavailable)?,
+        occurrence_fact_of,
+    )?;
     let decision: Option<String> = row.try_get("decision").map_err(unavailable)?;
-    let decided: Option<i64> = row.try_get("decided_us").map_err(unavailable)?;
+    let decided: Option<i32> = row.try_get("decided_seq").map_err(unavailable)?;
     let decision = match (decision, decided) {
         (Some(kind), Some(at)) => Some((
             ExceptionDispositionKind::parse(&kind).ok_or(ReadingError::Unavailable)?,
-            at,
+            i64::from(at),
         )),
         (None, None) => None,
         _ => return Err(ReadingError::Unavailable),
     };
+    if occurrences.is_empty() {
+        return Err(ReadingError::Unavailable);
+    }
     let facts = ExceptionFacts {
-        latest: Occurrence {
-            at_us: row.try_get("source_us").map_err(unavailable)?,
-            criterion_id: get("occurrence_criterion")?,
-            evidence: row.try_get("occurrence_evidence").map_err(unavailable)?,
-        },
+        occurrences,
         decision,
         observations,
     };
     let (status, latest_observed) = exception_status(&facts);
-    Ok((
-        ExceptionEntry {
-            id: get("id")?,
-            subject: get("subject")?,
-            criterion_root: get("criterion_root")?,
-            status,
-            latest_observed,
-        },
-        facts,
-    ))
+    // The database derived the same status from the same facts, or the read
+    // is not trusted.
+    if ExceptionStatus::parse(&get("status")?) != Some(status)
+        || LatestObserved::parse(&get("latest_observed")?) != Some(latest_observed)
+    {
+        return Err(ReadingError::Unavailable);
+    }
+    Ok(ExceptionEntry {
+        id: get("id")?,
+        subject: get("subject")?,
+        criterion_root: get("criterion_root")?,
+        status,
+        latest_observed,
+    })
 }
 
-async fn entries(
+/// These exceptions of one Task with their status derived in Rust and
+/// checked against the database's (at most a page of them).
+async fn derived(
     tx: &mut Tx,
+    s: &Scope,
     task_id: &str,
-    roots: Option<&[String]>,
+    ids: &[String],
 ) -> Result<Vec<ExceptionEntry>, ReadingError> {
-    let rows = sqlx::query(&format!("{ENTRIES} LIMIT $3"))
+    if ids.is_empty() {
+        return Ok(vec![]);
+    }
+    let rows = sqlx::query(FACTS)
+        .bind(&s.organisation_id)
+        .bind(&s.client_id)
+        .bind(&s.engagement_id)
         .bind(task_id)
-        .bind(roots)
-        .bind(MAX_EXCEPTIONS + 1)
+        .bind(ids)
         .fetch_all(&mut **tx)
         .await
         .map_err(unavailable)?;
-    if rows.len() as i64 > MAX_EXCEPTIONS {
+    rows.iter().map(entry_of).collect()
+}
+
+/// Every exception of one Task under these criterion lineages, with the
+/// database's set-based derived status (an exact read; the Task holds at
+/// most `MAX_TASK_EXCEPTIONS`).
+async fn entries(
+    tx: &mut Tx,
+    s: &Scope,
+    task_id: &str,
+    roots: &[String],
+) -> Result<Vec<ExceptionEntry>, ReadingError> {
+    let ids: Vec<String> = sqlx::query_scalar("SELECT id FROM public.assessment_exceptions WHERE task_id=$1 AND criterion_root = ANY($2) LIMIT $3")
+        .bind(task_id).bind(roots).bind(MAX_TASK_EXCEPTIONS as i64 + 1)
+        .fetch_all(&mut **tx).await.map_err(unavailable)?;
+    if ids.len() > MAX_TASK_EXCEPTIONS {
         return Err(ReadingError::Capacity);
     }
-    rows.iter().map(|r| entry_of(r).map(|(e, _)| e)).collect()
+    if ids.is_empty() {
+        return Ok(vec![]);
+    }
+    let rows: Vec<(String, String, String, String, String)> = sqlx::query_as("SELECT id, subject, criterion_root, status, latest_observed FROM public.assessment_exception_statuses($1,$2,$3,$4,$5) ORDER BY subject COLLATE \"C\", criterion_root COLLATE \"C\", id COLLATE \"C\"")
+        .bind(&s.organisation_id).bind(&s.client_id).bind(&s.engagement_id).bind(task_id).bind(&ids)
+        .fetch_all(&mut **tx).await.map_err(unavailable)?;
+    rows.into_iter()
+        .map(|(id, subject, criterion_root, status, latest)| {
+            Ok(ExceptionEntry {
+                id,
+                subject,
+                criterion_root,
+                status: ExceptionStatus::parse(&status).ok_or(ReadingError::Unavailable)?,
+                latest_observed: LatestObserved::parse(&latest).ok_or(ReadingError::Unavailable)?,
+            })
+        })
+        .collect()
+}
+
+/// Exact counts by derived status of every exception of a Task: per
+/// criterion lineage root and status, and the distinct subjects, in one
+/// aggregate statement (never a list, never a bounded page).
+struct StatusCounts {
+    by_root: Vec<(String, ExceptionStatus, u64)>,
+    subjects: u64,
+}
+impl StatusCounts {
+    fn total(&self) -> ExceptionCounts {
+        let mut c = ExceptionCounts {
+            subjects: self.subjects,
+            ..ExceptionCounts::default()
+        };
+        for (_, status, n) in &self.by_root {
+            c.total += n;
+            match status {
+                ExceptionStatus::Open => c.open += n,
+                ExceptionStatus::ResolvedByEvidence => c.resolved_by_evidence += n,
+                ExceptionStatus::ReplacedByHumanJudgment => c.replaced_by_human_judgment += n,
+                ExceptionStatus::ClosedByDisposition => c.closed_by_disposition += n,
+            }
+        }
+        c
+    }
+}
+async fn status_counts(
+    conn: &mut sqlx::PgConnection,
+    s: &Scope,
+    task_id: &str,
+) -> Result<StatusCounts, ReadingError> {
+    let rows: Vec<(Option<String>, Option<String>, i64, i64)> = sqlx::query_as("WITH s AS MATERIALIZED (SELECT * FROM public.assessment_exception_statuses($1,$2,$3,$4,NULL))
+      SELECT g.criterion_root, g.status, g.n, (SELECT count(DISTINCT s.subject) FROM s) FROM (SELECT criterion_root, status, count(*) AS n FROM s GROUP BY 1,2) g
+      UNION ALL SELECT NULL, NULL, 0, (SELECT count(DISTINCT s.subject) FROM s)")
+        .bind(&s.organisation_id).bind(&s.client_id).bind(&s.engagement_id).bind(task_id)
+        .fetch_all(&mut *conn).await.map_err(unavailable)?;
+    let mut counts = StatusCounts {
+        by_root: vec![],
+        subjects: 0,
+    };
+    for (root, status, n, subjects) in rows {
+        counts.subjects = subjects as u64;
+        if let (Some(root), Some(status)) = (root, status) {
+            counts.by_root.push((
+                root,
+                ExceptionStatus::parse(&status).ok_or(ReadingError::Unavailable)?,
+                n as u64,
+            ));
+        }
+    }
+    Ok(counts)
 }
 
 /// The distinct lineage roots of these criterion versions.
@@ -272,8 +384,11 @@ async fn newest_effective_in(
         .as_ref().map(effective_from_row).transpose()
 }
 
-/// The Task's newest effective summaries (bounded, oldest first) and the
-/// exact exception counts under its newest basis versions.
+/// The Task's newest effective summaries (bounded, oldest first), the exact
+/// exception counts by status of the whole Task and under each of its newest
+/// basis versions. The counts are one aggregate statement inside a
+/// savepoint: when it cannot be read now (capacity or a statement timeout),
+/// the snapshot says so instead of failing the turn.
 async fn exception_snapshot(
     tx: &mut Tx,
     s: &Scope,
@@ -296,42 +411,61 @@ async fn exception_snapshot(
     .fetch_one(&mut **tx)
     .await
     .map_err(unavailable)?;
-    let mut bases = BTreeMap::new();
+    let mut snapshot = ExceptionSnapshot {
+        summaries,
+        total_summaries: total as u64,
+        ..ExceptionSnapshot::default()
+    };
     let exceptions: i64 =
         sqlx::query_scalar("SELECT count(*) FROM public.assessment_exceptions WHERE task_id=$1")
             .bind(task_id)
             .fetch_one(&mut **tx)
             .await
             .map_err(unavailable)?;
-    if exceptions > 0 {
-        let all = entries(tx, task_id, None).await?;
-        // The newest basis versions (at most 4): those a newer one does not
-        // supersede.
-        let latest: Vec<(String, Value)> = sqlx::query_as("SELECT b.id, b.document->'criteria' FROM public.assessment_bases b WHERE b.task_id=$1 AND NOT EXISTS(SELECT 1 FROM public.assessment_bases n WHERE n.task_id=b.task_id AND n.supersedes=b.id) ORDER BY b.created_us DESC, b.id COLLATE \"C\" DESC LIMIT 4")
-            .bind(task_id)
-            .fetch_all(&mut **tx)
-            .await
-            .map_err(unavailable)?;
-        for (basis_id, criteria) in latest {
-            let criteria = strings(&criteria).ok_or(ReadingError::Unavailable)?;
-            let roots: BTreeSet<String> = roots_of(tx, s, &criteria).await?.into_iter().collect();
-            let mut counts = [0u64; 4];
-            for e in all.iter().filter(|e| roots.contains(&e.criterion_root)) {
-                counts[match e.status {
-                    ExceptionStatus::Open => 0,
-                    ExceptionStatus::ResolvedByEvidence => 1,
-                    ExceptionStatus::ReplacedByHumanJudgment => 2,
-                    ExceptionStatus::ClosedByDisposition => 3,
-                }] += 1;
-            }
-            bases.insert(basis_id, counts);
-        }
+    if exceptions == 0 {
+        return Ok(snapshot);
     }
-    Ok(ExceptionSnapshot {
-        summaries,
-        total_summaries: total as u64,
-        bases,
-    })
+    // The newest basis versions (at most 4): those a newer one does not
+    // supersede.
+    let latest: Vec<(String, Value)> = sqlx::query_as("SELECT b.id, b.document->'criteria' FROM public.assessment_bases b WHERE b.task_id=$1 AND NOT EXISTS(SELECT 1 FROM public.assessment_bases n WHERE n.task_id=b.task_id AND n.supersedes=b.id) ORDER BY b.created_us DESC, b.id COLLATE \"C\" DESC LIMIT 4")
+        .bind(task_id)
+        .fetch_all(&mut **tx)
+        .await
+        .map_err(unavailable)?;
+    let mut lineages = Vec::new();
+    for (basis_id, criteria) in latest {
+        let criteria = strings(&criteria).ok_or(ReadingError::Unavailable)?;
+        let roots: BTreeSet<String> = roots_of(tx, s, &criteria).await?.into_iter().collect();
+        lineages.push((basis_id, roots));
+    }
+    let mut savepoint = sqlx::Acquire::begin(&mut **tx).await.map_err(unavailable)?;
+    match status_counts(&mut savepoint, s, task_id).await {
+        Ok(counts) => {
+            savepoint.commit().await.map_err(unavailable)?;
+            for (basis_id, roots) in lineages {
+                let mut n = [0u64; 4];
+                for (root, status, count) in &counts.by_root {
+                    if roots.contains(root) {
+                        n[match status {
+                            ExceptionStatus::Open => 0,
+                            ExceptionStatus::ResolvedByEvidence => 1,
+                            ExceptionStatus::ReplacedByHumanJudgment => 2,
+                            ExceptionStatus::ClosedByDisposition => 3,
+                        }] += count;
+                    }
+                }
+                snapshot.bases.insert(basis_id, n);
+            }
+            snapshot.task = Some(counts.total());
+        }
+        // Not knowable now: said in the outline, never a failed turn.
+        Err(ReadingError::Unavailable | ReadingError::Capacity) => {
+            savepoint.rollback().await.map_err(unavailable)?;
+            snapshot.unavailable = true;
+        }
+        Err(error) => return Err(error),
+    }
+    Ok(snapshot)
 }
 
 impl ExceptionStore for AssessmentRepository {
@@ -382,7 +516,7 @@ impl ExceptionStore for AssessmentRepository {
         roots: &[String],
     ) -> Result<Vec<ExceptionEntry>, ReadingError> {
         let mut tx = scoped(&self.pool, &basis.actor_id, &basis.scope).await?;
-        let found = entries(&mut tx, &basis.task_id, Some(roots)).await?;
+        let found = entries(&mut tx, &basis.scope, &basis.task_id, roots).await?;
         tx.commit().await.map_err(unavailable)?;
         Ok(found)
     }
@@ -603,6 +737,11 @@ impl ExceptionDispositionStore for AssessmentRepository {
             .map_err(down)?
         {
             let stored = exception_disposition_from(&row)?;
+            // A replay is answered only to a person who may still close or
+            // reopen it, checked in this very transaction (BH L2).
+            if may_close(&mut tx, actor, scope, &stored.task_id).await? != Some(true) {
+                return Err(ExceptionDispositionError::NotAuthorised);
+            }
             tx.commit().await.map_err(down)?;
             return if stored.request == record.request && stored.task_id == record.task_id {
                 Ok(stored)
@@ -626,10 +765,31 @@ impl ExceptionDispositionStore for AssessmentRepository {
             .bind(to_json(&document)).bind(document_digest(&document))
             .execute(&mut *tx).await;
         if let Err(error) = inserted {
-            let message = match &error {
-                sqlx::Error::Database(database) => database.message().to_string(),
-                _ => String::new(),
+            let (message, code) = match &error {
+                sqlx::Error::Database(database) => (
+                    database.message().to_string(),
+                    database.code().map(|c| c.to_string()),
+                ),
+                _ => (String::new(), None),
             };
+            drop(tx);
+            // Two first writes of one key at once: the winner committed;
+            // answer it as a replay (with its own authority check) or as a
+            // conflict.
+            if code.as_deref() == Some("23505") {
+                return match self
+                    .exception_disposition_by_key(actor, scope, session_hash, &r.key)
+                    .await?
+                {
+                    Some(stored)
+                        if stored.request == record.request && stored.task_id == record.task_id =>
+                    {
+                        Ok(stored)
+                    }
+                    Some(_) => Err(ExceptionDispositionError::Conflict),
+                    None => Err(ExceptionDispositionError::Unavailable),
+                };
+            }
             return Err(refused(&message));
         }
         let row = sqlx::query(&format!("{DISPOSITION_SELECT} WHERE id=$1"))
@@ -650,17 +810,10 @@ async fn target_in(
     task_id: &str,
     exception_id: &str,
 ) -> Result<Option<ExceptionTarget>, ExceptionDispositionError> {
-    let row = sqlx::query(&format!("SELECT * FROM ({ENTRIES}) e WHERE e.id=$3"))
-        .bind(task_id)
-        .bind(None::<Vec<String>>)
-        .bind(exception_id)
-        .fetch_optional(&mut **tx)
-        .await
-        .map_err(down)?;
-    let Some(row) = row else {
+    let found = derived(tx, s, task_id, &[exception_id.to_string()]).await?;
+    let Some(entry) = found.into_iter().next() else {
         return Ok(None);
     };
-    let (entry, _) = entry_of(&row)?;
     let may = may_close(tx, actor, s, task_id).await?.unwrap_or(false);
     Ok(Some(ExceptionTarget {
         exception_id: entry.id,
@@ -672,31 +825,44 @@ async fn target_in(
 
 // ------------------------------------------------------------- viewer
 
-/// The viewer's exceptions of one Task: every exception with its derived
-/// status (C-ordered by subject, criterion lineage, ID), the exact counts by
-/// status and whether the viewer may close or reopen one.
+/// The viewer's exceptions of one Task: one page of them (C-ordered by
+/// subject, criterion lineage, ID) with their derived status, the exact
+/// counts by status over every exception of the Task, whether the viewer may
+/// close or reopen one, and the newest effective summaries.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExceptionsView {
     pub exceptions: Vec<ExceptionView>,
-    /// The exact number of exceptions of the Task (all are listed up to
-    /// `EXCEPTIONS_SHOWN`).
-    pub total: u64,
+    /// Exact counts over every exception of the Task, never over the page.
+    pub counts: ExceptionCounts,
+    /// The last listed exception, when more follow it.
+    pub next: Option<String>,
     pub may_close: bool,
     pub summaries: Vec<EffectiveSummaryRecord>,
     pub total_summaries: u64,
 }
-/// Exceptions the panel lists; the rest are counted.
-pub const EXCEPTIONS_SHOWN: usize = 200;
 
-/// One exception's detail: its occurrences (one page, oldest first) and
+/// One exception's detail: its occurrences (one page, in their order) and
 /// every disposition with the person's public label.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExceptionDetail {
     pub view: ExceptionView,
     pub occurrences: Vec<OccurrenceRecord>,
-    /// The position after which the next page starts, when there is one.
+    /// The place after which the next page starts, when there is one.
     pub next: Option<u32>,
     pub dispositions: Vec<(ExceptionDispositionRecord, String)>,
+}
+
+/// Why a viewer read refused.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExceptionsReadError {
+    Task(TaskError),
+    /// The cursor names no exception of this Task.
+    Cursor,
+}
+impl From<TaskError> for ExceptionsReadError {
+    fn from(error: TaskError) -> Self {
+        Self::Task(error)
+    }
 }
 
 fn record_of(row: &PgRow) -> Result<ExceptionRecord, ReadingError> {
@@ -718,6 +884,7 @@ fn occurrence_of(row: &PgRow) -> Result<OccurrenceRecord, ReadingError> {
     let get =
         |name: &str| -> Result<String, ReadingError> { row.try_get(name).map_err(unavailable) };
     let ordinal: Option<i32> = row.try_get("member_ordinal").map_err(unavailable)?;
+    let seq: i32 = row.try_get("seq").map_err(unavailable)?;
     Ok(OccurrenceRecord {
         exception_id: get("exception_id")?,
         source_kind: OccurrenceSource::parse(&get("source_kind")?)
@@ -730,6 +897,7 @@ fn occurrence_of(row: &PgRow) -> Result<OccurrenceRecord, ReadingError> {
         origin: EffectiveOrigin::parse(&get("origin")?).ok_or(ReadingError::Unavailable)?,
         evidence: row.try_get("evidence").map_err(unavailable)?,
         source_us: row.try_get("source_us").map_err(unavailable)?,
+        seq: seq as u32,
         actor_id: get("actor_id")?,
     })
 }
@@ -741,80 +909,126 @@ fn viewer_error(error: ReadingError) -> TaskError {
     }
 }
 
+/// The views of these derived entries: their records, occurrence counts,
+/// disposition counts and newest dispositions with the person's label.
+async fn views_of(
+    tx: &mut Tx,
+    task_id: &str,
+    entries: Vec<ExceptionEntry>,
+) -> Result<Vec<ExceptionView>, TaskError> {
+    let ids: Vec<&String> = entries.iter().map(|e| &e.id).collect();
+    let records: BTreeMap<String, ExceptionRecord> = sqlx::query("SELECT id,task_id,actor_id,criterion_root,subject,first_source_kind,first_source_id,created_us FROM public.assessment_exceptions WHERE task_id=$1 AND id = ANY($2)")
+        .bind(task_id).bind(&ids)
+        .fetch_all(&mut **tx).await.map_err(|_| TaskError::Unavailable)?
+        .iter().map(|r| record_of(r).map(|r| (r.id.clone(), r)))
+        .collect::<Result<_, _>>().map_err(viewer_error)?;
+    let counts: BTreeMap<String, i64> = sqlx::query_as::<_, (String, i64)>("SELECT exception_id, count(*) FROM public.assessment_exception_occurrences WHERE task_id=$1 AND exception_id = ANY($2) GROUP BY exception_id")
+        .bind(task_id).bind(&ids)
+        .fetch_all(&mut **tx).await.map_err(|_| TaskError::Unavailable)?
+        .into_iter().collect();
+    let disposed: BTreeMap<String, i64> = sqlx::query_as::<_, (String, i64)>("SELECT exception_id, count(*) FROM public.assessment_exception_dispositions WHERE task_id=$1 AND exception_id = ANY($2) GROUP BY exception_id")
+        .bind(task_id).bind(&ids)
+        .fetch_all(&mut **tx).await.map_err(|_| TaskError::Unavailable)?
+        .into_iter().collect();
+    let newest: Vec<PgRow> = sqlx::query("SELECT DISTINCT ON (exception_id) exception_id, document, digest, created_us FROM public.assessment_exception_dispositions WHERE task_id=$1 AND exception_id = ANY($2) ORDER BY exception_id, seq DESC")
+        .bind(task_id).bind(&ids)
+        .fetch_all(&mut **tx).await.map_err(|_| TaskError::Unavailable)?;
+    let mut decided: BTreeMap<String, ExceptionDispositionRecord> = BTreeMap::new();
+    for row in &newest {
+        let record = exception_disposition_from(row).map_err(viewer_error)?;
+        decided.insert(record.request.exception_id.clone(), record);
+    }
+    let labels = labels_of(tx, decided.values().map(|d| d.actor_id.clone())).await?;
+    entries
+        .into_iter()
+        .map(|e| {
+            let record = records.get(&e.id).cloned().ok_or(TaskError::Unavailable)?;
+            let disposition = decided.remove(&e.id).map(|d| {
+                let label = labels.get(&d.actor_id).cloned().unwrap_or_default();
+                (d, label)
+            });
+            Ok(ExceptionView {
+                record,
+                status: e.status,
+                latest_observed: e.latest_observed,
+                occurrences: counts.get(&e.id).copied().unwrap_or(0) as u64,
+                dispositions: disposed.get(&e.id).copied().unwrap_or(0) as u64,
+                disposition,
+            })
+        })
+        .collect()
+}
+
 impl AssessmentRepository {
-    /// Viewer read (current audit scope by RLS): the Task's exceptions with
-    /// their derived status and the newest effective summaries.
+    /// Viewer read (current audit scope by RLS): one page of the Task's
+    /// exceptions after `after` (an exception ID, the previous page's last),
+    /// with their derived status, the exact counts by status over all of
+    /// them and the newest effective summaries.
     pub async fn exceptions_view(
         &self,
         actor: &str,
         s: &Scope,
         task_id: &str,
-    ) -> Result<ExceptionsView, TaskError> {
-        if !valid_scope_id(task_id) {
-            return Err(TaskError::Denied);
+        after: Option<&str>,
+    ) -> Result<ExceptionsView, ExceptionsReadError> {
+        if !valid_scope_id(task_id) || after.is_some_and(|a| !valid_exception_id(a)) {
+            return Err(TaskError::Denied.into());
         }
         let mut tx = scoped(&self.pool, actor, s).await.map_err(viewer_error)?;
         let may = match may_close(&mut tx, actor, s, task_id).await {
             Ok(Some(may)) => may,
-            Ok(None) => return Err(TaskError::Denied),
-            Err(_) => return Err(TaskError::Unavailable),
+            Ok(None) => return Err(TaskError::Denied.into()),
+            Err(_) => return Err(TaskError::Unavailable.into()),
         };
-        let all = entries(&mut tx, task_id, None)
+        // The keyset page: C-ordered (subject, criterion lineage, ID) after
+        // the cursor's exception, one more to know whether others follow.
+        let anchor: Option<(String, String)> = match after {
+            None => None,
+            Some(id) => Some(
+                sqlx::query_as("SELECT subject, criterion_root FROM public.assessment_exceptions WHERE task_id=$1 AND id=$2")
+                    .bind(task_id).bind(id)
+                    .fetch_optional(&mut *tx).await.map_err(|_| TaskError::Unavailable)?
+                    .ok_or(ExceptionsReadError::Cursor)?,
+            ),
+        };
+        let mut ids: Vec<String> = sqlx::query_scalar("SELECT id FROM public.assessment_exceptions WHERE task_id=$1
+            AND ($2::text IS NULL OR (subject COLLATE \"C\", criterion_root COLLATE \"C\", id COLLATE \"C\") > ($2::text COLLATE \"C\", $3::text COLLATE \"C\", $4::text COLLATE \"C\"))
+            ORDER BY subject COLLATE \"C\", criterion_root COLLATE \"C\", id COLLATE \"C\" LIMIT $5")
+            .bind(task_id)
+            .bind(anchor.as_ref().map(|a| &a.0)).bind(anchor.as_ref().map(|a| &a.1)).bind(after)
+            .bind(EXCEPTION_PAGE as i64 + 1)
+            .fetch_all(&mut *tx).await.map_err(|_| TaskError::Unavailable)?;
+        let more = ids.len() > EXCEPTION_PAGE;
+        ids.truncate(EXCEPTION_PAGE);
+        let page = derived(&mut tx, s, task_id, &ids)
             .await
             .map_err(viewer_error)?;
-        let shown: Vec<&ExceptionEntry> = all.iter().take(EXCEPTIONS_SHOWN).collect();
-        let ids: Vec<&String> = shown.iter().map(|e| &e.id).collect();
-        let records: BTreeMap<String, ExceptionRecord> = sqlx::query("SELECT id,task_id,actor_id,criterion_root,subject,first_source_kind,first_source_id,created_us FROM public.assessment_exceptions WHERE task_id=$1 AND id = ANY($2)")
-            .bind(task_id).bind(&ids)
-            .fetch_all(&mut *tx).await.map_err(|_| TaskError::Unavailable)?
-            .iter().map(|r| record_of(r).map(|r| (r.id.clone(), r)))
-            .collect::<Result<_, _>>().map_err(viewer_error)?;
-        let counts: BTreeMap<String, i64> = sqlx::query_as::<_, (String, i64)>("SELECT exception_id, count(*) FROM public.assessment_exception_occurrences WHERE task_id=$1 AND exception_id = ANY($2) GROUP BY exception_id")
-            .bind(task_id).bind(&ids)
-            .fetch_all(&mut *tx).await.map_err(|_| TaskError::Unavailable)?
-            .into_iter().collect();
-        let newest: Vec<PgRow> = sqlx::query("SELECT DISTINCT ON (exception_id) exception_id, document, digest, created_us FROM public.assessment_exception_dispositions WHERE task_id=$1 AND exception_id = ANY($2) ORDER BY exception_id, created_us DESC, id COLLATE \"C\" DESC")
-            .bind(task_id).bind(&ids)
-            .fetch_all(&mut *tx).await.map_err(|_| TaskError::Unavailable)?;
-        let mut decided: BTreeMap<String, ExceptionDispositionRecord> = BTreeMap::new();
-        for row in &newest {
-            let record = exception_disposition_from(row).map_err(viewer_error)?;
-            decided.insert(record.request.exception_id.clone(), record);
+        if page.len() != ids.len() {
+            return Err(TaskError::Unavailable.into());
         }
-        let labels = labels_of(&mut tx, decided.values().map(|d| d.actor_id.clone())).await?;
+        let next = more.then(|| ids.last().cloned()).flatten();
+        let counts = status_counts(&mut tx, s, task_id)
+            .await
+            .map_err(viewer_error)?
+            .total();
+        let exceptions = views_of(&mut tx, task_id, page).await?;
         let snapshot = exception_snapshot(&mut tx, s, task_id)
             .await
             .map_err(viewer_error)?;
         task::admission_fence(&mut tx, actor, s, None).await?;
         tx.commit().await.map_err(|_| TaskError::Unavailable)?;
-        let exceptions = shown
-            .into_iter()
-            .map(|e| {
-                let record = records.get(&e.id).cloned().ok_or(TaskError::Unavailable)?;
-                let disposition = decided.remove(&e.id).map(|d| {
-                    let label = labels.get(&d.actor_id).cloned().unwrap_or_default();
-                    (d, label)
-                });
-                Ok(ExceptionView {
-                    record,
-                    status: e.status,
-                    latest_observed: e.latest_observed,
-                    occurrences: counts.get(&e.id).copied().unwrap_or(0) as u64,
-                    disposition,
-                })
-            })
-            .collect::<Result<Vec<_>, TaskError>>()?;
         Ok(ExceptionsView {
             exceptions,
-            total: all.len() as u64,
+            counts,
+            next,
             may_close: may,
             summaries: snapshot.summaries,
             total_summaries: snapshot.total_summaries,
         })
     }
 
-    /// Viewer read: one exception, a page of its occurrences (oldest first,
-    /// after the position `after`) and every disposition.
+    /// Viewer read: one exception, a page of its occurrences (in their order,
+    /// after the place `after`) and every disposition.
     pub async fn exception_detail(
         &self,
         actor: &str,
@@ -827,40 +1041,43 @@ impl AssessmentRepository {
             return Err(TaskError::Denied);
         }
         let mut tx = scoped(&self.pool, actor, s).await.map_err(viewer_error)?;
-        let row = sqlx::query(&format!("SELECT * FROM ({ENTRIES}) e WHERE e.id=$3"))
-            .bind(task_id)
-            .bind(None::<Vec<String>>)
-            .bind(exception_id)
-            .fetch_optional(&mut *tx)
+        // Only a person of this engagement learns whether it exists.
+        task::admission_fence(&mut tx, actor, s, None).await?;
+        let found = derived(&mut tx, s, task_id, &[exception_id.to_string()])
             .await
-            .map_err(|_| TaskError::Unavailable)?;
-        let Some(row) = row else {
+            .map_err(viewer_error)?;
+        let Some(entry) = found.into_iter().next() else {
             tx.commit().await.map_err(|_| TaskError::Unavailable)?;
             return Ok(None);
         };
-        let (entry, _) = entry_of(&row).map_err(viewer_error)?;
-        let record = sqlx::query("SELECT id,task_id,actor_id,criterion_root,subject,first_source_kind,first_source_id,created_us FROM public.assessment_exceptions WHERE task_id=$1 AND id=$2")
-            .bind(task_id).bind(exception_id)
-            .fetch_one(&mut *tx).await.map_err(|_| TaskError::Unavailable)?;
-        let record = record_of(&record).map_err(viewer_error)?;
-        let total: i64 = sqlx::query_scalar("SELECT count(*) FROM public.assessment_exception_occurrences WHERE task_id=$1 AND exception_id=$2")
-            .bind(task_id).bind(exception_id)
-            .fetch_one(&mut *tx).await.map_err(|_| TaskError::Unavailable)?;
-        let rows = sqlx::query("SELECT exception_id,source_kind,source_id,population_id,member_ordinal,criterion_id,basis_id,origin,evidence,source_us,actor_id FROM public.assessment_exception_occurrences WHERE task_id=$1 AND exception_id=$2 ORDER BY source_us, source_id COLLATE \"C\" OFFSET $3 LIMIT $4")
-            .bind(task_id).bind(exception_id).bind(i64::from(after)).bind(OCCURRENCE_PAGE as i64 + 1)
+        let rows = sqlx::query("SELECT exception_id,source_kind,source_id,population_id,member_ordinal,criterion_id,basis_id,origin,evidence,source_us,seq,actor_id FROM public.assessment_exception_occurrences WHERE task_id=$1 AND exception_id=$2 AND seq > $3 ORDER BY seq LIMIT $4")
+            .bind(task_id).bind(exception_id).bind(after as i32).bind(OCCURRENCE_PAGE as i64 + 1)
             .fetch_all(&mut *tx).await.map_err(|_| TaskError::Unavailable)?;
         let mut occurrences = rows
             .iter()
             .map(occurrence_of)
             .collect::<Result<Vec<_>, _>>()
             .map_err(viewer_error)?;
-        let next = (occurrences.len() > OCCURRENCE_PAGE).then(|| after + OCCURRENCE_PAGE as u32);
+        let more = occurrences.len() > OCCURRENCE_PAGE;
         occurrences.truncate(OCCURRENCE_PAGE);
-        let dispositions: Vec<ExceptionDispositionRecord> = sqlx::query(&format!("{DISPOSITION_SELECT} WHERE task_id=$1 AND exception_id=$2 ORDER BY created_us, id COLLATE \"C\""))
-            .bind(task_id).bind(exception_id)
-            .fetch_all(&mut *tx).await.map_err(|_| TaskError::Unavailable)?
-            .iter().map(exception_disposition_from).collect::<Result<_, _>>().map_err(viewer_error)?;
+        let next = more.then(|| occurrences.last().map(|o| o.seq)).flatten();
+        let dispositions: Vec<ExceptionDispositionRecord> = sqlx::query(&format!(
+            "{DISPOSITION_SELECT} WHERE task_id=$1 AND exception_id=$2 ORDER BY seq"
+        ))
+        .bind(task_id)
+        .bind(exception_id)
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(|_| TaskError::Unavailable)?
+        .iter()
+        .map(exception_disposition_from)
+        .collect::<Result<_, _>>()
+        .map_err(viewer_error)?;
         let labels = labels_of(&mut tx, dispositions.iter().map(|d| d.actor_id.clone())).await?;
+        let mut view = views_of(&mut tx, task_id, vec![entry])
+            .await?
+            .pop()
+            .ok_or(TaskError::Unavailable)?;
         task::admission_fence(&mut tx, actor, s, None).await?;
         tx.commit().await.map_err(|_| TaskError::Unavailable)?;
         let labelled: Vec<(ExceptionDispositionRecord, String)> = dispositions
@@ -870,14 +1087,9 @@ impl AssessmentRepository {
                 (d, label)
             })
             .collect();
+        view.disposition = labelled.last().cloned();
         Ok(Some(ExceptionDetail {
-            view: ExceptionView {
-                record,
-                status: entry.status,
-                latest_observed: entry.latest_observed,
-                occurrences: total as u64,
-                disposition: labelled.last().cloned(),
-            },
+            view,
             occurrences,
             next,
             dispositions: labelled,
