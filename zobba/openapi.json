@@ -22400,7 +22400,8 @@
           "review",
           "locator",
           "unit",
-          "subject"
+          "subject",
+          "source"
         ],
         "properties": {
           "criterion_id": {
@@ -22443,6 +22444,17 @@
             "type": [
               "string",
               "null"
+            ]
+          },
+          "source": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CitationSourceResponse",
+                "description": "A quote's source for the citation chip: navigable only when the\nviewer may read the exact original now."
+              }
             ]
           },
           "subject": {

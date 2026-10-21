@@ -47,6 +47,7 @@ use zobba_domain::{
 };
 use zobba_infrastructure::{
     assessment::AssessmentRepository,
+    citation::{CitationRepository, ViewerOriginal},
     evidence::{EvidenceRepository, s3::S3EvidenceObjects},
     identity::secret_hash,
 };
@@ -58,6 +59,7 @@ pub(crate) struct WorkProductState {
     identity: crate::auth::AuthState,
     assessments: AssessmentRepository,
     evidence: EvidenceRepository,
+    citations: CitationRepository,
     objects: Option<Arc<S3EvidenceObjects>>,
 }
 
@@ -96,7 +98,8 @@ pub(crate) fn router(
         .with_state(WorkProductState {
             identity,
             assessments: AssessmentRepository::new(pool.clone()),
-            evidence: EvidenceRepository::new(pool),
+            evidence: EvidenceRepository::new(pool.clone()),
+            citations: CitationRepository::new(pool),
             objects,
         })
         .layer(axum::extract::DefaultBodyLimit::max(96 * 1024))
@@ -201,6 +204,10 @@ pub struct WorkProductAssertionResponse {
     pub unit: Option<String>,
     #[schema(required = true)]
     pub subject: Option<String>,
+    /// A quote's source for the citation chip: navigable only when the
+    /// viewer may read the exact original now.
+    #[schema(required = true)]
+    pub source: Option<crate::answers::CitationSourceResponse>,
 }
 
 /// A claim's currency, derived now (never stored).
@@ -392,8 +399,28 @@ fn summary_response(head: &ProductHead, view: &VersionView) -> WorkProductSummar
     }
 }
 
-fn assertion_response(pin: &Pin, withheld: bool) -> WorkProductAssertionResponse {
+type Originals = BTreeMap<String, ViewerOriginal>;
+
+fn assertion_response(
+    pin: &Pin,
+    withheld: bool,
+    originals: &Originals,
+) -> WorkProductAssertionResponse {
+    // A withheld quote carries no source: its text is the thing withheld.
+    let source =
+        (pin.kind == zobba_domain::work_product::AssertionKind::Quote && !withheld).then(|| {
+            crate::answers::source_response(
+                &zobba_domain::citation::CitationSource {
+                    original_id: pin.record_id.clone(),
+                    locator: pin.locator.clone(),
+                    quote: pin.value.clone(),
+                },
+                crate::answers::exact_original(originals, &pin.record_id, Some(&pin.record_digest)),
+                (crate::answers::CitationVerificationResponse::Verified, None),
+            )
+        });
     WorkProductAssertionResponse {
+        source,
         kind: pin.kind.as_str().into(),
         record_kind: pin.record_kind.as_str().into(),
         record_id: pin.record_id.clone(),
@@ -410,7 +437,12 @@ fn assertion_response(pin: &Pin, withheld: bool) -> WorkProductAssertionResponse
     }
 }
 
-fn claim_response(view: &VersionView, claim: &ClaimView, pins: &[Pin]) -> WorkProductClaimResponse {
+fn claim_response(
+    view: &VersionView,
+    claim: &ClaimView,
+    pins: &[Pin],
+    originals: &Originals,
+) -> WorkProductClaimResponse {
     WorkProductClaimResponse {
         number: claim.number.to_string(),
         current: claim.currency.current(),
@@ -436,6 +468,7 @@ fn claim_response(view: &VersionView, claim: &ClaimView, pins: &[Pin]) -> WorkPr
                     p,
                     p.kind == zobba_domain::work_product::AssertionKind::Quote
                         && view.withheld_originals.contains(&p.record_id),
+                    originals,
                 )
             })
             .collect(),
@@ -446,6 +479,7 @@ fn block_response(
     view: &VersionView,
     block: &Block,
     labels: &BTreeMap<String, String>,
+    originals: &Originals,
 ) -> WorkProductBlockResponse {
     let (label, text, record) = match &block.content {
         Content::Heading { text } => (None, Some(text.clone()), None),
@@ -459,7 +493,7 @@ fn block_response(
         Content::Claim { pins, .. } => view
             .claims
             .get(&block.id)
-            .map(|c| claim_response(view, c, pins)),
+            .map(|c| claim_response(view, c, pins, originals)),
         _ => None,
     };
     let lines = match &block.content {
@@ -491,6 +525,7 @@ fn version_response(
     head_view: &VersionView,
     view: &VersionView,
     labels: &BTreeMap<String, String>,
+    originals: &Originals,
 ) -> WorkProductVersionResponse {
     let v = &view.record.version;
     let sections = v
@@ -502,7 +537,7 @@ fn version_response(
                 .blocks
                 .iter()
                 .filter(|b| b.section == s.id)
-                .map(|b| block_response(view, b, labels))
+                .map(|b| block_response(view, b, labels, originals))
                 .collect();
             WorkProductSectionResponse {
                 id: s.id.clone(),
@@ -805,15 +840,7 @@ async fn read_version(
     task_id: &str,
     product_id: &str,
     version_id: &str,
-) -> Result<
-    (
-        ProductHead,
-        VersionView,
-        VersionView,
-        BTreeMap<String, String>,
-    ),
-    Response,
-> {
+) -> Result<Read, Response> {
     if let Err(error) = state.assessments.work_product_viewer(actor, scope).await {
         return Err(failure(error));
     }
@@ -858,8 +885,28 @@ async fn read_version(
     )
     .await
     .map_err(reading_failure)?;
-    Ok((head, head_view, view, labels))
+    let quotes: Vec<String> = record
+        .version
+        .claims()
+        .flat_map(|(_, pins)| pins.iter())
+        .filter(|p| p.kind == zobba_domain::work_product::AssertionKind::Quote)
+        .map(|p| p.record_id.clone())
+        .collect();
+    let originals = state
+        .citations
+        .viewer_originals(actor, scope, &quotes)
+        .await
+        .map_err(reading_failure)?;
+    Ok((head, head_view, view, labels, originals))
 }
+
+type Read = (
+    ProductHead,
+    VersionView,
+    VersionView,
+    BTreeMap<String, String>,
+    Originals,
+);
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -909,9 +956,10 @@ pub(crate) async fn version(
     )
     .await
     {
-        Ok((head, head_view, view, labels)) => {
-            Json(version_response(&head, &head_view, &view, &labels)).into_response()
-        }
+        Ok((head, head_view, view, labels, originals)) => Json(version_response(
+            &head, &head_view, &view, &labels, &originals,
+        ))
+        .into_response(),
         Err(response) => response,
     }
 }
@@ -950,7 +998,7 @@ pub(crate) async fn support(
     {
         return not_found();
     }
-    let (_, _, view, _) = match read_version(
+    let (_, _, view, _, originals) = match read_version(
         &state,
         &current.identity.id,
         &scope,
@@ -971,7 +1019,7 @@ pub(crate) async fn support(
     else {
         return not_found();
     };
-    let response = claim_response(&view, claim, pins);
+    let response = claim_response(&view, claim, pins, &originals);
     let items = pins
         .iter()
         .zip(&claim.support)
@@ -980,6 +1028,7 @@ pub(crate) async fn support(
                 p,
                 p.kind == zobba_domain::work_product::AssertionKind::Quote
                     && view.withheld_originals.contains(&p.record_id),
+                &originals,
             ),
             support: s.clone(),
         })
@@ -1105,9 +1154,10 @@ pub(crate) async fn edit(
         )
         .await
         {
-            Ok((head, head_view, view, labels)) => {
-                Json(version_response(&head, &head_view, &view, &labels)).into_response()
-            }
+            Ok((head, head_view, view, labels, originals)) => Json(version_response(
+                &head, &head_view, &view, &labels, &originals,
+            ))
+            .into_response(),
             Err(response) => response,
         },
         Err(error) => edit_refusal(error),
@@ -1341,10 +1391,17 @@ mod tests {
             unit: None,
             subject: None,
         };
-        let shown = assertion_response(&pin, true);
-        assert!(shown.value.is_none() && shown.withheld);
+        let shown = assertion_response(&pin, true, &Originals::new());
+        assert!(shown.value.is_none() && shown.withheld && shown.source.is_none());
+        assert!(
+            assertion_response(&pin, false, &Originals::new())
+                .source
+                .is_some_and(|s| !s.readable && s.quote.is_none())
+        );
         assert_eq!(
-            assertion_response(&pin, false).value.as_deref(),
+            assertion_response(&pin, false, &Originals::new())
+                .value
+                .as_deref(),
             Some("Invoices")
         );
     }

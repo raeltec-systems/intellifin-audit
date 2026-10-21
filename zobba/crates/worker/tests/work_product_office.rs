@@ -129,7 +129,11 @@ fn the_committed_export_fixtures_are_the_writers_exact_bytes() {
         (ExportFormat::Xlsx, "working-paper.xlsx"),
     ] {
         let bytes = render(&view(), format);
-        assert_eq!(bytes, render(&view(), format), "the writer is deterministic");
+        assert_eq!(
+            bytes,
+            render(&view(), format),
+            "the writer is deterministic"
+        );
         let path = fixtures().join(name);
         if std::env::var("ZOBBA_UPDATE_EXPORT_FIXTURE").as_deref() == Ok("1") {
             std::fs::write(&path, &bytes).unwrap();
@@ -145,7 +149,10 @@ fn the_committed_export_fixtures_are_the_writers_exact_bytes() {
 
 fn soffice(out: &Path, profile: &Path, args: &[&str]) {
     let status = std::process::Command::new("soffice")
-        .arg(format!("-env:UserInstallation=file://{}", profile.display()))
+        .arg(format!(
+            "-env:UserInstallation=file://{}",
+            profile.display()
+        ))
         .args(["--headless", "--norestore", "--nolockcheck"])
         .args(args)
         .arg("--outdir")
@@ -163,7 +170,15 @@ fn the_export_fixtures_open_in_libreoffice_headless() {
     std::fs::create_dir_all(&out).unwrap();
     let docx = fixtures().join("working-paper.docx");
     let xlsx = fixtures().join("working-paper.xlsx");
-    soffice(&out, &profile, &["--convert-to", "txt:Text (encoded):UTF8", docx.to_str().unwrap()]);
+    soffice(
+        &out,
+        &profile,
+        &[
+            "--convert-to",
+            "txt:Text (encoded):UTF8",
+            docx.to_str().unwrap(),
+        ],
+    );
     let text = std::fs::read_to_string(out.join("working-paper.txt")).expect("the DOCX opened");
     let v = view();
     assert!(text.contains(&v.source_revision()), "{text}");
@@ -180,12 +195,27 @@ fn the_export_fixtures_open_in_libreoffice_headless() {
     ] {
         assert!(text.contains(wanted), "{wanted}: {text}");
     }
-    soffice(&out, &profile, &["--convert-to", "pdf", docx.to_str().unwrap()]);
+    soffice(
+        &out,
+        &profile,
+        &["--convert-to", "pdf", docx.to_str().unwrap()],
+    );
     let pdf = std::fs::read(out.join("working-paper.pdf")).expect("the DOCX rendered to PDF");
     assert!(pdf.starts_with(b"%PDF"));
-    soffice(&out, &profile, &["--convert-to", "html", xlsx.to_str().unwrap()]);
+    soffice(
+        &out,
+        &profile,
+        &["--convert-to", "html", xlsx.to_str().unwrap()],
+    );
     let html = std::fs::read_to_string(out.join("working-paper.html")).expect("the XLSX opened");
-    for wanted in ["=HYPERLINK the policy", "Work product", "Claims", "Citations", "Coverage", "1200"] {
+    for wanted in [
+        "=HYPERLINK the policy",
+        "Work product",
+        "Claims",
+        "Citations",
+        "Coverage",
+        "1200",
+    ] {
         assert!(html.contains(wanted), "{wanted} in the opened workbook");
     }
     let _ = std::fs::remove_dir_all(&work);

@@ -3899,6 +3899,7 @@ export interface components {
             record_id: string;
             record_kind: string;
             review: string | null;
+            source: null | components["schemas"]["CitationSourceResponse"];
             subject: string | null;
             unit: string | null;
             value: string | null;
