@@ -82,3 +82,10 @@ Remaining critical path: Milestone A — 24.4 (in review), 24.5, 24.6, 21.7, 25.
   5.5 agents, never handed to Codex. Codex may take back-end work (domain, database,
   API, worker) only on an owner-approved plan, and Fable's reviewers check it before
   it is merged into the working branch.
+
+## Owner decision 2026-10-21 (later): live model comparison
+
+- Approved: live runs on synthetic data with real OpenAI and Anthropic models, cheapest
+  to most capable for each provider, comparing work-product quality with cost. This
+  reopens Anthropic qualification. A total spend cap is set before the first paid call.
+- Story 21.7: Codex builds the back end; an Opus agent builds the screen after it.

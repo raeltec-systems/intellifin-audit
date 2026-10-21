@@ -1,3 +1,14 @@
+## 2026-10-21 — Live model comparison approved; Anthropic reopened
+
+The owner approved live runs with real models on synthetic data, for both OpenAI and
+Anthropic, from the cheapest to the most capable model of each, to compare work-product
+quality against cost. This reopens Anthropic qualification. Keys stay in the environment
+(`ZOBBA_OPENAI_API_KEY`, `ZOBBA_ANTHROPIC_API_KEY`); never print them. A total spend cap
+must still be set before the first paid call. First check on 2026-10-21: the OpenAI key
+answers 401 `invalid_api_key`, and the Anthropic key is not scoped to a workspace, so the
+API asks for an `anthropic-workspace-id` header that Zobba does not send. A model listing
+call costs nothing; use it to check a key before any paid run.
+
 ## 2026-10-14 — Story 22.6 method and skill use during investigation
 
 Progressive disclosure, never inlining: every investigating turn carries a
@@ -99,7 +110,7 @@ request effort `None` now sends `reasoning.effort = "none"`; a non-reasoning pro
 reasoning field. The runner accepts `--providers`, `--openai-reasoning` and `--max-usd` (1–20),
 all recorded in the reviewed manifest. Run 2 qualified OpenAI native transport (receipt in
 `qualification-receipts/`). Owner deferred Anthropic qualification (2026-10-07, no budget):
-do not run or request it until the owner reopens it; Anthropic stays unqualified. The adapter is
+do not run or request it until the owner reopens it; Anthropic stays unqualified. `[EXTENDED 2026-10-21: the owner reopened it — see the 2026-10-21 model comparison entry at the top]` The adapter is
 provider-neutral, so one passed qualification closes Story 22.1 (now done). A provider is
 qualified per provider when the owner activates it (its keys plus its own approved run); an
 unqualified provider never blocks a story and must not be selectable.
