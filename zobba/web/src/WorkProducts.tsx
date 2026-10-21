@@ -69,3 +69,44 @@ function ShelfItem({ product: p, open, onOpen }: { product: WorkProductSummary; 
     <button type="button" className="text-button" aria-expanded={open} onClick={event => onOpen(event.currentTarget)}>{open ? 'Shown below' : `Open ${p.title}`}</button>
   </li>;
 }
+
+/// The engagement's shelf: every work product of the Tasks this viewer may
+/// see now, an exact total, 50 per page. Opening one opens its Task, whose
+/// panel shows the document.
+export function EngagementShelf({ scope, session, accessReady, onOpenTask }: {
+  scope: Scope; session: Session | null; accessReady: boolean; onOpenTask: (taskId: string, opener: HTMLElement) => void;
+}) {
+  const [shelf, setShelf] = useState<WorkProductShelf | null>(null);
+  const [error, setError] = useState('');
+  const [pages, setPages] = useState<(string | null)[]>([null]);
+  const after = pages[pages.length - 1] ?? null;
+  useEffect(() => {
+    if (!accessReady) return;
+    const controller = new AbortController();
+    readShelf(scope, null, after, session, controller.signal).then(value => {
+      if (!controller.signal.aborted) { setShelf(value); setError(''); }
+    }, () => {
+      if (!controller.signal.aborted) { setShelf(null); setError('The work products could not be read now. Nothing is shown in their place.'); }
+    });
+    return () => controller.abort();
+  }, [scope, session, accessReady, after]);
+  return <section className="work-product-shelf" aria-labelledby="work-products-title"><h2 id="work-products-title">Work products</h2>
+    {error ? <p role="alert">{error}</p> : !shelf || shelf.total === '0' ? <>
+      <p>No work products yet.</p>
+      <p className="shelf-description">Zobba drafts working papers on a Task's bound template; every claim is checked against its records before a version is recorded.</p>
+    </> : <>
+      <p className="shelf-description">{plural(shelf.total, 'work product')} · each a Draft until it is reviewed.</p>
+      <ul className="work-product-shelf-list">{shelf.products.map(p => <li key={p.id}>
+        <button type="button" className="task-list-open" onClick={event => onOpenTask(p.task_id, event.currentTarget)}>
+          <span>{p.title}</span>
+          <small>{kindLabel[p.kind]} · version {number(p.version)} · {p.review_state} · {p.refresh === '0' ? 'no claim needs refresh' : `${plural(p.refresh, 'claim needs', 'claims need')} refresh`}{p.missing_required.length ? ` · ${plural(String(p.missing_required.length), 'required section')} not completed` : ''}</small>
+          <span className="open-label">Open its Task</span>
+        </button>
+      </li>)}</ul>
+      {pages.length > 1 || shelf.next_cursor ? <nav aria-label="Work product shelf pages">
+        <button type="button" className="text-button" disabled={pages.length <= 1} onClick={() => setPages(p => p.slice(0, -1))}>Previous {SHELF_PAGE}</button>
+        <button type="button" className="text-button" disabled={!shelf.next_cursor} onClick={() => { const next = shelf.next_cursor; if (next) setPages(p => [...p, next]); }}>Next {SHELF_PAGE}</button>
+      </nav> : null}
+    </>}
+  </section>;
+}

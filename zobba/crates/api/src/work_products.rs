@@ -833,6 +833,8 @@ pub(crate) async fn task_shelf(
 
 /// A version and its product's latest version, each with currency now for
 /// this viewer, and the labels of its people.
+// The refusal is the handler's own response, returned as is.
+#[allow(clippy::result_large_err)]
 async fn read_version(
     state: &WorkProductState,
     actor: &str,
@@ -899,6 +901,9 @@ async fn read_version(
         .map_err(reading_failure)?;
     Ok((head, head_view, view, labels, originals))
 }
+
+/// Engagement, Task, work product, version and claim block.
+type SupportPath = (String, String, String, String, String);
 
 type Read = (
     ProductHead,
@@ -970,7 +975,7 @@ pub(crate) async fn version(
 pub(crate) async fn support(
     State(state): State<WorkProductState>,
     headers: HeaderMap,
-    path: Result<Path<(String, String, String, String, String)>, PathRejection>,
+    path: Result<Path<SupportPath>, PathRejection>,
     query: Result<Query<ScopeQuery>, QueryRejection>,
 ) -> Response {
     let current = match state.identity.current_read(&headers).await {

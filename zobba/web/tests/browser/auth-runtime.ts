@@ -271,7 +271,7 @@ SELECT 'snapshot:'||json_build_object('api_connections',(SELECT count(*) FROM ap
   };
 }
 
-function resetSyntheticFixture(database: URL, host: string, port: number, schemaVersion = 21): void {
+function resetSyntheticFixture(database: URL, host: string, port: number, schemaVersion = 22): void {
   const result = spawnSync('psql', ['-X', '-q', '-1', '-v', 'ON_ERROR_STOP=1'], {
     cwd: root,
     encoding: 'utf8',
@@ -280,6 +280,11 @@ function resetSyntheticFixture(database: URL, host: string, port: number, schema
     // within psql's single transaction, including the deferred Task-cycle and
     // Admin-continuity checks. This is never an application lifecycle operation.
     input: `
+DELETE FROM public.work_product_exports;
+DELETE FROM public.work_product_assertions;
+DELETE FROM public.work_product_blocks;
+DELETE FROM public.work_product_versions;
+DELETE FROM public.work_products;
 DELETE FROM public.assessment_effective_summaries;
 DELETE FROM public.assessment_exception_dispositions;
 DELETE FROM public.assessment_exception_occurrences;
@@ -380,7 +385,7 @@ DELETE FROM public.clients;
 DELETE FROM public.organisations;
 DELETE FROM public.sessions;
 DELETE FROM public.identities;
-UPDATE public.zobba_bootstrap SET local_fixture_issuer=NULL WHERE singleton;`.split("\n").filter(line => (schemaVersion >= 10 || !line.startsWith("DELETE FROM public.knowledge_")) && (schemaVersion >= 11 || !line.startsWith("DELETE FROM public.model_")) && (schemaVersion >= 12 || !/^DELETE FROM public\.task_(steps|work_claims|guidance_applications|routing_)/.test(line)) && (schemaVersion >= 13 || !line.startsWith('DELETE FROM public.engagement_setup')) && (schemaVersion >= 14 || !line.startsWith('DELETE FROM public.task_context_compactions')) && (schemaVersion >= 15 || !line.startsWith('DELETE FROM public.analysis_')) && (schemaVersion >= 16 || !/^DELETE FROM public\.(citation_sources|answer_|task_program_runs|task_page_reads|document_)/.test(line)) && (schemaVersion >= 17 || !/^DELETE FROM public\.(task_skill_uses|task_method_|task_investigation_notes|methodology_proposals)/.test(line)) && (schemaVersion >= 18 || !line.startsWith('DELETE FROM public.assessment_')) && (schemaVersion >= 19 || !/^DELETE FROM public\.assessment_(summaries|opportunities|sample|population)/.test(line)) && (schemaVersion >= 20 || !/^DELETE FROM public\.assessment_(dispositions|evaluation_revisions|basis_carr)/.test(line)) && (schemaVersion >= 21 || !/^DELETE FROM public\.assessment_(exception|effective)/.test(line))).join("\n"),
+UPDATE public.zobba_bootstrap SET local_fixture_issuer=NULL WHERE singleton;`.split("\n").filter(line => (schemaVersion >= 10 || !line.startsWith("DELETE FROM public.knowledge_")) && (schemaVersion >= 11 || !line.startsWith("DELETE FROM public.model_")) && (schemaVersion >= 12 || !/^DELETE FROM public\.task_(steps|work_claims|guidance_applications|routing_)/.test(line)) && (schemaVersion >= 13 || !line.startsWith('DELETE FROM public.engagement_setup')) && (schemaVersion >= 14 || !line.startsWith('DELETE FROM public.task_context_compactions')) && (schemaVersion >= 15 || !line.startsWith('DELETE FROM public.analysis_')) && (schemaVersion >= 16 || !/^DELETE FROM public\.(citation_sources|answer_|task_program_runs|task_page_reads|document_)/.test(line)) && (schemaVersion >= 17 || !/^DELETE FROM public\.(task_skill_uses|task_method_|task_investigation_notes|methodology_proposals)/.test(line)) && (schemaVersion >= 18 || !line.startsWith('DELETE FROM public.assessment_')) && (schemaVersion >= 19 || !/^DELETE FROM public\.assessment_(summaries|opportunities|sample|population)/.test(line)) && (schemaVersion >= 20 || !/^DELETE FROM public\.assessment_(dispositions|evaluation_revisions|basis_carr)/.test(line)) && (schemaVersion >= 21 || !/^DELETE FROM public\.assessment_(exception|effective)/.test(line)) && (schemaVersion >= 22 || !line.startsWith('DELETE FROM public.work_product'))).join("\n"),
     timeout: 10_000,
     env: {
       ...sanitizedRuntimeEnvironment(),
@@ -451,7 +456,7 @@ export async function startAuthRuntime(options: { evidence?: boolean; schema9?: 
   const adminEndpoint = databaseEndpoint(adminDatabase);
   run('cargo', ['build', '--quiet', '--locked', '-p', 'zobba-cli', '-p', 'zobba-worker'], sanitizedRuntimeEnvironment());
   const apiExecutable = buildEvidenceApiHarness();
-  let schemaVersion = options.schema9 ? 9 : 21;
+  let schemaVersion = options.schema9 ? 9 : 22;
   const metadata = JSON.parse(run('cargo', ['metadata', '--locked', '--no-deps', '--format-version', '1'], sanitizedRuntimeEnvironment()));
   const fixtureDirectory = resolve(process.env.ZOBBA_FIXTURE_DIR ?? resolve(fixtureRoot, '.local'));
   run('node', [resolve(fixtureRoot, 'setup.mjs')], { ...sanitizedRuntimeEnvironment(), ZOBBA_FIXTURE_DIR: fixtureDirectory });
@@ -642,7 +647,7 @@ export async function startAuthRuntime(options: { evidence?: boolean; schema9?: 
         run(resolve(metadata.target_directory, 'debug/zobba-cli'), ['migrate', '--runtime-role', decodeURIComponent(runtimeDatabase.username)], {
           ...environment, ZOBBA_MIGRATION_DATABASE_URL: migrationDatabase.toString(),
         });
-        schemaVersion = 21;
+        schemaVersion = 22;
         await startApi();
       },
       async startWorker(duration = 30_000) {

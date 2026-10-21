@@ -2342,6 +2342,88 @@ immutability, RLS, a pid-correlated lock race, the backfill and the
 paths are proven by the parity table's decision rule, not yet by a worker
 scenario with a population version that drops a subject.
 
+## Work products with checked claims (Story 24.4)
+
+Schema 22 is additive; migrations 0001–0021 and catalogues v1–v21 are
+unchanged (`published.rs` pins 0021 and v21 too).
+
+- **The agent drafts; trusted code checks.** An answer may carry one
+  `draft_work_product` (a new product or a successor of the latest version) on
+  a template of the Task's *current* method binding (the built-in neutral
+  starter is allowed and always labelled "Neutral starter (not firm
+  methodology)"; any other template is `template_unbound`). Blocks are
+  headings, narrative (`narrative` or `judgment`, shown "Zobba's judgment —
+  not checked against records"), claims (a sentence plus 1–8 assertions) and
+  platform blocks the agent only places (`coverage`, `exceptions`,
+  `limitations`; trusted code writes their lines). Each assertion pins a
+  record of the same Task and the value it states: an evaluation's effective
+  outcome on its current chain head, a summary's exact count or conclusion, an
+  exception's derived status, a fact's supported canonical value, a quote
+  verified now at its location (whole value, no page-only), or a basis period.
+  Every figure in a claim sentence must be one of its asserted values
+  (`statement_figures_v1`); narrative may state no figure except closed
+  identifier tokens (`A1`, `ISA 315`, `FY2025`); a claim resting only on quotes
+  may state no verdict word. A version is recorded only when every check
+  passes; otherwise nothing is recorded and per-block feedback (closed reasons
+  such as `count_mismatch`, `unsupported_figure`, `superseded_support`,
+  `human_block_dropped`) goes back inside the untrusted-content envelope —
+  never a failed cycle. The agent keeps earlier blocks by ID and may not change
+  or drop a person's block. There is no confidence score and no percentage.
+- **Immutable versions; currency derived on read.** `work_products`,
+  `work_product_versions`, `work_product_blocks`, `work_product_assertions` and
+  `work_product_exports` refuse UPDATE, DELETE and TRUNCATE even for the owner
+  (DELETE/TRUNCATE only under the explicit reset in a `*_test` database). The
+  database recomputes every assertion against its record in SQL, takes the
+  base as the head under a per-product lock (one successor per head; any other
+  base is `stale_base` naming the head) and checks kept blocks byte-equal.
+  A claim is current or needs refresh with closed reasons
+  (`evaluation_revised`, `disposition_changed`, `summary_superseded`,
+  `exception_status_changed`, `fact_superseded`, `source_withdrawn`) derived on
+  every read; a quote the viewer may not read now is withheld for that viewer,
+  never stale. The limitations block lists every cited summary's and basis's
+  limitations, exception "not evidence of remediation" sentences, required
+  sections not completed and claims needing refresh, in claim order — all from
+  records.
+- **People edit by new versions.** `POST /tasks/{task}/work-products/{product}/versions`
+  (Origin, CSRF, expected actor, session-bound key): a currently assigned
+  Auditor or Audit manager (Admin alone is 403) keeps blocks by ID in a new
+  order, removes blocks and edits headings, narrative and claim sentences (a
+  claim keeps its assertions; its sentence is checked again). The same checks
+  refuse with 409 and the same reasons. New assertions come only from the agent.
+- **Shelf, inspection and export.** `GET /work-products` and
+  `GET /tasks/{task}/work-products` page 50 by ID with an exact total: title,
+  kind, version, review state **Draft**, claims needing refresh and required
+  sections not completed. `GET .../versions/{version}` shows a version by
+  template section (a newer version is announced, never swapped in);
+  `GET .../claims/{block}/support` shows each pinned record as the platform
+  states it now. `POST .../versions/{version}/exports` renders that exact
+  version in process (`zobba-export-v1`: an in-house stored ZIP with CRC-32 and
+  minimal OOXML, no new crate) as DOCX or XLSX: source revision and digest on
+  the first page and in the footer, page numbers, every template section
+  ("Not completed in this version."), numbered claims linked to a Citations
+  appendix, "Needs refresh: …" marks, coverage, limitations and "Review state:
+  Draft — not reviewed". XLSX text cells are inline strings, never formulas;
+  one `SUM` carries its cached total. The same version, format and withheld set
+  give identical bytes, stored in the evidence object store; the download
+  checks size and digest again and is refused (`409 export_scope_changed`) to
+  a viewer whose withheld set differs. No PDF yet. The Task panel shows the
+  shelf, the document, claim → support → Back to claim and claim → citation →
+  evidence → back with keyboard focus restored, a structured editor with byte
+  counters, and DOCX/XLSX downloads checked against their digest.
+
+Proven offline by `crates/worker/tests/work_product.rs` (real worker, loopback
+model, real PostgreSQL, real API): a firm working paper recorded with every
+claim agreeing, each refusal reason with nothing recorded, the API shelf,
+version, support, edit, stale base, Admin refusal and exports, AC3 refresh
+after a revision, a disposition and a superseding summary (version 1's digest
+unchanged), a refreshed successor, an agent dropping a person's block, a
+24-claim scale version (twenty of four counts each), and forged and altered database rows
+refused; by
+`work_product_office.rs`, which checks the committed fixture DOCX and XLSX
+(`fixtures/exports/`) are the writer's exact bytes and opens them in
+LibreOffice headless (text, PDF and HTML conversion); and by the web unit and
+browser suites over the JSON the worker suite records.
+
 ## Establishing an engagement conversationally (Story 22.2 AC4)
 
 Schema 13 is additive; published migrations and catalogues 1–12 are unchanged.

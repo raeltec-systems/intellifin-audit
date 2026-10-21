@@ -144,7 +144,7 @@ fn pin(kind: AssertionKind, record_kind: RecordKind, id: &str, value: &str) -> P
         value: value.into(),
         origin: (kind == AssertionKind::Outcome).then_some(EffectiveOrigin::ModelProposal),
         review: (kind == AssertionKind::Outcome).then_some(ReviewState::Unreviewed),
-        locator: (kind == AssertionKind::Quote).then(|| Locator::Bytes { start: 0, end: 8 }),
+        locator: (kind == AssertionKind::Quote).then_some(Locator::Bytes { start: 0, end: 8 }),
         unit: None,
         subject: None,
     }

@@ -1405,7 +1405,7 @@ async fn every_claim_of_a_recorded_version_agrees_with_its_records() {
         "the request lists the bound template"
     );
     assert!(
-        bodies[4].contains(&format!("Work product")) && bodies[4].contains(&v1),
+        bodies[4].contains("Work product") && bodies[4].contains(&v1),
         "the next turn reads the recorded version"
     );
     // Every refusal of the second draft, each with its block, and nothing

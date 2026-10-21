@@ -141,7 +141,11 @@ function Support({ taskId, scope, session, product, version, block, onBack }: {
       if (controller.signal.aborted) return;
       setSupport(value);
       requestAnimationFrame(() => region.current?.focus());
-    }, () => { if (!controller.signal.aborted) setError('The support of this claim could not be read now.'); });
+    }, () => {
+      if (controller.signal.aborted) return;
+      setError('The support of this claim could not be read now.');
+      requestAnimationFrame(() => region.current?.focus());
+    });
     return () => controller.abort();
   }, [scope, taskId, product, version, block, session]);
   useEffect(() => {

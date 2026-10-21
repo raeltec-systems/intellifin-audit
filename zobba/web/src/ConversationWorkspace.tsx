@@ -13,6 +13,7 @@ import { TaskKnowledge } from './TaskKnowledge';
 import { InspectionPreference, useInspectionPreference } from './InspectionPreference';
 import type { MethodContext, SkillContext } from './knowledge-context';
 import { TaskContextUse, TaskWorkPanel, useTaskWork } from './TaskWorkPanel';
+import { EngagementShelf } from './WorkProducts';
 import { RoutingQuestions } from './RoutingQuestions';
 import { postDirection } from './work';
 import type { RoutingQuestion } from './work';
@@ -465,7 +466,7 @@ export function ConversationWorkspace({ engagement, session, accessReady, onAcce
             {conversation.tasks.length ? <ul className="active-task-list">{conversation.tasks.map((task) => <li key={task.id}><button type="button" className="task-list-open" onClick={(event) => void openTask(task.id, event.currentTarget)}><span>{task.objective}</span><small>{taskStateLabel(task)} · {owner(task)}</small><span className="open-label">Open</span></button></li>)}</ul> : <p className="empty-work-note">{conversation.connection === 'connected' ? 'No Tasks yet.' : 'Tasks are unavailable until the conversation loads.'}</p>}
             {conversation.hasMoreTasks ? <button type="button" className="text-button" onClick={() => void conversation.loadTaskPage()}>More Tasks</button> : null}
           </div>}
-          <section className="work-product-shelf" aria-labelledby="work-products-title"><h2 id="work-products-title">Work products</h2><p>No work products yet.</p><p className="shelf-description">This foundation retains Tasks and guidance. Audit outputs and computer work will appear here when those capabilities are available.</p></section>
+          <EngagementShelf scope={engagement} session={session} accessReady={projectionReady} onOpenTask={(id, opener) => void openTask(id, opener)} />
         </aside>
       </div>
     </div>

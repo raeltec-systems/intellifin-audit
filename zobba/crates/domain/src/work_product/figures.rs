@@ -97,18 +97,15 @@ pub fn figures(token: &str) -> Vec<String> {
         }
         let mut run = String::new();
         while i < chars.len() {
-            if is_decimal_digit(chars[i]) {
-                run.push(chars[i]);
-                i += 1;
-            } else if matches!(chars[i], ',' | '.' | '-')
+            // A digit, or a separator followed by a digit, continues the run.
+            let separator = matches!(chars[i], ',' | '.' | '-')
                 && i + 1 < chars.len()
-                && is_decimal_digit(chars[i + 1])
-            {
-                run.push(chars[i]);
-                i += 1;
-            } else {
+                && is_decimal_digit(chars[i + 1]);
+            if !(is_decimal_digit(chars[i]) || separator) {
                 break;
             }
+            run.push(chars[i]);
+            i += 1;
         }
         out.push(run);
     }
@@ -221,7 +218,7 @@ fn grouped(whole: &str) -> String {
     let digits: Vec<char> = whole.chars().collect();
     let mut out = String::new();
     for (i, c) in digits.iter().enumerate() {
-        if i > 0 && (digits.len() - i) % 3 == 0 {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
             out.push(',');
         }
         out.push(*c);

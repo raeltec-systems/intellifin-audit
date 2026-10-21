@@ -1808,10 +1808,10 @@ pub fn view_of(
                                 )
                             });
                         }
-                        zobba_domain::work_product::AssertionKind::Period => {
-                            if !cited_bases.contains(&pin.record_id) {
-                                cited_bases.push(pin.record_id.clone());
-                            }
+                        zobba_domain::work_product::AssertionKind::Period
+                            if !cited_bases.contains(&pin.record_id) =>
+                        {
+                            cited_bases.push(pin.record_id.clone());
                         }
                         _ => {}
                     }
