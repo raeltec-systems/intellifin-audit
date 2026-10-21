@@ -1471,6 +1471,7 @@ async fn every_not_met_result_is_an_exception_whose_status_is_derived_and_recoun
         list["effective_summaries"][1]["summary"]["failing_subjects"],
         "2"
     );
+    exceptions_fixture(&list);
     server.abort();
     let _ = stop.send(true);
     let _ = worker.await;
@@ -1487,6 +1488,154 @@ async fn every_not_met_result_is_an_exception_whose_status_is_derived_and_recoun
     )
     .await;
     zobba_infrastructure::analysis::docker::remove_all_test_resources().await;
+}
+
+/// Generated IDs inside a text (a source ID or a limitation sentence),
+/// replaced by the same stable names as whole values.
+fn embedded(text: &str, ids: &mut Vec<String>) -> String {
+    let mut out = String::new();
+    let mut rest = text;
+    'scan: while !rest.is_empty() {
+        for prefix in ["crit-", "basis-", "pop-", "eval-", "rev-", "exc-", "esummary-"] {
+            if let Some(tail) = rest.strip_prefix(prefix)
+                && tail.len() >= 40
+                && tail.as_bytes()[..40]
+                    .iter()
+                    .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+            {
+                let id = format!("{prefix}{}", &tail[..40]);
+                let index = ids.iter().position(|d| *d == id).unwrap_or_else(|| {
+                    ids.push(id.clone());
+                    ids.len() - 1
+                });
+                out.push_str(&format!("{prefix}{}", index + 1));
+                rest = &tail[40..];
+                continue 'scan;
+            }
+        }
+        let c = rest.chars().next().unwrap();
+        out.push(c);
+        rest = &rest[c.len_utf8()..];
+    }
+    out
+}
+
+/// The exact exception list JSON the web parses
+/// (`web/tests/fixtures/task-exceptions.json`), with generated identifiers
+/// and digests replaced by stable ones. Set `ZOBBA_UPDATE_EXCEPTION_FIXTURE=1`
+/// to rewrite it after an intended change.
+fn exceptions_fixture(body: &serde_json::Value) {
+    fn normalise(value: &mut serde_json::Value, ids: &mut Vec<String>, digests: &mut Vec<String>) {
+        let stable =
+            |text: &str, ids: &mut Vec<String>, digests: &mut Vec<String>| -> Option<String> {
+                let hex = |s: &str| {
+                    s.bytes()
+                        .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+                };
+                if text.len() == 64 && hex(text) {
+                    let index = digests.iter().position(|d| d == text).unwrap_or_else(|| {
+                        digests.push(text.into());
+                        digests.len() - 1
+                    });
+                    return Some(format!("{:064x}", index + 1));
+                }
+                if let Some((prefix, rest)) = text.split_once('-')
+                    && matches!(
+                        prefix,
+                        "crit" | "basis" | "fact" | "eval" | "rev" | "disp" | "carry" | "exc" | "esummary" | "pop" | "xdisp" | "summary"
+                    )
+                    && rest.len() == 40
+                    && hex(rest)
+                {
+                    let index = ids.iter().position(|d| d == text).unwrap_or_else(|| {
+                        ids.push(text.into());
+                        ids.len() - 1
+                    });
+                    return Some(format!("{prefix}-{}", index + 1));
+                }
+                None
+            };
+        match value {
+            serde_json::Value::Object(map) => {
+                for (key, field) in map.iter_mut() {
+                    match (key.as_str(), &*field) {
+                        (
+                            "invocation_id" | "methodology_binding_id" | "job_id" | "version",
+                            serde_json::Value::String(id),
+                        ) => {
+                            let id = id.clone();
+                            let index = ids.iter().position(|v| *v == id).unwrap_or_else(|| {
+                                ids.push(id);
+                                ids.len() - 1
+                            });
+                            *field = serde_json::json!(format!("id-{}", index + 1));
+                        }
+                        ("recorded_us", serde_json::Value::String(_)) => {
+                            *field = serde_json::json!("1760000000000000");
+                        }
+                        (_, serde_json::Value::String(text)) => {
+                            if let Some(replaced) = stable(&text.clone(), ids, digests) {
+                                *field = serde_json::json!(replaced);
+                            } else {
+                                *field = serde_json::json!(embedded(&text.clone(), ids));
+                            }
+                        }
+                        _ => normalise(field, ids, digests),
+                    }
+                }
+            }
+            serde_json::Value::Array(items) => {
+                for item in items.iter_mut() {
+                    if let serde_json::Value::String(text) = &*item {
+                        if let Some(replaced) = stable(&text.clone(), ids, digests) {
+                            *item = serde_json::json!(replaced);
+                        }
+                    } else {
+                        normalise(item, ids, digests);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut body = body.clone();
+    // Exceptions of one subject are listed in their criterion lineage's ID
+    // order, which is random: order them by what the first occurrence was.
+    let first: std::collections::BTreeMap<String, String> = body["exceptions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| (e["id"].as_str().unwrap().to_string(), e["first_source_kind"].as_str().unwrap().to_string()))
+        .collect();
+    let order = |e: &serde_json::Value| {
+        (
+            e["subject"].as_str().unwrap_or_default().to_string(),
+            first.get(e["id"].as_str().unwrap_or_default()).cloned().unwrap_or_default(),
+        )
+    };
+    if let Some(list) = body["exceptions"].as_array_mut() {
+        list.sort_by_key(order);
+    }
+    if let Some(summaries) = body["effective_summaries"].as_array_mut() {
+        for s in summaries {
+            if let Some(listed) = s["listed"].as_array_mut() {
+                listed.sort_by_key(order);
+            }
+        }
+    }
+    normalise(&mut body, &mut vec![], &mut vec![]);
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../web/tests/fixtures/task-exceptions.json");
+    let text = format!("{}\n", serde_json::to_string_pretty(&body).unwrap());
+    if std::env::var("ZOBBA_UPDATE_EXCEPTION_FIXTURE").as_deref() == Ok("1") {
+        std::fs::write(&path, text).unwrap();
+    } else {
+        let stored = std::fs::read_to_string(&path).unwrap_or_default();
+        assert_eq!(
+            stored, text,
+            "set ZOBBA_UPDATE_EXCEPTION_FIXTURE=1 to update {path:?}"
+        );
+    }
 }
 
 const RESET: &str = "SET LOCAL zobba.disposable_fixture_reset='on'";
