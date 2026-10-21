@@ -1787,6 +1787,7 @@ async fn every_not_met_result_is_an_exception_whose_status_is_derived_and_recoun
         "3"
     );
     exceptions_fixture(&list);
+    many_dispositions_are_kept_and_paged(&accountable, &mut admin, task, &seg_0051, &route).await;
 
     // Scale (24.3b review A): a population at the 20,000-row ceiling whose
     // rule criterion fails 19,000 times. The writer, the derived statuses,
@@ -1891,6 +1892,136 @@ async fn every_not_met_result_is_an_exception_whose_status_is_derived_and_recoun
     .await;
     decide_parity(&mut admin).await;
     zobba_infrastructure::analysis::docker::remove_all_test_resources().await;
+}
+
+/// No disposition cap (owner decision 2026-10-21): 200 more dispositions of
+/// one exception, through the real API, alternating closure and reopening.
+/// Each is accepted (the 17th among them), the derived status follows the
+/// newest, the detail lists a bounded first page and the exact count, and
+/// the pages return every disposition once, in their order.
+async fn many_dispositions_are_kept_and_paged(
+    person: &Browser,
+    admin: &mut PgConnection,
+    task: &str,
+    exception: &str,
+    route: &impl Fn(&str) -> String,
+) {
+    let detail_route = format!("tasks/{task}/assessment/exceptions/{exception}");
+    let (status, detail) = person.read(&detail_route, &person.csrf).await;
+    assert_eq!(status, 200, "{detail}");
+    let held: u64 = detail["exception"]["dispositions"]
+        .as_str()
+        .unwrap()
+        .parse()
+        .unwrap();
+    let mut closing = detail["exception"]["status"] != "closed_by_disposition";
+    let started = Instant::now();
+    let mut slowest = Duration::ZERO;
+    for n in 0..200 {
+        let (kind, references) = if closing {
+            ("closed", policy_reference())
+        } else {
+            ("reopened", serde_json::json!([]))
+        };
+        let timed = Instant::now();
+        let (status, saved) = person
+            .post(
+                &route(exception),
+                &exception_disposition(&format!("many-{n}"), kind, references),
+            )
+            .await;
+        slowest = slowest.max(timed.elapsed());
+        assert_eq!(status, 200, "disposition {}: {saved}", held + n + 1);
+        let (status, now) = person.read(&detail_route, &person.csrf).await;
+        assert_eq!(status, 200);
+        assert_eq!(
+            (
+                now["exception"]["status"] == "closed_by_disposition",
+                now["exception"]["disposition"]["id"].as_str()
+            ),
+            (closing, saved["id"].as_str()),
+            "status and newest disposition after disposition {}",
+            held + n + 1
+        );
+        closing = !closing;
+    }
+    eprintln!(
+        "200 exception dispositions: {:?}, slowest {slowest:?}",
+        started.elapsed()
+    );
+    assert!(slowest < Duration::from_secs(2), "slowest save {slowest:?}");
+    let order: Vec<String> = sqlx::query_scalar(
+        "SELECT id FROM public.assessment_exception_dispositions WHERE exception_id=$1 ORDER BY seq",
+    )
+    .bind(exception)
+    .fetch_all(&mut *admin)
+    .await
+    .unwrap();
+    assert_eq!(order.len() as u64, held + 200, "the full history is kept");
+    let timed = Instant::now();
+    let (status, detail) = person.read(&detail_route, &person.csrf).await;
+    assert_eq!(status, 200);
+    assert_eq!(
+        detail["exception"]["dispositions"].as_str(),
+        Some(order.len().to_string().as_str())
+    );
+    let first = detail["dispositions"].as_array().unwrap();
+    assert_eq!(first.len(), 50, "a bounded first page");
+    let mut paged: Vec<String> = first
+        .iter()
+        .map(|d| d["id"].as_str().unwrap().to_string())
+        .collect();
+    let mut cursor = detail["dispositions_next_cursor"]
+        .as_str()
+        .map(str::to_string);
+    let mut pages = 1;
+    while let Some(after) = cursor {
+        let (status, page) = person
+            .read(
+                &format!(
+                    "tasks/{task}/assessment/exceptions/{exception}/dispositions?cursor={after}"
+                ),
+                &person.csrf,
+            )
+            .await;
+        assert_eq!(status, 200, "{page}");
+        assert_eq!(
+            page["total"].as_str(),
+            Some(order.len().to_string().as_str())
+        );
+        let listed = page["dispositions"].as_array().unwrap();
+        assert!(!listed.is_empty() && listed.len() <= 50, "a bounded page");
+        paged.extend(listed.iter().map(|d| d["id"].as_str().unwrap().to_string()));
+        cursor = page["next_cursor"].as_str().map(str::to_string);
+        if cursor.is_some() {
+            assert_eq!(listed.len(), 50);
+        }
+        pages += 1;
+        assert!(pages <= 6, "pages end");
+    }
+    let reading = timed.elapsed();
+    eprintln!("{} dispositions in {pages} pages: {reading:?}", paged.len());
+    assert_eq!(paged, order, "every disposition once, in its order");
+    assert!(reading < Duration::from_secs(10), "paging {reading:?}");
+    // An exception of no Task of the viewer's is not found; a malformed
+    // cursor is refused.
+    let (status, _) = person
+        .read(
+            &format!(
+                "tasks/{task}/assessment/exceptions/exc-{}/dispositions",
+                "0".repeat(40)
+            ),
+            &person.csrf,
+        )
+        .await;
+    assert_eq!(status, 404);
+    let (status, _) = person
+        .read(
+            &format!("tasks/{task}/assessment/exceptions/{exception}/dispositions?cursor=x"),
+            &person.csrf,
+        )
+        .await;
+    assert_eq!(status, 400);
 }
 
 /// Generated IDs inside a text (a source ID or a limitation sentence),
@@ -2502,7 +2633,11 @@ async fn database_guards_refuse_altered_exception_records(
         };
         assert_refused(&message, expected, name);
     }
-    // At most 16 dispositions: the 17th is refused.
+    // No cap (owner decision 2026-10-21): an exception is never permanently
+    // undecidable. 200 more dispositions, alternating, are each accepted
+    // (the 17th among them); the derived status follows the newest one after
+    // every insert, the order rule still refuses a repeat, and the guard
+    // stays fast because it reads only the newest disposition.
     {
         let mut tx = conn.begin().await.unwrap();
         sqlx::query(&person(session))
@@ -2515,37 +2650,84 @@ async fn database_guards_refuse_altered_exception_records(
         .fetch_one(&mut *tx)
         .await
         .unwrap();
+        let status = format!(
+            "SELECT status FROM public.assessment_exception_status('org-a','client-a','engagement-a','{closed}')"
+        );
         let mut kind = "reopened";
-        for n in held..16 {
+        let mut slowest = Duration::ZERO;
+        for n in 0..200u32 {
+            let started = std::time::Instant::now();
             sqlx::query(&any(
                 "actor-a",
                 kind,
-                &format!("cap-{n}"),
+                &format!("sql-many-{n}"),
                 closed,
                 None,
-                100 + n as u32,
+                1000 + n,
             ))
             .execute(&mut *tx)
             .await
-            .unwrap_or_else(|e| panic!("disposition {n}: {e}"));
+            .unwrap_or_else(|e| panic!("disposition {}: {e}", held + i64::from(n) + 1));
+            slowest = slowest.max(started.elapsed());
+            let now: String = sqlx::query_scalar(&status)
+                .fetch_one(&mut *tx)
+                .await
+                .unwrap();
+            assert_eq!(
+                now == "closed_by_disposition",
+                kind == "closed",
+                "status after disposition {n} ({kind})"
+            );
             kind = if kind == "reopened" {
                 "closed"
             } else {
                 "reopened"
             };
         }
-        let message = sqlx::query(&any("actor-a", kind, "cap-17", closed, None, 200))
-            .execute(&mut *tx)
-            .await
-            .expect_err("a 17th disposition was saved")
-            .to_string();
+        assert!(
+            slowest < Duration::from_secs(2),
+            "the slowest guarded insert took {slowest:?}"
+        );
+        let total: i64 = sqlx::query_scalar(&format!(
+            "SELECT count(*) FROM public.assessment_exception_dispositions WHERE exception_id='{closed}'"
+        ))
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap();
+        assert_eq!(total, held + 200, "the full history is kept");
+        // A repeat of the newest kind is still refused by the order rule.
+        let repeat = if kind == "closed" {
+            "reopened"
+        } else {
+            "closed"
+        };
+        let message = sqlx::query(&any(
+            "actor-a",
+            repeat,
+            "sql-many-repeat",
+            closed,
+            None,
+            2000,
+        ))
+        .execute(&mut *tx)
+        .await
+        .expect_err("a repeat of the newest kind was saved")
+        .to_string();
         assert_refused(
             &message,
-            "an exception holds at most 16 dispositions",
-            "17th",
+            if repeat == "reopened" {
+                "only a closed exception is reopened"
+            } else {
+                "an exception that is closed is not closed again"
+            },
+            "repeat after 200",
         );
         tx.rollback().await.unwrap();
     }
+    assert!(
+        !include_str!("../../../migrations/0023_disposition_history.sql").contains("at most 16"),
+        "0023 holds no disposition cap"
+    );
     // A forged effective summary: the stored newest one under a new ID and
     // invocation ordinal, with one exception moved from open to resolved.
     let newest: (String, String) = sqlx::query_as("SELECT id, invocation_id FROM public.assessment_effective_summaries WHERE task_id=$1 ORDER BY created_us DESC LIMIT 1")

@@ -16,6 +16,7 @@ export type Chain = components['schemas']['ChainResponse'];
 export type Disposition = components['schemas']['DispositionResponse'];
 export type HistoryEntry = components['schemas']['HistoryEntryResponse'];
 export type ChainHistory = components['schemas']['ChainHistoryResponse'];
+export type RevisionDispositions = components['schemas']['RevisionDispositionsResponse'];
 export type DispositionCommand = components['schemas']['DispositionCommandRequest'];
 
 export const causes = ['inputs_changed', 'criterion_revised', 'basis_revised', 'prior_execution_failed', 'reconsideration_requested'] as const;
@@ -25,11 +26,26 @@ export const verdicts = ['met', 'not_met', 'undetermined'] as const;
 export const reviews = ['unreviewed', 'accepted', 'replaced', 'pending_reconsideration'] as const;
 export const MAX_RATIONALE_BYTES = 2000;
 export const MAX_REFERENCES = 8;
+/** A history entry lists a revision's first 16 dispositions; a disposition
+ * page lists 50. A revision holds any number of them. */
+export const HISTORY_DISPOSITIONS = 16;
+export const DISPOSITION_PAGE = 50;
 
 /** A revision ID: the 24.1 evaluation (revision 1) or a later revision. */
 function revisionId(value: unknown): string {
   if (typeof value !== 'string' || !/^(eval|rev)-[A-Za-z0-9_-]{1,124}$/.test(value)) invalid();
   return value;
+}
+function dispositionId(value: unknown): string {
+  if (typeof value !== 'string' || !/^disp-[A-Za-z0-9_-]{1,123}$/.test(value)) invalid();
+  return value;
+}
+/** Listed dispositions: unique, of this revision, and a next page follows
+ * only a full page, from its last disposition. */
+function pagedDispositions(list: Disposition[], total: string, next: string | null, revision: string, room: number): boolean {
+  return list.every(d => d.revision_id === revision) && new Set(list.map(d => d.id)).size === list.length
+    && BigInt(total) >= BigInt(list.length)
+    && (next === null || (list.length === room && next === list.at(-1)!.id));
 }
 function chainId(value: unknown): string {
   if (typeof value !== 'string' || !/^eval-[A-Za-z0-9_-]{1,123}$/.test(value)) invalid();
@@ -151,7 +167,9 @@ function parseEntry(value: unknown, chain: string): HistoryEntry {
         return exact(r, { from: identifier(r.from), to: identifier(r.to) });
       }),
     }),
-    dispositions: array(v.dispositions, 16).map(parseDisposition),
+    dispositions: array(v.dispositions, HISTORY_DISPOSITIONS).map(parseDisposition),
+    dispositions_total: cursor(v.dispositions_total),
+    dispositions_next_cursor: nullable(v.dispositions_next_cursor, dispositionId),
     recorded_us: nullable(v.recorded_us, cursor),
   };
   const first = e.revision === '1';
@@ -159,7 +177,8 @@ function parseEntry(value: unknown, chain: string): HistoryEntry {
   if (first !== (e.predecessor_id === null) || first !== (e.id === chain) || first !== (e.causes.length === 0)
     || (first && changed > 0)
     || (e.origin === 'model_proposal') !== (e.judgment !== null)
-    || e.dispositions.some(d => d.revision_id !== e.id || d.revision !== e.revision)) invalid();
+    || e.dispositions.some(d => d.revision_id !== e.id || d.revision !== e.revision)
+    || !pagedDispositions(e.dispositions, e.dispositions_total, e.dispositions_next_cursor, e.id, HISTORY_DISPOSITIONS)) invalid();
   return exact(v, e);
 }
 
@@ -192,6 +211,26 @@ function route(scope: Scope, path: string, query?: Record<string, string>): stri
 export async function readHistory(scope: Scope, taskId: string, chain: string, after: string | null, session: Session | null, signal: AbortSignal): Promise<ChainHistory> {
   const path = route(scope, `tasks/${identifier(taskId)}/assessment/chains/${chainId(chain)}/history`, after ? { cursor: revisionNumber(after) } : undefined);
   return parseHistory(await readSessionJson(path, session, signal), chain);
+}
+
+/** One page of one revision's dispositions, oldest first. */
+export function parseDispositionPage(value: unknown, revision: string): RevisionDispositions {
+  const v = record(value);
+  const p: RevisionDispositions = {
+    revision_id: revisionId(v.revision_id),
+    total: cursor(v.total),
+    dispositions: array(v.dispositions, DISPOSITION_PAGE).map(parseDisposition),
+    next_cursor: nullable(v.next_cursor, dispositionId),
+  };
+  if (p.revision_id !== revision || !pagedDispositions(p.dispositions, p.total, p.next_cursor, revision, DISPOSITION_PAGE)) invalid();
+  return exact(v, p);
+}
+
+/** The next page of one revision's dispositions after `after` (the previous
+ * page's last disposition). */
+export async function readDispositions(scope: Scope, taskId: string, revision: string, after: string, session: Session | null, signal: AbortSignal): Promise<RevisionDispositions> {
+  const path = route(scope, `tasks/${identifier(taskId)}/assessment/revisions/${revisionId(revision)}/dispositions`, { cursor: dispositionId(after) });
+  return parseDispositionPage(await readSessionJson(path, session, signal), revision);
 }
 
 export type DispositionResult =
@@ -256,7 +295,7 @@ export const errorLabel: Record<string, string> = {
   revision_not_found: 'That revision is not part of this Task. Nothing was saved.',
   access_denied: 'You may not review this evaluation now. Nothing was saved.',
   disposition_conflict: 'That request was already used for a different disposition. Nothing was saved.',
-  disposition_capacity: 'This revision holds the most dispositions it may hold. Nothing was saved.',
+  disposition_capacity: 'Too many reviews are being saved now. Nothing was saved; try again.',
   disposition_unavailable: 'The disposition could not be saved now. Nothing was saved; try again.',
 };
 export const rationaleBytes = (value: string) => new TextEncoder().encode(value).length;

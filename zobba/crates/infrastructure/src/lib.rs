@@ -2103,6 +2103,16 @@ async fn check_schema(
     {
         version = 7;
     }
+    // Versions 22 and 23 have identical tables (0023 replaces two guards and
+    // adds an index). Recognize revision 23 only by its exact catalog.
+    if version == 22
+        && signature
+            .iter()
+            .map(String::as_str)
+            .eq(include_str!("schema-v23.catalog").lines())
+    {
+        version = 23;
+    }
     let expected = if version == 1 {
         include_str!("schema-v1.catalog")
     } else if version == 2 {
@@ -2145,8 +2155,10 @@ async fn check_schema(
         include_str!("schema-v20.catalog")
     } else if version == 21 {
         include_str!("schema-v21.catalog")
-    } else {
+    } else if version == 22 {
         include_str!("schema-v22.catalog")
+    } else {
+        include_str!("schema-v23.catalog")
     };
     if signature.len() >= 8193 || !signature.iter().map(String::as_str).eq(expected.lines()) {
         return Err(BootstrapError::SchemaMismatch);
@@ -2207,7 +2219,7 @@ async fn check_schema(
     }
     // Compare bounded booleans, never allocate untrusted metadata strings/blobs.
     let versions: Vec<i64> =
-        sqlx::query_scalar("SELECT version FROM public._sqlx_migrations ORDER BY version LIMIT 23")
+        sqlx::query_scalar("SELECT version FROM public._sqlx_migrations ORDER BY version LIMIT 24")
             .fetch_all(&mut *conn)
             .await
             .map_err(|_| BootstrapError::SchemaMismatch)?;

@@ -4,7 +4,7 @@ import type { Scope } from './engagements';
 import type { AssessmentFact } from './assessment';
 import { blank as blankText } from './assessment';
 import {
-  EXCEPTION_PAGE, MAX_RATIONALE_BYTES, MAX_REFERENCES, conclusionLabel, errorLabel, rationaleBytes, readException, readExceptions, saveExceptionDisposition, sourceLabel, statusLabel,
+  DISPOSITION_PAGE, EXCEPTION_PAGE, MAX_RATIONALE_BYTES, MAX_REFERENCES, conclusionLabel, errorLabel, rationaleBytes, readException, readExceptionDispositions, readExceptions, saveExceptionDisposition, sourceLabel, statusLabel,
 } from './exceptions';
 import type { EffectiveSummary, ExceptionDetail, ExceptionDispositionCommand, ExceptionDispositionResult, ExceptionView, ExceptionsList } from './exceptions';
 
@@ -115,10 +115,25 @@ function ExceptionRow({ exception, criterion, taskId, scope, session, facts, may
     setError('');
     readException(scope, taskId, exception.id, after, session, controller.signal).then(value => {
       if (controller.signal.aborted) return;
-      // A later page adds its occurrences after the ones already shown.
-      setDetail(previous => after && previous ? { ...value, occurrences: [...previous.occurrences, ...value.occurrences] } : value);
+      // A later page adds its occurrences after the ones already shown and
+      // keeps the dispositions already read.
+      setDetail(previous => after && previous ? { ...value, occurrences: [...previous.occurrences, ...value.occurrences], dispositions: previous.dispositions, dispositions_next_cursor: previous.dispositions_next_cursor } : value);
     }, () => {
       if (!controller.signal.aborted) setError('This exception could not be read now. Nothing is shown in its place.');
+    });
+  };
+  // An exception holds any number of dispositions: later pages are read on
+  // request and added after the ones already shown.
+  const loadDispositions = (after: string) => {
+    request.current?.abort();
+    const controller = new AbortController();
+    request.current = controller;
+    setError('');
+    readExceptionDispositions(scope, taskId, exception.id, after, session, controller.signal).then(page => {
+      if (controller.signal.aborted) return;
+      setDetail(previous => previous ? { ...previous, dispositions: [...previous.dispositions, ...page.dispositions], dispositions_next_cursor: page.next_cursor } : previous);
+    }, () => {
+      if (!controller.signal.aborted) setError('More dispositions could not be read now. Nothing is shown in their place.');
     });
   };
   const d = exception.disposition;
@@ -144,6 +159,7 @@ function ExceptionRow({ exception, criterion, taskId, scope, session, facts, may
           {detail.dispositions.length ? <ul aria-label="Dispositions">{detail.dispositions.map(x => <li key={x.id}>
             {x.kind === 'closed' ? 'Closed' : 'Reopened'} by {x.actor_label ?? 'a person'}: <span className="retained-text">{x.rationale}</span>{x.references.length ? ` · ${plural(String(x.references.length), 'reference')}` : ''}
           </li>)}</ul> : null}
+          {detail.dispositions_next_cursor ? <p className="work-omitted">{plural(detail.exception.dispositions, 'disposition')} recorded · showing {detail.dispositions.length}. <button type="button" className="text-button" onClick={() => { const next = detail.dispositions_next_cursor; if (next) loadDispositions(next); }}>Show the next {DISPOSITION_PAGE} dispositions</button></p> : null}
         </> : <p className="context-note">Reading the exception…</p>}
         {mayClose && exception.status !== 'closed_by_disposition'
           ? <DispositionForm key={`close/${exception.id}/${d?.id ?? ''}`} kind="closed" exception={exception} taskId={taskId} scope={scope} session={session} facts={facts} onSaved={() => { setDetail(null); onSaved(); }} />

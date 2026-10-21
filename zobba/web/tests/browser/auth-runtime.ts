@@ -271,7 +271,7 @@ SELECT 'snapshot:'||json_build_object('api_connections',(SELECT count(*) FROM ap
   };
 }
 
-function resetSyntheticFixture(database: URL, host: string, port: number, schemaVersion = 22): void {
+function resetSyntheticFixture(database: URL, host: string, port: number, schemaVersion = 23): void {
   const result = spawnSync('psql', ['-X', '-q', '-1', '-v', 'ON_ERROR_STOP=1'], {
     cwd: root,
     encoding: 'utf8',
@@ -456,7 +456,7 @@ export async function startAuthRuntime(options: { evidence?: boolean; schema9?: 
   const adminEndpoint = databaseEndpoint(adminDatabase);
   run('cargo', ['build', '--quiet', '--locked', '-p', 'zobba-cli', '-p', 'zobba-worker'], sanitizedRuntimeEnvironment());
   const apiExecutable = buildEvidenceApiHarness();
-  let schemaVersion = options.schema9 ? 9 : 22;
+  let schemaVersion = options.schema9 ? 9 : 23;
   const metadata = JSON.parse(run('cargo', ['metadata', '--locked', '--no-deps', '--format-version', '1'], sanitizedRuntimeEnvironment()));
   const fixtureDirectory = resolve(process.env.ZOBBA_FIXTURE_DIR ?? resolve(fixtureRoot, '.local'));
   run('node', [resolve(fixtureRoot, 'setup.mjs')], { ...sanitizedRuntimeEnvironment(), ZOBBA_FIXTURE_DIR: fixtureDirectory });
@@ -647,7 +647,7 @@ export async function startAuthRuntime(options: { evidence?: boolean; schema9?: 
         run(resolve(metadata.target_directory, 'debug/zobba-cli'), ['migrate', '--runtime-role', decodeURIComponent(runtimeDatabase.username)], {
           ...environment, ZOBBA_MIGRATION_DATABASE_URL: migrationDatabase.toString(),
         });
-        schemaVersion = 22;
+        schemaVersion = 23;
         await startApi();
       },
       async startWorker(duration = 30_000) {

@@ -1441,22 +1441,134 @@ async fn late_evidence_revises_and_a_person_disposes_without_changing_any_record
     tokio::time::sleep(Duration::from_secs(2)).await;
     assert_eq!(provider.sends.load(Ordering::SeqCst), 6, "no further turn");
 
-    // At most 16 dispositions per revision: the segregation head holds one.
-    for n in 0..15 {
+    // No cap (owner decision 2026-10-21): a revision is never permanently
+    // undecidable. The segregation head holds one; 199 more are saved, the
+    // 17th among them.
+    let started = std::time::Instant::now();
+    let mut saved_ids = vec![saved_segregation_id.as_str().unwrap().to_string()];
+    for n in 0..199 {
         let mut again = replace.clone();
         again["key"] = serde_json::json!(format!("replace-{n}"));
         again["rationale"] = serde_json::json!(format!("Reason {n}."));
         let (status, body) = auditor.dispose(task, &segregation_chain, &again).await;
-        assert_eq!(status, 200, "{n}: {body}");
+        assert_eq!(status, 200, "disposition {}: {body}", n + 2);
+        saved_ids.push(body["id"].as_str().unwrap().to_string());
     }
-    let mut over = replace.clone();
-    over["key"] = serde_json::json!("replace-over");
-    let (status, refusal) = auditor.dispose(task, &segregation_chain, &over).await;
-    assert_eq!(
-        (status, refusal["error"].as_str()),
-        (409, Some("disposition_capacity"))
+    let saving = started.elapsed();
+    assert!(
+        saving < Duration::from_secs(120),
+        "200 saves took {saving:?}"
     );
-    // An exact retry of a saved key at the cap still returns the original.
+    let stored: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM public.assessment_dispositions WHERE revision_id=$1",
+    )
+    .bind(&segregation_chain)
+    .fetch_one(&mut admin)
+    .await
+    .unwrap();
+    assert_eq!(stored, 200, "the 17th and every later disposition is kept");
+    // The effective review is the newest disposition (the 200th).
+    let (status, work) = auditor
+        .read(&format!("tasks/{task}/work"), &auditor.csrf)
+        .await;
+    assert_eq!(status, 200, "{work}");
+    let head = work["assessment"]["evaluations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["chain"]["chain_id"] == segregation_chain.as_str())
+        .unwrap()["chain"]
+        .clone();
+    assert_eq!(
+        (head["disposition"]["id"].as_str(), head["review"].as_str()),
+        (Some(saved_ids.last().unwrap().as_str()), Some("replaced")),
+        "the chain head shows its newest disposition"
+    );
+    // The history lists the revision's first 16 and its exact count; the
+    // rest are read in bounded pages, in order, each disposition once.
+    let read_started = std::time::Instant::now();
+    let (status, page) = auditor
+        .read(
+            &format!("tasks/{task}/assessment/chains/{segregation_chain}/history"),
+            &auditor.csrf,
+        )
+        .await;
+    assert_eq!(status, 200, "{page}");
+    let entry = &page["entries"][0];
+    assert_eq!(entry["dispositions"].as_array().unwrap().len(), 16);
+    assert_eq!(entry["dispositions_total"], "200");
+    assert_eq!(
+        entry["dispositions_next_cursor"].as_str(),
+        entry["dispositions"][15]["id"].as_str()
+    );
+    let mut paged: Vec<String> = entry["dispositions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|d| d["id"].as_str().unwrap().to_string())
+        .collect();
+    let mut cursor = entry["dispositions_next_cursor"]
+        .as_str()
+        .map(str::to_string);
+    let mut pages = 0;
+    while let Some(after) = cursor {
+        let (status, body) = auditor
+            .read(
+                &format!("tasks/{task}/assessment/revisions/{segregation_chain}/dispositions?cursor={after}"),
+                &auditor.csrf,
+            )
+            .await;
+        assert_eq!(status, 200, "{body}");
+        assert_eq!(body["total"], "200");
+        let listed = body["dispositions"].as_array().unwrap();
+        assert!(!listed.is_empty() && listed.len() <= 50, "a bounded page");
+        paged.extend(listed.iter().map(|d| d["id"].as_str().unwrap().to_string()));
+        cursor = body["next_cursor"].as_str().map(str::to_string);
+        if cursor.is_some() {
+            assert_eq!(listed.len(), 50);
+            assert_eq!(cursor.as_deref(), listed[49]["id"].as_str());
+        }
+        pages += 1;
+        assert!(pages <= 4, "pages end");
+    }
+    assert_eq!(pages, 4, "184 after the first 16: 50, 50, 50, 34");
+    assert_eq!(paged, saved_ids, "every disposition once, oldest first");
+    let reading = read_started.elapsed();
+    assert!(reading < Duration::from_secs(20), "paging took {reading:?}");
+    // A cursor that is not one of this revision's dispositions is refused,
+    // and so is a malformed one.
+    let (status, _) = auditor
+        .read(
+            &format!(
+                "tasks/{task}/assessment/revisions/{segregation_chain}/dispositions?cursor=disp-{}",
+                "0".repeat(40)
+            ),
+            &auditor.csrf,
+        )
+        .await;
+    assert_eq!(status, 400, "an unknown cursor");
+    let (status, _) = auditor
+        .read(
+            &format!(
+                "tasks/{task}/assessment/revisions/{segregation_chain}/dispositions?cursor=17"
+            ),
+            &auditor.csrf,
+        )
+        .await;
+    assert_eq!(status, 400, "a malformed cursor");
+    let (status, first) = auditor
+        .read(
+            &format!("tasks/{task}/assessment/revisions/{segregation_chain}/dispositions"),
+            &auditor.csrf,
+        )
+        .await;
+    assert_eq!(status, 200);
+    assert_eq!(first["dispositions"].as_array().unwrap().len(), 50);
+    assert_eq!(
+        first["dispositions"][0]["id"].as_str(),
+        Some(saved_ids[0].as_str())
+    );
+    // An exact retry of a saved key still returns the original.
     let (status, again) = auditor.dispose(task, &segregation_chain, &replace).await;
     assert_eq!((status, &again["id"]), (200, &saved_segregation_id));
     // An exact replay is answered only after authority is checked again.
@@ -1829,7 +1941,7 @@ struct Records {
     old_amount: String,
     new_amount: String,
     approver: String,
-    /// The segregation chain (a judgment, revision 1, 16 dispositions).
+    /// The segregation chain (a judgment, revision 1, 200 dispositions).
     segregation: String,
     other_task: String,
     /// The auditor's exact session hash.
@@ -2453,7 +2565,9 @@ async fn database_guards_refuse_altered_revision_records(
         "a disposition names an evaluation chain of its own Task",
         "another Task",
     );
-    // At most 16 per revision: the segregation chain's revision 1 holds 16.
+    // No cap: the segregation chain's revision 1 holds 200 dispositions and
+    // a 201st is accepted by the guard, whose checks read only the head and
+    // the newest disposition (index seeks), never the whole history.
     let cap_columns = vec![
         ("revision", "1".to_string()),
         ("revision_id", text(&r.segregation)),
@@ -2468,10 +2582,24 @@ async fn database_guards_refuse_altered_revision_records(
         ("kind", json("accepted")),
         ("concern", "'null'::jsonb".into()),
     ];
-    assert_refused(
-        &refused_in(admin, &me, &disposition(8, &cap_columns, &cap_document)).await,
-        "a revision holds at most 16 dispositions",
-        "a seventeenth",
+    let held: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM public.assessment_dispositions WHERE revision_id=$1",
+    )
+    .bind(&r.segregation)
+    .fetch_one(&mut *admin)
+    .await
+    .unwrap();
+    assert_eq!(held, 200);
+    let started = std::time::Instant::now();
+    accepted_in(admin, &me, &disposition(8, &cap_columns, &cap_document)).await;
+    let elapsed = started.elapsed();
+    assert!(
+        elapsed < std::time::Duration::from_secs(5),
+        "the 201st disposition's guard took {elapsed:?}"
+    );
+    assert!(
+        !include_str!("../../../migrations/0023_disposition_history.sql").contains("at most 16"),
+        "0023 holds no disposition cap"
     );
     // References: one valid reference is accepted; an unverified one, one of
     // another digest, one of an unregistered original and an over-long quote

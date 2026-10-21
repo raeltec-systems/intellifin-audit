@@ -615,7 +615,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        get: operations["get_exception_dispositions"];
         put?: never;
         post: operations["save_exception_disposition"];
         delete?: never;
@@ -647,7 +647,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        get: operations["get_revision_dispositions"];
         put?: never;
         post: operations["save_disposition"];
         delete?: never;
@@ -2159,11 +2159,16 @@ export interface components {
             total: string;
         };
         /**
-         * @description One exception, one page of its occurrences (oldest first) and every
-         *     disposition.
+         * @description One exception, one page of its occurrences (oldest first) and the first
+         *     page of its dispositions (in their order; the newest is `exception.disposition`).
          */
         ExceptionDetailResponse: {
             dispositions: components["schemas"]["ExceptionDispositionResponse"][];
+            /**
+             * @description The cursor of the next disposition page (the last listed
+             *     disposition's place), when more follow.
+             */
+            dispositions_next_cursor: string | null;
             exception: components["schemas"]["ExceptionResponse"];
             next_cursor: string | null;
             occurrences: components["schemas"]["OccurrenceResponse"][];
@@ -2208,12 +2213,26 @@ export interface components {
              */
             references: components["schemas"]["CitationSourceResponse"][];
         };
+        /**
+         * @description One page of one exception's dispositions in their order (50 a page),
+         *     with their exact number. Dispositions are never changed.
+         */
+        ExceptionDispositionsResponse: {
+            dispositions: components["schemas"]["ExceptionDispositionResponse"][];
+            exception_id: string;
+            /** @description The last listed disposition's place, when more follow. */
+            next_cursor: string | null;
+            total: string;
+        };
         /** @description One exception of a Task with its derived status (never stored). */
         ExceptionResponse: {
             /** @description The criterion lineage (its first version's ID). */
             criterion_root: string;
             disposition: null | components["schemas"]["ExceptionDispositionResponse"];
-            /** @description The exact number of its dispositions; at most 16 may be saved. */
+            /**
+             * @description The exact number of its dispositions (any number may be saved; the
+             *     newest is effective).
+             */
             dispositions: string;
             first_source_id: string;
             /** @description The record its first occurrence names. */
@@ -2278,7 +2297,18 @@ export interface components {
             causes: string[];
             changes: components["schemas"]["ChangesResponse"];
             criterion_id: string;
+            /**
+             * @description Its first 16 dispositions, oldest first. A revision holds any number:
+             *     the rest are read from its disposition pages.
+             */
             dispositions: components["schemas"]["DispositionResponse"][];
+            /**
+             * @description The cursor of its next disposition page (the last listed
+             *     disposition), when more follow.
+             */
+            dispositions_next_cursor: string | null;
+            /** @description The exact number of its dispositions. */
+            dispositions_total: string;
             execution: string;
             id: string;
             inputs: components["schemas"]["EvaluationInputResponse"][];
@@ -3305,6 +3335,17 @@ export interface components {
             /** @description ISO 4217 currency code or unit name, for a decimal. */
             measure: string | null;
             name: string;
+        };
+        /**
+         * @description One page of one revision's dispositions, oldest first (by time, then
+         *     ID), with their exact number. Dispositions are never changed.
+         */
+        RevisionDispositionsResponse: {
+            dispositions: components["schemas"]["DispositionResponse"][];
+            /** @description The last listed disposition, when more follow. */
+            next_cursor: string | null;
+            revision_id: string;
+            total: string;
         };
         RevokeInvitationRequest: {
             expected_version: components["schemas"]["MembershipVersion"];
@@ -7045,6 +7086,96 @@ export interface operations {
             };
         };
     };
+    get_exception_dispositions: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+                /** @description next_cursor of the previous page (the last listed disposition's place) */
+                cursor?: string;
+            };
+            header?: {
+                /** @description Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie */
+                "X-Expected-Session"?: string | null;
+            };
+            path: {
+                engagement_id: string;
+                task_id: string;
+                exception_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The exact number of one exception's dispositions and one page of them in their order (50 a page); dispositions are never changed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExceptionDispositionsResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description exception_not_found: no such exception of this Task */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Session changed */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     save_exception_disposition: {
         parameters: {
             query: {
@@ -7174,6 +7305,89 @@ export interface operations {
                     "application/json": components["schemas"]["PopulationMembersResponse"];
                 };
             };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Session changed */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_revision_dispositions: {
+        parameters: {
+            query: {
+                organisation_id: string;
+                client_id: string;
+                /** @description next_cursor of the previous page (the last listed disposition) */
+                cursor?: string;
+            };
+            header?: {
+                /** @description Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie */
+                "X-Expected-Session"?: string | null;
+            };
+            path: {
+                engagement_id: string;
+                task_id: string;
+                /** @description The exact revision: a 24.1 evaluation or a revision */
+                revision_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The exact number of one revision's dispositions and one page of them (50 a page, oldest first); dispositions are never changed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevisionDispositionsResponse"];
+                };
+            };
+            /** @description A cursor that is not one of this revision's dispositions */
             400: {
                 headers: {
                     [name: string]: unknown;

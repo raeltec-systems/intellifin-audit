@@ -23,7 +23,7 @@ use axum::{
     },
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::get,
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::Semaphore;
@@ -37,7 +37,10 @@ use zobba_domain::{
     assessment::Verdict,
     citation::{CitationSource, Locator},
     identity::valid_scope_id,
-    revision::{Concern, DispositionKind, DispositionRequest, effective, valid_revision_id},
+    revision::{
+        Concern, DISPOSITION_PAGE, DispositionKind, DispositionRequest, effective,
+        valid_disposition_id, valid_revision_id,
+    },
 };
 use zobba_infrastructure::{
     assessment::AssessmentRepository,
@@ -76,7 +79,7 @@ pub(crate) fn router(
         )
         .route(
             "/engagements/{engagement_id}/tasks/{task_id}/assessment/revisions/{revision_id}/dispositions",
-            post(dispose),
+            get(dispositions).post(dispose),
         )
         .with_state(RevisionState {
             identity,
@@ -213,8 +216,31 @@ pub struct HistoryEntryResponse {
     pub changes: ChangesResponse,
     #[schema(required = true, pattern = "^[0-9]+$")]
     pub recorded_us: Option<String>,
+    /// Its first 16 dispositions, oldest first. A revision holds any number:
+    /// the rest are read from its disposition pages.
     #[schema(max_items = 16)]
     pub dispositions: Vec<DispositionResponse>,
+    /// The exact number of its dispositions.
+    #[schema(pattern = "^[0-9]+$")]
+    pub dispositions_total: String,
+    /// The cursor of its next disposition page (the last listed
+    /// disposition), when more follow.
+    #[schema(required = true, pattern = "^disp-[0-9a-f]{40}$")]
+    pub dispositions_next_cursor: Option<String>,
+}
+
+/// One page of one revision's dispositions, oldest first (by time, then
+/// ID), with their exact number. Dispositions are never changed.
+#[derive(Serialize, ToSchema)]
+pub struct RevisionDispositionsResponse {
+    pub revision_id: String,
+    #[schema(pattern = "^[0-9]+$")]
+    pub total: String,
+    #[schema(max_items = 50)]
+    pub dispositions: Vec<DispositionResponse>,
+    /// The last listed disposition, when more follow.
+    #[schema(required = true, pattern = "^disp-[0-9a-f]{40}$")]
+    pub next_cursor: Option<String>,
 }
 
 /// One page of a chain's history in revision order, with the exact number
@@ -372,7 +398,93 @@ fn entry_response(entry: &HistoryEntry, originals: &Originals) -> HistoryEntryRe
             .iter()
             .map(|(d, label)| disposition_response(d, Some(label.clone()), originals))
             .collect(),
+        dispositions_total: entry.dispositions_total.to_string(),
+        dispositions_next_cursor: entry.dispositions_next.clone(),
     }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct DispositionsQuery {
+    organisation_id: String,
+    client_id: String,
+    cursor: Option<String>,
+}
+
+#[utoipa::path(get,path="/engagements/{engagement_id}/tasks/{task_id}/assessment/revisions/{revision_id}/dispositions",operation_id="get_revision_dispositions",security(("server_session"=[])),
+    params(("X-Expected-Session"=Option<String>,Header,description="Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie",min_length=1,max_length=128),("engagement_id"=String,Path),("task_id"=String,Path),("revision_id"=String,Path,description="The exact revision: a 24.1 evaluation or a revision"),("organisation_id"=String,Query),("client_id"=String,Query),
+        ("cursor"=Option<String>,Query,description="next_cursor of the previous page (the last listed disposition)",pattern="^disp-[0-9a-f]{40}$")),
+    responses((status=200,description="The exact number of one revision's dispositions and one page of them (50 a page, oldest first); dispositions are never changed",body=RevisionDispositionsResponse),(status=400,description="A cursor that is not one of this revision's dispositions",body=crate::auth::ErrorResponse),(status=401,body=crate::auth::ErrorResponse),(status=403,body=crate::auth::ErrorResponse),(status=412,description="Session changed",body=crate::auth::ErrorResponse),(status=429,body=crate::auth::ErrorResponse),(status=503,body=crate::auth::ErrorResponse)))]
+pub(crate) async fn dispositions(
+    State(state): State<RevisionState>,
+    headers: HeaderMap,
+    path: Result<Path<(String, String, String)>, axum::extract::rejection::PathRejection>,
+    query: Result<Query<DispositionsQuery>, QueryRejection>,
+) -> Response {
+    let current = match state.identity.current_read(&headers).await {
+        Ok(current) => current,
+        Err(error) => return crate::auth::failure(error),
+    };
+    let (Ok(Path((engagement_id, task_id, revision_id))), Ok(Query(query))) = (path, query) else {
+        return failure(TaskError::Invalid);
+    };
+    let scope = match (TaskScopeQuery {
+        organisation_id: query.organisation_id,
+        client_id: query.client_id,
+    })
+    .scope(engagement_id)
+    {
+        Ok(scope) => scope,
+        Err(error) => return failure(error),
+    };
+    if !valid_scope_id(&task_id) || !valid_revision_id(&revision_id) {
+        return failure(TaskError::Denied);
+    }
+    if query
+        .cursor
+        .as_deref()
+        .is_some_and(|c| !valid_disposition_id(c))
+    {
+        return failure(TaskError::Invalid);
+    }
+    let page = match state
+        .assessments
+        .revision_dispositions(
+            &current.identity.id,
+            &scope,
+            &task_id,
+            &revision_id,
+            query.cursor.as_deref(),
+        )
+        .await
+    {
+        Ok(Some(page)) => page,
+        // A revision this Task does not hold is refused like any record
+        // outside the viewer's scope.
+        Ok(None) => return failure(TaskError::Denied),
+        Err(error) => return failure(error),
+    };
+    let ids = disposition_originals(page.dispositions.iter().map(|(d, _)| d));
+    let originals = match state
+        .citations
+        .viewer_originals(&current.identity.id, &scope, &ids)
+        .await
+    {
+        Ok(originals) => originals,
+        Err(_) => return failure(TaskError::Unavailable),
+    };
+    debug_assert!(page.dispositions.len() <= DISPOSITION_PAGE);
+    Json(RevisionDispositionsResponse {
+        revision_id: page.revision_id.clone(),
+        total: page.total.to_string(),
+        dispositions: page
+            .dispositions
+            .iter()
+            .map(|(d, label)| disposition_response(d, Some(label.clone()), &originals))
+            .collect(),
+        next_cursor: page.next.clone(),
+    })
+    .into_response()
 }
 
 #[derive(Deserialize)]

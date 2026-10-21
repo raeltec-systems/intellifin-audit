@@ -21,6 +21,7 @@ export type EffectiveSummary = components['schemas']['EffectiveSummaryResponse']
 export type ExceptionsList = components['schemas']['ExceptionsResponse'];
 export type ExceptionDetail = components['schemas']['ExceptionDetailResponse'];
 export type ExceptionDispositionCommand = components['schemas']['ExceptionDispositionCommandRequest'];
+export type ExceptionDispositions = components['schemas']['ExceptionDispositionsResponse'];
 
 export const statuses = ['open', 'resolved_by_evidence', 'replaced_by_human_judgment', 'closed_by_disposition'] as const;
 export const observed = ['not_met', 'not_observed', 'proposed_met', 'person_undetermined'] as const;
@@ -33,6 +34,8 @@ export const PROPOSED_MET = 'a model proposal suggests this is met; awaiting hum
 export const PERSON_UNDETERMINED = 'a person marked this undetermined; this is not evidence of remediation';
 /** Exceptions one list page holds (its counts are over all of them). */
 export const EXCEPTION_PAGE = 50;
+/** Dispositions one read lists; an exception holds any number of them. */
+export const DISPOSITION_PAGE = 50;
 
 /** The exact sentence the server derives for a status and what the latest
  * observation shows (the same rule as the Rust domain). */
@@ -100,7 +103,7 @@ export function parseException(value: unknown): ExceptionView {
     recorded_us: nullable(v.recorded_us, cursor),
     disposition: nullable(v.disposition, parseExceptionDisposition),
   };
-  if (n(e.occurrences) < 1n || n(e.dispositions) > 16n
+  if (n(e.occurrences) < 1n
     || e.status_words !== statusWords(e.status as (typeof statuses)[number], e.latest_observed as (typeof observed)[number])
     // Resolved or replaced means nothing current fails or awaits review.
     || ((e.status === 'resolved_by_evidence' || e.status === 'replaced_by_human_judgment') && e.latest_observed !== 'not_observed')
@@ -210,14 +213,35 @@ export function parseDetail(value: unknown, exception: string): ExceptionDetail 
         || (parsed.source_kind === 'disposition') !== (parsed.origin === 'human')) invalid();
       return exact(o, parsed);
     }),
-    dispositions: array(v.dispositions, 16).map(parseExceptionDisposition),
+    dispositions: array(v.dispositions, DISPOSITION_PAGE).map(parseExceptionDisposition),
     next_cursor: nullable(v.next_cursor, cursor),
+    dispositions_next_cursor: nullable(v.dispositions_next_cursor, cursor),
   };
-  if (d.exception.id !== exception || d.dispositions.some(x => x.exception_id !== exception)
+  if (d.exception.id !== exception || !pagedDispositions(d.dispositions, d.exception.dispositions, d.dispositions_next_cursor, exception)
     // Occurrences in their order; a next page continues after the last.
     || d.occurrences.some((o, i) => i > 0 && n(o.seq) <= n(d.occurrences[i - 1]!.seq))
     || (d.next_cursor !== null && (d.occurrences.length !== 50 || d.next_cursor !== d.occurrences[d.occurrences.length - 1]!.seq))) invalid();
   return exact(v, d);
+}
+
+/** Listed dispositions: unique, of this exception, at most its exact count,
+ * and a next page follows only a full page. */
+function pagedDispositions(list: ExceptionDisposition[], total: string, next: string | null, exception: string): boolean {
+  return list.every(x => x.exception_id === exception) && new Set(list.map(x => x.id)).size === list.length
+    && n(total) >= BigInt(list.length) && (next === null || list.length === DISPOSITION_PAGE);
+}
+
+/** One page of one exception's dispositions in their order. */
+export function parseDispositionPage(value: unknown, exception: string): ExceptionDispositions {
+  const v = record(value);
+  const p: ExceptionDispositions = {
+    exception_id: exceptionId(v.exception_id),
+    total: cursor(v.total),
+    dispositions: array(v.dispositions, DISPOSITION_PAGE).map(parseExceptionDisposition),
+    next_cursor: nullable(v.next_cursor, cursor),
+  };
+  if (p.exception_id !== exception || !pagedDispositions(p.dispositions, p.total, p.next_cursor, exception)) invalid();
+  return exact(v, p);
 }
 
 function route(scope: Scope, path: string, query?: Record<string, string>): string {
@@ -235,6 +259,13 @@ export async function readExceptions(scope: Scope, taskId: string, after: string
 export async function readException(scope: Scope, taskId: string, exception: string, after: string | null, session: Session | null, signal: AbortSignal): Promise<ExceptionDetail> {
   const path = route(scope, `tasks/${identifier(taskId)}/assessment/exceptions/${exceptionId(exception)}`, after ? { cursor: cursor(after) } : undefined);
   return parseDetail(await readSessionJson(path, session, signal), exception);
+}
+
+/** The next page of one exception's dispositions after the place `after`
+ * (the previous page's `next_cursor`). */
+export async function readExceptionDispositions(scope: Scope, taskId: string, exception: string, after: string, session: Session | null, signal: AbortSignal): Promise<ExceptionDispositions> {
+  const path = route(scope, `tasks/${identifier(taskId)}/assessment/exceptions/${exceptionId(exception)}/dispositions`, { cursor: cursor(after) });
+  return parseDispositionPage(await readSessionJson(path, session, signal), exception);
 }
 
 export type ExceptionDispositionResult =
@@ -291,7 +322,7 @@ export const errorLabel: Record<string, string> = {
   access_denied: 'You may not dispose of this exception now. Nothing was saved.',
   exception_close_forbidden: "Only an Audit manager or the Task's accountable person may close or reopen an exception. Nothing was saved.",
   exception_disposition_conflict: 'That request was already used for a different disposition. Nothing was saved.',
-  exception_disposition_capacity: 'This exception holds the most dispositions it may hold. Nothing was saved.',
+  exception_disposition_capacity: 'Too many dispositions are being saved now. Nothing was saved; try again.',
   exception_disposition_unavailable: 'The disposition could not be saved now. Nothing was saved; try again.',
 };
 export const rationaleBytes = (value: string) => new TextEncoder().encode(value).length;

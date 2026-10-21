@@ -1,7 +1,8 @@
-//! Published migrations 0001-0021 and catalogues v1-v21 never change (Story
+//! Published migrations 0001-0022 and catalogues v1-v22 never change (Story
 //! 24.1 added migration 0018 and catalogue v18; Story 24.2 added 0019 and
 //! v19; Story 24.3a added 0020 and v20; Story 24.3b added 0021 and v21;
-//! Story 24.4 adds 0022 and v22 only).
+//! Story 24.4 added 0022 and v22; the disposition cap removal adds 0023 and
+//! v23 only).
 //! Their exact bytes are
 //! pinned here, beside git, so an edit fails a test rather than a review.
 use sha2::{Digest, Sha256};
@@ -15,7 +16,7 @@ fn sha(bytes: &[u8]) -> String {
 
 #[test]
 fn published_migrations_and_catalogues_keep_their_exact_bytes() {
-    let published: [(&str, &[u8], &str); 42] = [
+    let published: [(&str, &[u8], &str); 44] = [
         (
             "migrations/0001_bootstrap.sql",
             include_bytes!("../../../migrations/0001_bootstrap.sql"),
@@ -122,6 +123,11 @@ fn published_migrations_and_catalogues_keep_their_exact_bytes() {
             "fc4fd87173beef341be07add717eb24805599b33395d9e94a2a3f09a8cbeabfe",
         ),
         (
+            "migrations/0022_work_products.sql",
+            include_bytes!("../../../migrations/0022_work_products.sql"),
+            "ad26710b70b58511247bc0009dcf84253c19f6efb4cb7fc66fe2fa2c64e01134",
+        ),
+        (
             "schema-v1.catalog",
             include_bytes!("../src/schema-v1.catalog"),
             "335d96414f519b262a984a85d2c993295a0d57d1263b8c5e827b0262ae6e64c9",
@@ -225,6 +231,11 @@ fn published_migrations_and_catalogues_keep_their_exact_bytes() {
             "schema-v21.catalog",
             include_bytes!("../src/schema-v21.catalog"),
             "e81640037c579a29c2b1a6d9ac0b776146230415b79e6220e83c64a1329ac5b2",
+        ),
+        (
+            "schema-v22.catalog",
+            include_bytes!("../src/schema-v22.catalog"),
+            "739bd396f7605a6d0d840af44699c57d10d2cd5c3f73597de4866347a626ac82",
         ),
     ];
     for (name, bytes, expected) in published {

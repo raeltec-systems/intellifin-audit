@@ -24,4 +24,4 @@ pub mod work_product;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SchemaVersion(pub u32);
 
-pub const SCHEMA_VERSION: SchemaVersion = SchemaVersion(22);
+pub const SCHEMA_VERSION: SchemaVersion = SchemaVersion(23);

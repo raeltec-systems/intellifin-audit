@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { NOT_REMEDIATION, PERSON_UNDETERMINED, PROPOSED_MET, errorLabel, parseDetail, parseEffective, parseException, parseExceptionDisposition, parseExceptions, rationaleBytes, statusLabel, statusWords } from '../src/exceptions.ts';
+import { NOT_REMEDIATION, PERSON_UNDETERMINED, PROPOSED_MET, errorLabel, parseDetail, parseDispositionPage, parseEffective, parseException, parseExceptionDisposition, parseExceptions, rationaleBytes, statusLabel, statusWords } from '../src/exceptions.ts';
 
 // The exact exception list JSON `crates/worker/tests/exception.rs` recorded
 // from the real API (identifiers and digests replaced by stable ones).
@@ -98,6 +98,7 @@ test('a detail page names its own exception and its occurrences', () => {
     occurrences: [{ source_kind: 'evaluation', source_id: 'eval-1', population_id: null, member_ordinal: null, criterion_id: 'crit-2', basis_id: 'basis-1', origin: 'model_proposal', evidence: ['0'.repeat(64)], source_us: '1', seq: '1' }],
     dispositions: [exception.disposition],
     next_cursor: null,
+    dispositions_next_cursor: null,
   };
   assert.deepEqual(parseDetail(detail, exception.id), detail);
   assert.throws(() => parseDetail(detail, 'exc-' + 'f'.repeat(40)), /Invalid/, 'another exception');
@@ -111,6 +112,37 @@ test('a detail page names its own exception and its occurrences', () => {
   partial.next_cursor = '1';
   assert.throws(() => parseDetail(partial, exception.id), /Invalid/, 'a next page only after a full page');
   parseEffective(recorded.effective_summaries[0]);
+});
+
+test('an exception holds any number of dispositions, read in bounded pages', () => {
+  const exception = clone(recorded.exceptions[3]);
+  const one = exception.disposition;
+  // Far more than the old 16: the count is exact and never refused.
+  exception.dispositions = '200';
+  assert.equal(parseException(exception).dispositions, '200');
+  const page = (n, next) => ({
+    exception_id: exception.id, total: '200',
+    dispositions: Array.from({ length: n }, (_, i) => ({ ...clone(one), id: `xdisp-${i + 1}` })),
+    next_cursor: next,
+  });
+  const full = page(50, '57');
+  assert.deepEqual(parseDispositionPage(full, exception.id), full);
+  assert.deepEqual(parseDispositionPage(page(10, null), exception.id), page(10, null));
+  const cases = [
+    ['a next page after a short page', page(49, '56')],
+    ['more than one page', page(51, null)],
+    ['another exception', { ...page(1, null), exception_id: 'exc-' + 'f'.repeat(40) }],
+    ['a total below the listed dispositions', { ...page(10, null), total: '9' }],
+    ['a repeated disposition', { ...page(2, null), dispositions: [clone(one), clone(one)] }],
+    ['an unknown field', { ...page(1, null), confidence: '1' }],
+  ];
+  for (const [name, value] of cases) assert.throws(() => parseDispositionPage(value, exception.id), /Invalid/, name);
+  const detail = {
+    exception, occurrences: [{ source_kind: 'evaluation', source_id: 'eval-1', population_id: null, member_ordinal: null, criterion_id: 'crit-2', basis_id: 'basis-1', origin: 'model_proposal', evidence: ['0'.repeat(64)], source_us: '1', seq: '1' }],
+    dispositions: full.dispositions, next_cursor: null, dispositions_next_cursor: '57',
+  };
+  assert.deepEqual(parseDetail(detail, exception.id), detail);
+  assert.throws(() => parseDetail({ ...detail, dispositions: detail.dispositions.slice(1) }, exception.id), /Invalid/, 'a disposition cursor after a short page');
 });
 
 test('the words name statuses and refusals', () => {

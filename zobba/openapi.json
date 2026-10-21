@@ -5303,6 +5303,165 @@
       }
     },
     "/engagements/{engagement_id}/tasks/{task_id}/assessment/exceptions/{exception_id}/dispositions": {
+      "get": {
+        "tags": [
+          "exceptions"
+        ],
+        "operationId": "get_exception_dispositions",
+        "parameters": [
+          {
+            "name": "X-Expected-Session",
+            "in": "header",
+            "description": "Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 128,
+              "minLength": 1
+            }
+          },
+          {
+            "name": "engagement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "exception_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organisation_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "next_cursor of the previous page (the last listed disposition's place)",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{1,7}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The exact number of one exception's dispositions and one page of them in their order (50 a page); dispositions are never changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionDispositionsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "exception_not_found: no such exception of this Task",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Session changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      },
       "post": {
         "tags": [
           "exceptions"
@@ -5640,6 +5799,156 @@
       }
     },
     "/engagements/{engagement_id}/tasks/{task_id}/assessment/revisions/{revision_id}/dispositions": {
+      "get": {
+        "tags": [
+          "revisions"
+        ],
+        "operationId": "get_revision_dispositions",
+        "parameters": [
+          {
+            "name": "X-Expected-Session",
+            "in": "header",
+            "description": "Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 128,
+              "minLength": 1
+            }
+          },
+          {
+            "name": "engagement_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "revision_id",
+            "in": "path",
+            "description": "The exact revision: a 24.1 evaluation or a revision",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organisation_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "next_cursor of the previous page (the last listed disposition)",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^disp-[0-9a-f]{40}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The exact number of one revision's dispositions and one page of them (50 a page, oldest first); dispositions are never changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevisionDispositionsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A cursor that is not one of this revision's dispositions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Session changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "server_session": []
+          }
+        ]
+      },
       "post": {
         "tags": [
           "revisions"
@@ -15255,12 +15564,13 @@
       },
       "ExceptionDetailResponse": {
         "type": "object",
-        "description": "One exception, one page of its occurrences (oldest first) and every\ndisposition.",
+        "description": "One exception, one page of its occurrences (oldest first) and the first\npage of its dispositions (in their order; the newest is `exception.disposition`).",
         "required": [
           "exception",
           "occurrences",
           "dispositions",
-          "next_cursor"
+          "next_cursor",
+          "dispositions_next_cursor"
         ],
         "properties": {
           "dispositions": {
@@ -15268,7 +15578,15 @@
             "items": {
               "$ref": "#/components/schemas/ExceptionDispositionResponse"
             },
-            "maxItems": 16
+            "maxItems": 50
+          },
+          "dispositions_next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The cursor of the next disposition page (the last listed\ndisposition's place), when more follow.",
+            "pattern": "^[0-9]+$"
           },
           "exception": {
             "$ref": "#/components/schemas/ExceptionResponse"
@@ -15402,6 +15720,40 @@
           }
         }
       },
+      "ExceptionDispositionsResponse": {
+        "type": "object",
+        "description": "One page of one exception's dispositions in their order (50 a page),\nwith their exact number. Dispositions are never changed.",
+        "required": [
+          "exception_id",
+          "total",
+          "dispositions",
+          "next_cursor"
+        ],
+        "properties": {
+          "dispositions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExceptionDispositionResponse"
+            },
+            "maxItems": 50
+          },
+          "exception_id": {
+            "type": "string"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The last listed disposition's place, when more follow.",
+            "pattern": "^[0-9]+$"
+          },
+          "total": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          }
+        }
+      },
       "ExceptionResponse": {
         "type": "object",
         "description": "One exception of a Task with its derived status (never stored).",
@@ -15437,7 +15789,7 @@
           },
           "dispositions": {
             "type": "string",
-            "description": "The exact number of its dispositions; at most 16 may be saved.",
+            "description": "The exact number of its dispositions (any number may be saved; the\nnewest is effective).",
             "pattern": "^[0-9]+$"
           },
           "first_source_id": {
@@ -15585,7 +15937,9 @@
           "causes",
           "changes",
           "recorded_us",
-          "dispositions"
+          "dispositions",
+          "dispositions_total",
+          "dispositions_next_cursor"
         ],
         "properties": {
           "applicability": {
@@ -15612,7 +15966,21 @@
             "items": {
               "$ref": "#/components/schemas/DispositionResponse"
             },
+            "description": "Its first 16 dispositions, oldest first. A revision holds any number:\nthe rest are read from its disposition pages.",
             "maxItems": 16
+          },
+          "dispositions_next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The cursor of its next disposition page (the last listed\ndisposition), when more follow.",
+            "pattern": "^disp-[0-9a-f]{40}$"
+          },
+          "dispositions_total": {
+            "type": "string",
+            "description": "The exact number of its dispositions.",
+            "pattern": "^[0-9]+$"
           },
           "execution": {
             "type": "string"
@@ -19812,6 +20180,40 @@
           },
           "name": {
             "type": "string"
+          }
+        }
+      },
+      "RevisionDispositionsResponse": {
+        "type": "object",
+        "description": "One page of one revision's dispositions, oldest first (by time, then\nID), with their exact number. Dispositions are never changed.",
+        "required": [
+          "revision_id",
+          "total",
+          "dispositions",
+          "next_cursor"
+        ],
+        "properties": {
+          "dispositions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DispositionResponse"
+            },
+            "maxItems": 50
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The last listed disposition, when more follow.",
+            "pattern": "^disp-[0-9a-f]{40}$"
+          },
+          "revision_id": {
+            "type": "string"
+          },
+          "total": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
           }
         }
       },

@@ -33,8 +33,12 @@ pub const MAX_CARRY_EXCEPT: usize = 64;
 /// A disposition's rationale, in UTF-8 bytes, and its evidence references.
 pub const MAX_DISPOSITION_RATIONALE_BYTES: usize = 2_000;
 pub const MAX_DISPOSITION_REFERENCES: usize = 8;
-/// Dispositions one revision may hold (the latest is effective).
-pub const MAX_DISPOSITIONS_PER_REVISION: usize = 16;
+/// A revision holds any number of dispositions (the latest is effective):
+/// its full history is kept and read in bounded pages. A history page lists
+/// each listed revision's first `HISTORY_DISPOSITIONS`; a disposition page
+/// lists `DISPOSITION_PAGE` after its cursor.
+pub const HISTORY_DISPOSITIONS: usize = 16;
+pub const DISPOSITION_PAGE: usize = 50;
 /// Earlier versions a basis or criterion version may have: a version with
 /// more is refused when proposed, so every lineage walk (at most this many
 /// steps, in Rust and SQL) reaches its root.
@@ -317,6 +321,14 @@ pub fn valid_revision_id(id: &str) -> bool {
         rest.len() == 40 && rest.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
     };
     id.strip_prefix("eval-").is_some_and(hex) || id.strip_prefix("rev-").is_some_and(hex)
+}
+
+/// A disposition ID (`disp-` and 40 lowercase hex digits): the cursor of a
+/// revision's disposition page.
+pub fn valid_disposition_id(id: &str) -> bool {
+    id.strip_prefix("disp-").is_some_and(|rest| {
+        rest.len() == 40 && rest.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+    })
 }
 
 /// Why a disposition request is refused before anything is read.

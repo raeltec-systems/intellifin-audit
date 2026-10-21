@@ -17,9 +17,9 @@ use zobba_application::{
     assessment::{
         EvaluationRecord, FactRecord, MAX_BASIS_FACTS, MAX_OUTLINE_RECORDS, document_digest,
         revision::{
-            BasisRevisions, CarryRecord, ChainHead, DispositionRecord, HistoryEntry, HistoryPage,
-            InvocationRevisions, MAX_OUTLINE_RECONSIDERATIONS, Reconsideration, RevisionRecord,
-            RevisionSnapshot, RevisionStore, VersionKind,
+            BasisRevisions, CarryRecord, ChainHead, DispositionPage, DispositionRecord,
+            HistoryEntry, HistoryPage, InvocationRevisions, MAX_OUTLINE_RECONSIDERATIONS,
+            Reconsideration, RevisionRecord, RevisionSnapshot, RevisionStore, VersionKind,
         },
     },
     citation::ReadingError,
@@ -30,7 +30,10 @@ use zobba_domain::{
     assessment::Origin,
     citation::Locator,
     identity::{Scope, valid_scope_id},
-    revision::{Concern, DispositionKind, HISTORY_PAGE, valid_revision_id},
+    revision::{
+        Concern, DISPOSITION_PAGE, DispositionKind, HISTORY_DISPOSITIONS, HISTORY_PAGE,
+        valid_disposition_id, valid_revision_id,
+    },
     task::ClaimBasis,
 };
 
@@ -547,8 +550,6 @@ fn refusal_of(message: &str) -> Refused {
         DispositionError::NotReplaceable
     } else if message.contains("replaces only") {
         DispositionError::NotDecidable
-    } else if message.contains("at most 16") {
-        DispositionError::Capacity
     } else if message.contains("disposition reference") {
         // The guard checks every reference at once; Rust verified each one
         // first, so this is a reference changed meanwhile.
@@ -902,9 +903,16 @@ impl AssessmentRepository {
         if after < 1 {
             ids.insert(0, first.id.clone());
         }
-        let rows = sqlx::query("SELECT d.document,d.digest,d.created_us,coalesce(i.display_name,d.actor_id) AS label FROM public.assessment_dispositions d LEFT JOIN public.identities i ON i.id=d.actor_id WHERE d.task_id=$1 AND d.revision_id = ANY($2) ORDER BY d.created_us, d.id COLLATE \"C\"")
-            .bind(task_id).bind(&ids)
+        // Each listed revision's first dispositions only (one more to know
+        // whether others follow) and its exact count: a revision holds any
+        // number, read in bounded pages through `revision_dispositions`.
+        let rows = sqlx::query("SELECT d.document,d.digest,d.created_us,coalesce(i.display_name,d.actor_id) AS label FROM unnest($2::text[]) h(id) CROSS JOIN LATERAL (SELECT x.document,x.digest,x.created_us,x.actor_id,x.id FROM public.assessment_dispositions x WHERE x.task_id=$1 AND x.revision_id=h.id ORDER BY x.created_us, x.id COLLATE \"C\" LIMIT $3) d LEFT JOIN public.identities i ON i.id=d.actor_id ORDER BY d.created_us, d.id COLLATE \"C\"")
+            .bind(task_id).bind(&ids).bind(HISTORY_DISPOSITIONS as i64 + 1)
             .fetch_all(&mut *tx).await.map_err(|_| TaskError::Unavailable)?;
+        let totals: BTreeMap<String, i64> = sqlx::query_as::<_, (String, i64)>("SELECT revision_id, count(*) FROM public.assessment_dispositions WHERE task_id=$1 AND revision_id = ANY($2) GROUP BY revision_id")
+            .bind(task_id).bind(&ids)
+            .fetch_all(&mut *tx).await.map_err(|_| TaskError::Unavailable)?
+            .into_iter().collect();
         let mut by_revision: BTreeMap<String, Vec<(DispositionRecord, String)>> = BTreeMap::new();
         for row in &rows {
             let record = disposition_from(row).map_err(unavailable)?;
@@ -914,18 +922,27 @@ impl AssessmentRepository {
                 .or_default()
                 .push((record, label));
         }
+        let paged = |id: &str, entry: HistoryEntry| -> Result<HistoryEntry, TaskError> {
+            let mut entry = entry;
+            let more = entry.dispositions.len() > HISTORY_DISPOSITIONS;
+            entry.dispositions.truncate(HISTORY_DISPOSITIONS);
+            entry.dispositions_total = totals.get(id).copied().unwrap_or(0) as u64;
+            if (entry.dispositions_total as usize) < entry.dispositions.len() {
+                return Err(TaskError::Unavailable);
+            }
+            entry.dispositions_next = more
+                .then(|| entry.dispositions.last().map(|(d, _)| d.id.clone()))
+                .flatten();
+            Ok(entry)
+        };
         let mut entries = Vec::new();
         if after < 1 {
-            entries.push(HistoryEntry::first(
-                &first,
-                by_revision.remove(&first.id).unwrap_or_default(),
-            ));
+            let listed = by_revision.remove(&first.id).unwrap_or_default();
+            entries.push(paged(&first.id, HistoryEntry::first(&first, listed))?);
         }
         for r in &later {
-            entries.push(HistoryEntry::later(
-                r,
-                by_revision.remove(&r.id).unwrap_or_default(),
-            ));
+            let listed = by_revision.remove(&r.id).unwrap_or_default();
+            entries.push(paged(&r.id, HistoryEntry::later(r, listed))?);
         }
         let mut fact_ids: Vec<String> = entries
             .iter()
@@ -950,6 +967,79 @@ impl AssessmentRepository {
             facts,
         }))
     }
+
+    /// Viewer read (current audit scope by RLS): one page of one revision's
+    /// dispositions (the 24.1 evaluation or a revision row) after the
+    /// disposition `after` (the previous page's last), oldest first by time
+    /// then C-ordered ID, with their exact number. `None` when the revision is
+    /// not this Task's; a cursor that is not one of its dispositions is
+    /// `Invalid`.
+    pub async fn revision_dispositions(
+        &self,
+        actor: &str,
+        s: &Scope,
+        task_id: &str,
+        revision_id: &str,
+        after: Option<&str>,
+    ) -> Result<Option<DispositionPage>, TaskError> {
+        if !valid_scope_id(task_id)
+            || !valid_revision_id(revision_id)
+            || after.is_some_and(|a| !valid_disposition_id(a))
+        {
+            return Err(TaskError::Denied);
+        }
+        let mut tx = scoped(&self.pool, actor, s).await.map_err(|e| match e {
+            ReadingError::Denied | ReadingError::Fenced => TaskError::Denied,
+            _ => TaskError::Unavailable,
+        })?;
+        let found: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM public.assessment_evaluations WHERE task_id=$1 AND id=$2) OR EXISTS(SELECT 1 FROM public.assessment_evaluation_revisions WHERE task_id=$1 AND id=$2)")
+            .bind(task_id).bind(revision_id)
+            .fetch_one(&mut *tx).await.map_err(|_| TaskError::Unavailable)?;
+        if !found {
+            task::admission_fence(&mut tx, actor, s, None).await?;
+            tx.commit().await.map_err(|_| TaskError::Unavailable)?;
+            return Ok(None);
+        }
+        let anchor: Option<i64> = match after {
+            None => None,
+            Some(id) => Some(
+                sqlx::query_scalar("SELECT created_us FROM public.assessment_dispositions WHERE task_id=$1 AND revision_id=$2 AND id=$3")
+                    .bind(task_id).bind(revision_id).bind(id)
+                    .fetch_optional(&mut *tx).await.map_err(|_| TaskError::Unavailable)?
+                    .ok_or(TaskError::Invalid)?,
+            ),
+        };
+        let rows = sqlx::query("SELECT d.document,d.digest,d.created_us,coalesce(i.display_name,d.actor_id) AS label FROM public.assessment_dispositions d LEFT JOIN public.identities i ON i.id=d.actor_id
+            WHERE d.task_id=$1 AND d.revision_id=$2 AND ($3::bigint IS NULL OR (d.created_us, d.id COLLATE \"C\") > ($3::bigint, $4::text COLLATE \"C\"))
+            ORDER BY d.created_us, d.id COLLATE \"C\" LIMIT $5")
+            .bind(task_id).bind(revision_id).bind(anchor).bind(after).bind(DISPOSITION_PAGE as i64 + 1)
+            .fetch_all(&mut *tx).await.map_err(|_| TaskError::Unavailable)?;
+        let mut dispositions = Vec::with_capacity(rows.len());
+        for row in &rows {
+            let record = disposition_from(row).map_err(|_| TaskError::Unavailable)?;
+            if record.request.revision_id != revision_id {
+                return Err(TaskError::Unavailable);
+            }
+            let label: String = row.try_get("label").map_err(|_| TaskError::Unavailable)?;
+            dispositions.push((record, label));
+        }
+        let more = dispositions.len() > DISPOSITION_PAGE;
+        dispositions.truncate(DISPOSITION_PAGE);
+        let total: i64 = sqlx::query_scalar("SELECT count(*) FROM public.assessment_dispositions WHERE task_id=$1 AND revision_id=$2")
+            .bind(task_id).bind(revision_id)
+            .fetch_one(&mut *tx).await.map_err(|_| TaskError::Unavailable)?;
+        task::admission_fence(&mut tx, actor, s, None).await?;
+        tx.commit().await.map_err(|_| TaskError::Unavailable)?;
+        let next = more
+            .then(|| dispositions.last().map(|(d, _)| d.id.clone()))
+            .flatten();
+        Ok(Some(DispositionPage {
+            revision_id: revision_id.into(),
+            total: total as u64,
+            dispositions,
+            next,
+        }))
+    }
 }
 
 #[cfg(test)]
@@ -971,10 +1061,6 @@ mod tests {
             (
                 "a person's met or not_met replaces only an applicable, completed judgment under a verified authority",
                 Refused::Other(DispositionError::NotDecidable),
-            ),
-            (
-                "a revision holds at most 16 dispositions",
-                Refused::Other(DispositionError::Capacity),
             ),
             (
                 "a disposition reference is a verified quote of a registered original",

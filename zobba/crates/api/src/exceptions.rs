@@ -20,7 +20,7 @@ use axum::{
     },
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::get,
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::Semaphore;
@@ -82,7 +82,7 @@ pub(crate) fn router(
         )
         .route(
             "/engagements/{engagement_id}/tasks/{task_id}/assessment/exceptions/{exception_id}/dispositions",
-            post(dispose),
+            get(dispositions).post(dispose),
         )
         .with_state(ExceptionState {
             identity,
@@ -153,7 +153,8 @@ pub struct ExceptionResponse {
     /// The exact number of its occurrences.
     #[schema(pattern = "^[0-9]+$")]
     pub occurrences: String,
-    /// The exact number of its dispositions; at most 16 may be saved.
+    /// The exact number of its dispositions (any number may be saved; the
+    /// newest is effective).
     #[schema(pattern = "^[0-9]+$")]
     pub dispositions: String,
     /// The record its first occurrence names.
@@ -295,15 +296,33 @@ pub struct OccurrenceResponse {
     pub seq: String,
 }
 
-/// One exception, one page of its occurrences (oldest first) and every
-/// disposition.
+/// One exception, one page of its occurrences (oldest first) and the first
+/// page of its dispositions (in their order; the newest is `exception.disposition`).
 #[derive(Serialize, ToSchema)]
 pub struct ExceptionDetailResponse {
     pub exception: ExceptionResponse,
     #[schema(max_items = 50)]
     pub occurrences: Vec<OccurrenceResponse>,
-    #[schema(max_items = 16)]
+    #[schema(max_items = 50)]
     pub dispositions: Vec<ExceptionDispositionResponse>,
+    #[schema(required = true, pattern = "^[0-9]+$")]
+    pub next_cursor: Option<String>,
+    /// The cursor of the next disposition page (the last listed
+    /// disposition's place), when more follow.
+    #[schema(required = true, pattern = "^[0-9]+$")]
+    pub dispositions_next_cursor: Option<String>,
+}
+
+/// One page of one exception's dispositions in their order (50 a page),
+/// with their exact number. Dispositions are never changed.
+#[derive(Serialize, ToSchema)]
+pub struct ExceptionDispositionsResponse {
+    pub exception_id: String,
+    #[schema(pattern = "^[0-9]+$")]
+    pub total: String,
+    #[schema(max_items = 50)]
+    pub dispositions: Vec<ExceptionDispositionResponse>,
+    /// The last listed disposition's place, when more follow.
     #[schema(required = true, pattern = "^[0-9]+$")]
     pub next_cursor: Option<String>,
 }
@@ -588,6 +607,17 @@ pub(crate) fn detail_response(
             .map(|(d, label)| disposition_response(d, Some(label.clone()), originals))
             .collect(),
         next_cursor: detail.next.map(|n| n.to_string()),
+        dispositions_next_cursor: detail.dispositions_next.map(|n| n.to_string()),
+    }
+}
+
+/// A place cursor: at most 7 ASCII digits.
+fn place(cursor: Option<&str>) -> Option<u32> {
+    match cursor {
+        None => Some(0),
+        Some(text) => (text.len() <= 7 && text.bytes().all(|b| b.is_ascii_digit()))
+            .then(|| text.parse::<u32>().ok())
+            .flatten(),
     }
 }
 
@@ -620,15 +650,8 @@ pub(crate) async fn detail(
     if !valid_scope_id(&task_id) || !valid_exception_id(&exception_id) {
         return failure(TaskError::Denied);
     }
-    let after = match query.cursor.as_deref() {
-        None => 0,
-        Some(text) => match (text.len() <= 7 && text.bytes().all(|b| b.is_ascii_digit()))
-            .then(|| text.parse::<u32>().ok())
-            .flatten()
-        {
-            Some(after) => after,
-            None => return failure(TaskError::Invalid),
-        },
+    let Some(after) = place(query.cursor.as_deref()) else {
+        return failure(TaskError::Invalid);
     };
     let detail = match state
         .assessments
@@ -639,7 +662,13 @@ pub(crate) async fn detail(
         Ok(None) => return not_found(),
         Err(error) => return failure(error),
     };
-    let ids = reference_ids(detail.dispositions.iter().map(|(d, _)| d));
+    let ids = reference_ids(
+        detail
+            .dispositions
+            .iter()
+            .map(|(d, _)| d)
+            .chain(detail.view.disposition.iter().map(|(d, _)| d)),
+    );
     let originals = match state
         .citations
         .viewer_originals(&current.identity.id, &scope, &ids)
@@ -649,6 +678,69 @@ pub(crate) async fn detail(
         Err(_) => return failure(TaskError::Unavailable),
     };
     Json(detail_response(&detail, &originals)).into_response()
+}
+
+#[utoipa::path(get,path="/engagements/{engagement_id}/tasks/{task_id}/assessment/exceptions/{exception_id}/dispositions",operation_id="get_exception_dispositions",security(("server_session"=[])),
+    params(("X-Expected-Session"=Option<String>,Header,description="Optional session-bound read precondition from the in-memory session CSRF token; mismatch refuses without changing the cookie",min_length=1,max_length=128),("engagement_id"=String,Path),("task_id"=String,Path),("exception_id"=String,Path),("organisation_id"=String,Query),("client_id"=String,Query),
+        ("cursor"=Option<String>,Query,description="next_cursor of the previous page (the last listed disposition's place)",pattern="^[0-9]{1,7}$")),
+    responses((status=200,description="The exact number of one exception's dispositions and one page of them in their order (50 a page); dispositions are never changed",body=ExceptionDispositionsResponse),(status=400,body=crate::auth::ErrorResponse),(status=401,body=crate::auth::ErrorResponse),(status=403,body=crate::auth::ErrorResponse),(status=404,description="exception_not_found: no such exception of this Task",body=crate::auth::ErrorResponse),(status=412,description="Session changed",body=crate::auth::ErrorResponse),(status=429,body=crate::auth::ErrorResponse),(status=503,body=crate::auth::ErrorResponse)))]
+pub(crate) async fn dispositions(
+    State(state): State<ExceptionState>,
+    headers: HeaderMap,
+    path: Result<Path<(String, String, String)>, axum::extract::rejection::PathRejection>,
+    query: Result<Query<DetailQuery>, QueryRejection>,
+) -> Response {
+    let current = match state.identity.current_read(&headers).await {
+        Ok(current) => current,
+        Err(error) => return crate::auth::failure(error),
+    };
+    let (Ok(Path((engagement_id, task_id, exception_id))), Ok(Query(query))) = (path, query) else {
+        return failure(TaskError::Invalid);
+    };
+    let scope = match (TaskScopeQuery {
+        organisation_id: query.organisation_id,
+        client_id: query.client_id,
+    })
+    .scope(engagement_id)
+    {
+        Ok(scope) => scope,
+        Err(error) => return failure(error),
+    };
+    if !valid_scope_id(&task_id) || !valid_exception_id(&exception_id) {
+        return failure(TaskError::Denied);
+    }
+    let Some(after) = place(query.cursor.as_deref()) else {
+        return failure(TaskError::Invalid);
+    };
+    let page = match state
+        .assessments
+        .exception_dispositions(&current.identity.id, &scope, &task_id, &exception_id, after)
+        .await
+    {
+        Ok(Some(page)) => page,
+        Ok(None) => return not_found(),
+        Err(error) => return failure(error),
+    };
+    let ids = reference_ids(page.dispositions.iter().map(|(d, _)| d));
+    let originals = match state
+        .citations
+        .viewer_originals(&current.identity.id, &scope, &ids)
+        .await
+    {
+        Ok(originals) => originals,
+        Err(_) => return failure(TaskError::Unavailable),
+    };
+    Json(ExceptionDispositionsResponse {
+        exception_id: page.exception_id.clone(),
+        total: page.total.to_string(),
+        dispositions: page
+            .dispositions
+            .iter()
+            .map(|(d, label)| disposition_response(d, Some(label.clone()), &originals))
+            .collect(),
+        next_cursor: page.next.map(|n| n.to_string()),
+    })
+    .into_response()
 }
 
 #[derive(Deserialize, ToSchema)]

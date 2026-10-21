@@ -77,6 +77,7 @@ async function openTask(page: Page, mayClose = true) {
       occurrences: [{ source_kind: exception.first_source_kind, source_id: exception.first_source_id, population_id: exception.first_source_kind === 'opportunity' ? 'pop-1' : null, member_ordinal: exception.first_source_kind === 'opportunity' ? '2' : null, criterion_id: exception.criterion_root, basis_id: 'basis-1', origin: exception.first_source_kind === 'opportunity' ? 'deterministic' : 'model_proposal', evidence: ['0'.repeat(64)], source_us: '1', seq: '1' }],
       dispositions: exception.disposition ? [exception.disposition] : [],
       next_cursor: null,
+      dispositions_next_cursor: null,
     } });
   });
   await page.getByRole('button', { name: 'Open Assess approval of 2026 AP invoices', exact: true }).click();
@@ -210,4 +211,35 @@ test('a person without closing authority sees every status but no closing form',
   await row.getByRole('button', { name: 'Show details', exact: true }).click();
   await expect(row.getByRole('list', { name: 'Occurrences', exact: true })).toContainText('rule evaluated by the platform');
   await expect(row.getByRole('form')).toHaveCount(0);
+});
+
+test('an exception holds any number of dispositions and shows them page by page', async ({ page }) => {
+  await openTask(page, false);
+  const closed = listed(false).exceptions.find((e: { status: string; disposition: unknown }) => e.status === 'closed_by_disposition' && e.disposition);
+  const many = (from: number, count: number) => Array.from({ length: count }, (_, i) => ({ ...closed.disposition, id: `xdisp-${from + i}`, rationale: `Reason ${from + i}.` }));
+  await page.route(`**/api/engagements/engagement-a/tasks/*/assessment/exceptions/${closed.id}?*`, async route => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    await route.fulfill({ json: {
+      exception: { ...closed, dispositions: '70' },
+      occurrences: [{ source_kind: closed.first_source_kind, source_id: closed.first_source_id, population_id: closed.first_source_kind === 'opportunity' ? 'pop-1' : null, member_ordinal: closed.first_source_kind === 'opportunity' ? '2' : null, criterion_id: closed.criterion_root, basis_id: 'basis-1', origin: closed.first_source_kind === 'opportunity' ? 'deterministic' : 'model_proposal', evidence: ['0'.repeat(64)], source_us: '1', seq: '1' }],
+      dispositions: many(1, 50), next_cursor: null, dispositions_next_cursor: '51',
+    } });
+  });
+  const pages: string[] = [];
+  await page.route(`**/api/engagements/engagement-a/tasks/*/assessment/exceptions/${closed.id}/dispositions?*`, async route => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    pages.push(new URL(route.request().url()).searchParams.get('cursor') ?? '');
+    await route.fulfill({ json: { exception_id: closed.id, total: '70', dispositions: many(51, 20), next_cursor: null } });
+  });
+  const section = page.getByRole('region', { name: 'Exceptions', exact: true });
+  const row = section.locator('tbody tr').filter({ hasText: closed.subject }).filter({ hasText: 'Closed by disposition' });
+  await row.getByRole('button', { name: 'Show details', exact: true }).click();
+  const list = row.getByRole('list', { name: 'Dispositions', exact: true });
+  await expect(list.getByRole('listitem')).toHaveCount(50);
+  await expect(row).toContainText('70 dispositions recorded · showing 50.');
+  await row.getByRole('button', { name: 'Show the next 50 dispositions', exact: true }).click();
+  await expect(list.getByRole('listitem')).toHaveCount(70);
+  await expect(list).toContainText('Reason 70.');
+  await expect(row.getByRole('button', { name: 'Show the next 50 dispositions', exact: true })).toHaveCount(0);
+  expect(pages).toEqual(['51']);
 });
