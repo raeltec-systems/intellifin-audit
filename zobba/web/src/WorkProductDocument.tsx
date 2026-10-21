@@ -35,6 +35,14 @@ export function WorkProductDocument({ taskId, scope, session, product, version, 
   const [editing, setEditing] = useState(false);
   const [saved, setSaved] = useState('');
   const heading = useRef<HTMLHeadingElement>(null);
+  // Cancel returns the focus to the control that opened the editor.
+  const editButton = useRef<HTMLButtonElement>(null);
+  const [returnFocus, setReturnFocus] = useState(false);
+  useEffect(() => {
+    if (!returnFocus || editing) return;
+    setReturnFocus(false);
+    editButton.current?.focus();
+  }, [returnFocus, editing]);
   useEffect(() => {
     const controller = new AbortController();
     readVersion(scope, taskId, product, version, session, controller.signal).then(value => {
@@ -65,13 +73,13 @@ export function WorkProductDocument({ taskId, scope, session, product, version, 
       {saved ? <p role="status" className="disposition-saved">{saved}</p> : null}
       <div className="work-product-actions">
         {view.predecessor_id ? <button type="button" className="text-button" onClick={() => onOpenVersion(view.predecessor_id!)}>Open the previous version</button> : null}
-        {latest && !editing ? <button type="button" className="text-button" onClick={() => { setEditing(true); setSaved(''); }}>Edit into a new version</button> : null}
+        {latest && !editing ? <button ref={editButton} type="button" className="text-button" onClick={() => { setEditing(true); setSaved(''); }}>Edit into a new version</button> : null}
         <button type="button" className="text-button" onClick={onClose}>Close</button>
       </div>
     </header>
     {view.proposals.length ? <Proposals view={view} taskId={taskId} scope={scope} session={session} product={product} onOpenVersion={onOpenVersion} /> : null}
     {editing ? <Editor view={view} taskId={taskId} scope={scope} session={session} product={product}
-      onCancel={() => setEditing(false)}
+      onCancel={() => { setEditing(false); setReturnFocus(true); }}
       onSaved={next => { setEditing(false); setSaved(`Saved as version ${number(next.version)}. The earlier version is unchanged.`); onOpenVersion(next.id); }} />
       : <Body view={view} taskId={taskId} scope={scope} session={session} product={product} accessReady={accessReady} onSourceAccessFailure={onSourceAccessFailure} />}
     <Exports view={view} taskId={taskId} scope={scope} session={session} product={product} />

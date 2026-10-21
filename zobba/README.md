@@ -2345,7 +2345,8 @@ scenario with a population version that drops a subject.
 ## Work products with checked claims (Story 24.4)
 
 Schema 22 is additive; migrations 0001–0021 and catalogues v1–v21 are
-unchanged (`published.rs` pins 0021 and v21 too).
+unchanged (`published.rs` pins 0021 and v21 too). Review round 1 (schema 24)
+is described at the end of this section.
 
 - **The agent drafts; trusted code checks.** An answer may carry one
   `draft_work_product` (a new product or a successor of the latest version) on
@@ -2423,6 +2424,45 @@ refused; by
 (`fixtures/exports/`) are the writer's exact bytes and opens them in
 LibreOffice headless (text, PDF and HTML conversion); and by the web unit and
 browser suites over the JSON the worker suite records.
+
+### Review round 1 (schema 24)
+
+Migration 0024 (catalogue v24) is additive; 0001–0023 and v1–v23 are
+unchanged (`published.rs` pins 0023 and v23 too). Versions recorded before it
+keep rule `statement_figures_v1` and renderer `zobba-export-v1`.
+
+- **Figures and words (`statement_figures_v2`).** Every Unicode numeric
+  character, number words ("fourteen", "a dozen"), Roman numerals and dates in
+  their written forms count as figures; a pure-number record subject resolves
+  only in its own claim, after a word ("Invoice 000123"); the title is checked
+  too; a character that changes display without being seen (bidirectional
+  controls, zero-width characters) is refused (`hidden_character`). A claim's
+  verdict words must agree with the outcome, conclusion, status or count its
+  own assertions hold. A heading alone completes no required section.
+- **A bad quote never fails a cycle**: a malformed, unknown or unreadable
+  quote is a per-block refusal like any other.
+- **Withholding.** A fact none of whose verified sources the viewer may read
+  is withheld like a quote, and so is the sentence of a claim that restates a
+  withheld record (web, API and exports); the withheld set covers both.
+- **Currency.** Coverage and exceptions blocks on a superseded summary or
+  basis, or whose exception counts changed, say they need refresh; a quote
+  whose original a replacement source corrects is `source_withdrawn`; a period
+  whose basis a successor supersedes is `basis_superseded`; an acceptance alone
+  is not a disposition change. Claims are numbered in template section order.
+- **A person's blocks, at their request only.** The agent may change or
+  remove a person's block only when that person asked in a Guide request the
+  draft names (`request`): it records a proposal (`work_product_proposals`)
+  shown to that person as before and after, and the version is recorded only
+  when the same person confirms it
+  (`POST .../proposals/{proposal}/decision`), "changed by the agent at
+  <person>'s request" with the request and confirmation IDs. The database
+  refuses any other agent change of a person's block.
+- **Frozen exports (`zobba-export-v2`).** A version freezes its people's names,
+  each exceptions block's counts and the claims already needing refresh; its
+  export shows exactly that, so the same version, format and withheld set give
+  the same bytes, stored once under their content's object ID (read back and
+  checked before they are recorded). Export IDs are engagement-scoped. The XLSX
+  says whether each count is exact or "at least".
 
 ## Establishing an engagement conversationally (Story 22.2 AC4)
 

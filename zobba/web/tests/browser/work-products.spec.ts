@@ -67,7 +67,7 @@ function aimed(body: Json, task: string, evidence: Evidence | null): Json {
   return copy;
 }
 
-async function openTask(page: Page, options: { stale?: boolean; register?: boolean } = {}) {
+async function openTask(page: Page, options: { stale?: boolean; register?: boolean; withheld?: boolean; proposal?: boolean } = {}) {
   await page.goto(runtime.url);
   await page.getByRole('link', { name: 'Sign in to Zobba' }).click();
   await page.getByLabel('Account', { exact: true }).selectOption('auditor-a');
@@ -90,7 +90,24 @@ async function openTask(page: Page, options: { stale?: boolean; register?: boole
   await page.getByRole('button', { name: 'Send', exact: false }).click();
   await expect(page.locator('.task-card h3').filter({ hasText: 'Assess approval of 2026 AP invoices' })).toBeVisible();
   const taskOf = (request: Request) => new URL(request.url()).pathname.split('/tasks/')[1]!.split('/')[0]!;
-  const version = (task: string) => aimed(options.stale ? stale : recorded.version, task, evidence);
+  const version = (task: string) => {
+    const v = aimed(options.stale ? stale : recorded.version, task, evidence);
+    if (options.withheld) {
+      // The quoted original is not readable for this viewer: its value, its
+      // source and the claim's sentence (which restates it) are withheld.
+      const quoted = claims(v).find((b: Json) => b.claim.assertions.some((a: Json) => a.kind === 'quote'));
+      for (const a of quoted.claim.assertions) if (a.kind === 'quote') { a.withheld = true; a.value = null; a.source = null; }
+      quoted.claim.withheld = true; quoted.text_withheld = true; quoted.text = null;
+      quoted.claim.support = quoted.claim.support.map((line: string) => line.startsWith('Quote') ? `Quote from original ${quoted.claim.assertions[0].record_id}: withheld for this viewer` : line);
+      v.withheld = '1';
+    }
+    if (options.proposal) {
+      const person = v.sections[0].blocks[1];
+      v.proposals = [{ id: `wpp-${'2'.repeat(40)}`, request_id: 'cmd-1', version_id: `wpv-${'4'.repeat(40)}`, title: v.title,
+        changes: [{ block_id: person.id, change: 'changed', before: person.text, after: 'Test every invoice above the threshold, as asked.' }], decision: null, recorded_us: '1' }];
+    }
+    return v;
+  };
   await page.route('**/api/engagements/engagement-a/tasks/*/work-products?*', async route => {
     expect(route.request().headers()['x-expected-session']).toBeTruthy();
     const task = taskOf(route.request());
@@ -277,7 +294,7 @@ test('an export renders this exact version and downloads bytes checked against i
     posted.push(route.request());
     await route.fulfill({ json: {
       id: exportId, version_id: recorded.version.id, format: 'docx', media_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      renderer: 'zobba-export-v1', digest, size: String(docx.length), withheld_digest: 'b'.repeat(64), refresh_count: '0', recorded_us: '1',
+      renderer: 'zobba-export-v2', digest, size: String(docx.length), withheld_digest: 'b'.repeat(64), refresh_count: '0', recorded_us: '1',
     } });
   });
   await page.route(`**/api/engagements/engagement-a/tasks/*/work-products/*/exports/${exportId}/content?*`, route => route.fulfill({
@@ -295,4 +312,44 @@ test('an export renders this exact version and downloads bytes checked against i
   await page.route(`**/api/engagements/engagement-a/tasks/*/work-products/*/exports/${exportId}/content?*`, route => route.fulfill({ status: 409, json: { error: 'export_scope_changed', head: null, refusals: [] } }));
   await exports.getByRole('button', { name: 'Export DOCX', exact: true }).click();
   await expect(exports.getByRole('status')).toHaveText('What you may read changed since this export was made. Request a new export.');
+});
+
+test('Cancel returns the focus to Edit; a withheld quote shows neither its text nor the sentence that restates it', async ({ page }, info) => {
+  await openTask(page, { withheld: true });
+  await page.locator('section.work-products').getByRole('button', { name: 'Open AP approvals working paper', exact: true }).click();
+  const document = page.getByRole('article', { name: 'AP approvals working paper', exact: true });
+  const quoted = document.locator('.work-product-claim').nth(3);
+  await expect(quoted).toContainText('Its sentence is withheld for you');
+  await expect(quoted).not.toContainText('The policy requires');
+  await expect(quoted.getByRole('button', { name: /^Citation/ })).toHaveCount(0);
+  await expect(document).toContainText('1 claim rests on a quote or fact you may not read now');
+  const edit = document.getByRole('button', { name: 'Edit into a new version', exact: true });
+  await edit.focus();
+  await page.keyboard.press('Enter');
+  const editor = document.getByRole('form', { name: 'Edit AP approvals working paper', exact: true });
+  await expect(editor).toContainText('its sentence is withheld for you');
+  await editor.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(editor).toHaveCount(0);
+  await expect(document.getByRole('button', { name: 'Edit into a new version', exact: true })).toBeFocused();
+  await capture(page, info, 'work-product-withheld.png');
+});
+
+test('a proposal to change a person\'s block shows before and after and records only on their confirmation', async ({ page }) => {
+  await openTask(page, { proposal: true });
+  const posted: Request[] = [];
+  await page.route('**/api/engagements/engagement-a/tasks/*/work-products/*/proposals/*/decision?*', async route => {
+    posted.push(route.request());
+    await route.fulfill({ status: 409, json: { error: 'stale_base', head: recorded.version.id.replace(/.$/, 'f'), refusals: [] } });
+  });
+  await page.locator('section.work-products').getByRole('button', { name: 'Open AP approvals working paper', exact: true }).click();
+  const proposals = page.getByRole('region', { name: 'Proposed changes to your blocks', exact: true });
+  await expect(proposals).toContainText('Before:');
+  await expect(proposals).toContainText('After: Test every invoice above the threshold, as asked.');
+  await proposals.getByRole('button', { name: 'Confirm the change', exact: true }).click();
+  await expect(proposals.getByRole('status')).toContainText('A newer version was recorded while you edited.');
+  expect(posted).toHaveLength(1);
+  const body = posted[0]!.postDataJSON();
+  expect(Object.keys(body).sort()).toEqual(['decision', 'key']);
+  expect(body.decision).toBe('confirm');
+  expect(posted[0]!.headers()['x-expected-actor']).toBe('actor-a');
 });

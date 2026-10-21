@@ -2057,3 +2057,70 @@ fn the_agent_context_lists_every_product_with_peoples_blocks_and_requests() {
     assert!(text.contains(&person.id), "{text}");
     assert!(text.contains("cmd-alex"), "{text}");
 }
+
+#[test]
+fn corrected_originals_superseded_bases_and_summaries_need_refresh() {
+    let store = Store::new();
+    assert!(record(&store, "turn-1", &first_draft()).0);
+    let v1 = store.state.lock().unwrap().versions[0].clone();
+    let scope = basis("p1").scope;
+    {
+        let mut s = store.state.lock().unwrap();
+        s.records.corrected.insert("ap-policy".into());
+        s.records.bases[0].superseded = true;
+        s.records.summaries[0].superseded = true;
+    }
+    let view = run(views(
+        &store,
+        "actor",
+        &scope,
+        "task",
+        std::slice::from_ref(&v1),
+        None,
+    ))
+    .unwrap()
+    .remove(0);
+    let reasons: Vec<Vec<RefreshReason>> = view
+        .claims
+        .values()
+        .map(|c| c.currency.reasons.clone())
+        .collect();
+    assert!(
+        reasons.contains(&vec![RefreshReason::SourceWithdrawn]),
+        "{reasons:?}"
+    );
+    assert!(
+        reasons.contains(&vec![RefreshReason::BasisSuperseded]),
+        "{reasons:?}"
+    );
+    // The coverage block of the superseded summary and the exceptions block
+    // of the superseded basis need refresh as blocks.
+    let platform: Vec<&Vec<RefreshReason>> = view.platform.values().collect();
+    assert!(
+        platform.contains(&&vec![RefreshReason::SummarySuperseded]),
+        "{platform:?}"
+    );
+    assert!(
+        platform
+            .iter()
+            .any(|r| r.contains(&RefreshReason::BasisSuperseded)),
+        "{platform:?}"
+    );
+    assert_eq!(view.platform_refresh, 2);
+    // A new draft may not cite them: a coverage block on a superseded
+    // summary is refused.
+    let mut d = first_draft();
+    d.base_version = Some(v1.version.id.clone());
+    d.blocks = keep_all(&v1.version);
+    d.blocks.push(ProposedBlock::New {
+        section: "results".into(),
+        content: ProposedContent::Coverage {
+            summary_id: hex("summary", '5'),
+        },
+    });
+    let (recorded, feedback) = record(&store, "turn-2", &d);
+    assert!(
+        !recorded && feedback.join("\n").contains("superseded_support"),
+        "{feedback:?}"
+    );
+}

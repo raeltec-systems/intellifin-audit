@@ -2210,6 +2210,38 @@ async fn database_guards_refuse_altered_work_product_records(
         );
     }
 
+    // Currency on read (SQL): a replacement source that corrects the quoted
+    // original makes the quote need refresh.
+    {
+        let task: String =
+            sqlx::query_scalar("SELECT task_id FROM public.work_product_versions WHERE id=$1")
+                .bind(v1)
+                .fetch_one(&mut *admin)
+                .await
+                .unwrap();
+        let mut tx = admin.begin().await.unwrap();
+        let query = "SELECT c.superseded FROM public.work_product_current('org-a','client-a','engagement-a',$1,ARRAY[$2]) c JOIN public.work_product_assertions a USING (version_id, block_id, ordinal) WHERE a.kind='quote'";
+        let before: bool = sqlx::query_scalar(query)
+            .bind(&task)
+            .bind(v1)
+            .fetch_one(&mut *tx)
+            .await
+            .unwrap();
+        assert!(!before, "the quoted original is not corrected");
+        sqlx::query("INSERT INTO public.knowledge_source_corrections(organisation_id,client_id,engagement_id,original_id,revision,replacement_id,actor_id,document) VALUES('org-a','client-a','engagement-a','ap-policy',1,'ap-invoices','actor-a','{}')")
+            .execute(&mut *tx)
+            .await
+            .unwrap();
+        let after: bool = sqlx::query_scalar(query)
+            .bind(&task)
+            .bind(v1)
+            .fetch_one(&mut *tx)
+            .await
+            .unwrap();
+        assert!(after, "a corrected original needs refresh");
+        tx.rollback().await.unwrap();
+    }
+
     // An agent's version that names a change request no person confirmed.
     let columns = "organisation_id,client_id,engagement_id,task_id,actor_id,product_id,id,version,predecessor_id,author_kind,author_id,invocation_id,cycle_id,key,title,kind,methodology_binding_id,execution_epoch,blocks,claims,missing_required,document,digest";
     let next = format!("wpv-{}", "d".repeat(40));
