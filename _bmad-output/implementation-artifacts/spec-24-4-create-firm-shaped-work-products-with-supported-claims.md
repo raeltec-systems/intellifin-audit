@@ -186,3 +186,15 @@ The original story order (schema 22): domain `work_product.rs`/`figures.rs` → 
 - Browser (sequential): `work-products` 4/4, `exceptions`, `revision`, `coverage`, `assessment`, `investigation`,
   `health` (20 passed together), `conversation` 8/8 (engagement shelf).
 - `scripts/smoke.py`: passed at schema 22.
+
+## Verification Record (round 1, 2026-10-21)
+
+Sequential, on the local test database, after the last change (the document check in `work_product_batch` and its tests):
+
+- `cargo fmt --all --check`: clean. `cargo clippy --workspace --all-targets --locked -- -D warnings`: clean.
+- `cargo test --workspace --locked --no-fail-fast -- --test-threads=1`: 813 passed, 0 failed, 4 ignored. Includes `work_product` (3), `work_product_office` (2; LibreOffice headless opens the DOCX and XLSX, with the "Count is" / "exact" column) and `bootstrap` at schema 24.
+- `standing_permissions_exact_operations_and_transaction_cutoffs` alone, 10 runs: 10 passed (222–259 s each).
+- `pnpm --dir zobba/web check`: 240 of 242; the 2 failures are the known IPv6 tests. `pnpm --dir zobba/web build`: pass.
+- Browser (sequential): `work-products` 6/6; `exceptions`, `revision`, `coverage`, `assessment`, `investigation`, `health` 18/18; `conversation` 8/8.
+- `scripts/smoke.py`: "Zobba process smoke passed." at schema 24.
+- Two earlier runs did not count: one full run on a second database while the 22.1 loop ran on the first (a `Fenced` in the cutoff race, caused by the two suites sharing the machine), and one full run with a renewal assertion in the cutoff race that could not hold (`current` renews only a consumed claim); that assertion is removed. A full run also showed the per-kind forged-row test picking a kept claim at random; the document check and a fixed choice fix that.
