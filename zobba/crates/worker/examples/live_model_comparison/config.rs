@@ -156,6 +156,7 @@ pub struct Defaults {
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RunConfig {
+    #[allow(dead_code)]
     #[serde(rename = "_comment", default)]
     pub comment: Option<String>,
     pub id: String,
@@ -193,6 +194,7 @@ fn effort_none() -> String {
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ComparisonFile {
+    #[allow(dead_code)]
     #[serde(rename = "_comment", default)]
     pub comment: Option<String>,
     pub comparison: String,
